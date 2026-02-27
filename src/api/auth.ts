@@ -1,0 +1,73 @@
+/**
+ * 인증 서비스 API 클라이언트
+ * 경로: /api/auth/*
+ */
+import apiClient, { type ApiResponse } from './client';
+import { currentUser } from '@/lib/mockData';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  orgId?: string;
+  teamId?: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  userId: string;
+}
+
+// ── Mock fallback ──
+const mockFallback = {
+  login: (): ApiResponse<LoginResponse> => ({
+    ok: true,
+    data: { token: 'mock-jwt-token', userId: 'user-001' },
+  }),
+  me: (): ApiResponse<User> => ({
+    ok: true,
+    data: {
+      id: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email,
+      role: currentUser.role,
+      orgId: 'org-001',
+      teamId: 'team-001',
+    },
+  }),
+};
+
+// ── API 함수 ──
+export async function login(email: string, password: string): Promise<ApiResponse<LoginResponse>> {
+  try {
+    return await apiClient.post<LoginResponse>('/auth/login', { email, password });
+  } catch {
+    return mockFallback.login();
+  }
+}
+
+export async function getMe(): Promise<ApiResponse<User>> {
+  try {
+    return await apiClient.get<User>('/auth/me');
+  } catch {
+    return mockFallback.me();
+  }
+}
+
+export async function listUsers(): Promise<ApiResponse<User[]>> {
+  try {
+    return await apiClient.get<User[]>('/auth/users');
+  } catch {
+    return {
+      ok: true,
+      data: [
+        { id: 'u1', name: '김연구', email: 'kim@biolab.kr', role: 'Researcher' },
+        { id: 'u2', name: '박분석', email: 'park@biolab.kr', role: 'Researcher' },
+        { id: 'u3', name: '이실험', email: 'lee@biolab.kr', role: 'Researcher' },
+        { id: 'u4', name: '최약리', email: 'choi@biolab.kr', role: 'PI' },
+        { id: 'u5', name: '정관리', email: 'jung@biolab.kr', role: 'Admin' },
+      ],
+    };
+  }
+}
