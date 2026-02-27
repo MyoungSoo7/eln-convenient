@@ -1,46 +1,46 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import { setupProxy } from './proxy';
-import { authMiddleware } from './middleware/auth';
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import { registerProxies } from './routes/proxy';
+import { authHook } from './middlewares/auth';
 
-const app = express();
-const PORT = process.env.PORT || 8000;
+const app = Fastify({ logger: true });
 
-// 미들웨어
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
+async function bootstrap() {
+  // 미들웨어
+  await app.register(helmet);
+  await app.register(cors, { origin: process.env.CORS_ORIGIN || '*' });
+  await app.register(rateLimit, {
+    max: 1000,
+    timeWindow: '15 minutes',
+    errorResponseBuilder: () => ({
+      ok: false,
+      error: '요청 횟수 제한 초과. 잠시 후 다시 시도해주세요.',
+    }),
+  });
 
-// Rate Limit
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15분
-  max: 1000,
-  message: { error: '요청 횟수 제한 초과. 잠시 후 다시 시도해주세요.' },
-});
-app.use(limiter);
+  // 헬스체크
+  app.get('/health', async () => ({
+    ok: true,
+    data: { service: 'api-gateway', timestamp: new Date().toISOString() },
+  }));
 
-// 헬스체크
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'api-gateway', timestamp: new Date().toISOString() });
-});
+  // JWT 검증 훅 (로그인/헬스체크 제외)
+  app.addHook('onRequest', authHook);
 
-// JWT 검증 미들웨어 (로그인/헬스체크 제외)
-app.use('/api', authMiddleware);
+  // 프록시 라우팅
+  await registerProxies(app);
 
-// 프록시 라우팅
-setupProxy(app);
+  // 시작
+  const port = Number(process.env.PORT) || 8000;
+  await app.listen({ port, host: '0.0.0.0' });
+  console.log(`[api-gateway] 서버가 포트 ${port}에서 실행 중입니다.`);
+}
 
-// 404 처리
-app.use((_req, res) => {
-  res.status(404).json({ error: '요청한 경로를 찾을 수 없습니다.' });
-});
-
-app.listen(PORT, () => {
-  console.log(`[api-gateway] 서버가 포트 ${PORT}에서 실행 중입니다.`);
+bootstrap().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
 
 export default app;
