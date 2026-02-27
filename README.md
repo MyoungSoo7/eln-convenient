@@ -1,73 +1,469 @@
-# Welcome to your Lovable project
+# LabNote ELN — MSA 설계 문서
 
-## Project info
+## 1. 시스템 개요
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+사내 구축형 전자연구노트(ELN) 협업 플랫폼.  
+온프레미스 Docker Compose 배포를 전제로 하며, 각 서비스는 독립 컨테이너로 운영한다.
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+┌─────────────────────────────────────────────────────┐
+│                    Reverse Proxy                     │
+│                  (api-gateway:8000)                   │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──┘
+   │      │      │      │      │      │      │      │
+ auth   eln   sig/aud  inv   sched  search  ai    file
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 2. 서비스 경계 및 책임
 
-**Use GitHub Codespaces**
+| 서비스 | 포트 | 책임 |
+|--------|------|------|
+| **api-gateway** | 8000 | 단일 진입점, 라우팅, JWT 검증(TODO), Rate Limit |
+| **auth-service** | 8001 | 조직/팀/사용자 CRUD, RBAC, 토큰 발급, SSO 훅 |
+| **eln-service** | 8002 | 연구노트/프로토콜 CRUD, 버전관리, 태그, 첨부메타, 링크 |
+| **signature-audit-service** | 8003 | 전자서명, 타임스탬프, 감사로그, PDF 변환 요청 |
+| **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드/라벨 |
+| **scheduler-service** | 8005 | 장비/회의실 예약, 승인 흐름 |
+| **search-service** | 8006 | 통합검색(노트/프로토콜/인벤토리), OpenSearch 연동 |
+| **ai-assistant-service** | 8007 | 템플릿 추천, 초안 생성, 벡터 인덱싱, RAG 질의 |
+| **file-service** | 8008 | 파일 업로드/다운로드, MinIO 스토리지 연동 |
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## 3. 공용 인프라
 
-This project is built with:
+| 컴포넌트 | 용도 | 비고 |
+|----------|------|------|
+| **PostgreSQL 15** | 서비스별 스키마 분리 (하나의 인스턴스) | `auth`, `eln`, `inventory`, `scheduler`, `signature` 스키마 |
+| **Redis 7** | 세션, 캐시, 잡큐 | pub/sub 이벤트 브로커로도 활용 가능 |
+| **MinIO** | 오브젝트 스토리지 (첨부파일) | S3 호환 |
+| **OpenSearch 2** | 전문검색 인덱스 | search-service 전용 |
+| **Qdrant** | 벡터DB | ai-assistant-service RAG용 |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 4. API 목록
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### 4.1 auth-service
 
-## Can I connect a custom domain to my Lovable project?
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/auth/login` | 로그인 (JWT 발급) |
+| POST | `/api/auth/logout` | 로그아웃 |
+| GET | `/api/auth/me` | 현재 사용자 정보 |
+| GET/POST | `/api/auth/orgs` | 조직 목록/생성 |
+| GET/POST | `/api/auth/teams` | 팀 목록/생성 |
+| GET/POST | `/api/auth/users` | 사용자 목록/생성 |
+| PUT | `/api/auth/users/:id` | 사용자 수정 |
+| GET/POST | `/api/auth/roles` | 역할 목록/생성 |
+| PUT | `/api/auth/roles/:id/permissions` | 역할 권한 수정 |
 
-Yes, you can!
+### 4.2 eln-service
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/notes` | 노트 목록 (필터: status, tag, author) |
+| POST | `/api/notes` | 노트 생성 |
+| GET | `/api/notes/:id` | 노트 상세 |
+| PUT | `/api/notes/:id` | 노트 수정 |
+| DELETE | `/api/notes/:id` | 노트 삭제 (soft) |
+| GET | `/api/notes/:id/revisions` | 리비전 목록 |
+| GET | `/api/notes/:id/revisions/:rev` | 특정 리비전 조회 |
+| POST | `/api/notes/:id/attachments` | 첨부 메타 등록 |
+| GET | `/api/notes/:id/links` | 연결된 인벤토리/장비 |
+| POST | `/api/notes/:id/links` | 링크 생성 |
+| GET | `/api/templates` | 프로토콜 템플릿 목록 |
+| POST | `/api/templates` | 템플릿 생성 |
+| GET | `/api/templates/:id` | 템플릿 상세 |
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+### 4.3 signature-audit-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/signatures/sign/:noteId` | 전자서명 요청 |
+| GET | `/api/signatures/verify/:noteId` | 서명 검증 |
+| GET | `/api/audit` | 감사로그 조회 (`?entityId=&type=`) |
+| POST | `/api/export/pdf/:noteId` | PDF 변환 요청 |
+| GET | `/api/export/status/:jobId` | 변환 상태 조회 |
+| POST | `/api/export/zip` | 다건 ZIP 내보내기 |
+
+### 4.4 inventory-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/inventory/items` | 아이템 목록 (필터: type, status, location, tag) |
+| POST | `/api/inventory/items` | 아이템 생성 |
+| GET | `/api/inventory/items/:id` | 아이템 상세 |
+| PUT | `/api/inventory/items/:id` | 아이템 수정 |
+| DELETE | `/api/inventory/items/:id` | 아이템 삭제 (soft) |
+| GET | `/api/inventory/categories` | 카테고리 목록 |
+
+### 4.5 scheduler-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/scheduler/resources` | 예약 가능 자원 목록 |
+| GET | `/api/scheduler/bookings` | 예약 목록 (`?resourceId=&from=&to=`) |
+| POST | `/api/scheduler/bookings` | 예약 생성 |
+| PUT | `/api/scheduler/bookings/:id` | 예약 수정 |
+| DELETE | `/api/scheduler/bookings/:id` | 예약 취소 |
+| PUT | `/api/scheduler/bookings/:id/approve` | 예약 승인 |
+| PUT | `/api/scheduler/bookings/:id/reject` | 예약 거절 |
+
+### 4.6 search-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/search` | 통합검색 (`?q=&type=note,protocol,inventory&page=&size=`) |
+| GET | `/api/search/suggest` | 자동완성 제안 |
+
+### 4.7 ai-assistant-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/ai/recommend-template` | 주제 기반 템플릿 추천 (Top 3) |
+| POST | `/api/ai/draft` | 선택 템플릿으로 초안 생성 |
+| POST | `/api/ai/index` | 문서 벡터 인덱싱 요청 |
+| POST | `/api/ai/ask` | RAG 질의 (연구동향/실험 제안) |
+| GET | `/api/ai/index/status` | 인덱싱 상태 조회 |
+
+### 4.8 file-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/files` | 파일 업로드 (multipart) |
+| GET | `/api/files/:id` | 파일 다운로드 |
+| DELETE | `/api/files/:id` | 파일 삭제 |
+| GET | `/api/files/:id/meta` | 파일 메타데이터 |
+
+---
+
+## 5. 데이터 모델 (초안)
+
+### 5.1 auth 스키마
+
+```sql
+-- organizations
+CREATE TABLE auth.organizations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(200) NOT NULL,
+  slug        VARCHAR(100) UNIQUE NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- teams
+CREATE TABLE auth.teams (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id      UUID REFERENCES auth.organizations(id),
+  name        VARCHAR(200) NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- users
+CREATE TABLE auth.users (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id      UUID REFERENCES auth.organizations(id),
+  email       VARCHAR(255) UNIQUE NOT NULL,
+  name        VARCHAR(200) NOT NULL,
+  password_hash TEXT,            -- TODO: bcrypt
+  role_id     UUID REFERENCES auth.roles(id),
+  status      VARCHAR(20) DEFAULT 'active', -- active | inactive | suspended
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- roles & permissions
+CREATE TABLE auth.roles (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id      UUID REFERENCES auth.organizations(id),
+  name        VARCHAR(100) NOT NULL,       -- admin, researcher, reviewer, viewer
+  permissions JSONB DEFAULT '[]'           -- ["note:write","inventory:read",...]
+);
+```
+
+### 5.2 eln 스키마
+
+```sql
+-- notes (experiments/entries)
+CREATE TABLE eln.notes (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title       VARCHAR(500) NOT NULL,
+  content     TEXT,                         -- Markdown
+  status      VARCHAR(20) DEFAULT 'draft', -- draft | in_review | signed | locked
+  author_id   UUID NOT NULL,               -- FK → auth.users
+  template_id UUID,                        -- FK → eln.templates
+  tags        TEXT[] DEFAULT '{}',
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- note_revisions
+CREATE TABLE eln.note_revisions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  note_id     UUID REFERENCES eln.notes(id),
+  revision    INT NOT NULL,
+  content     TEXT,
+  changed_by  UUID NOT NULL,
+  change_summary VARCHAR(500),
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- templates (protocols)
+CREATE TABLE eln.templates (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title       VARCHAR(500) NOT NULL,
+  description TEXT,
+  content     TEXT,                         -- 기본 구조 (Markdown)
+  category    VARCHAR(100),
+  tags        TEXT[] DEFAULT '{}',
+  created_by  UUID NOT NULL,
+  is_public   BOOLEAN DEFAULT false,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- note_links (노트 ↔ 인벤토리/장비 연결)
+CREATE TABLE eln.note_links (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  note_id     UUID REFERENCES eln.notes(id),
+  target_type VARCHAR(50) NOT NULL,        -- inventory_item | resource | note
+  target_id   UUID NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- attachments (메타만, 파일은 file-service)
+CREATE TABLE eln.attachments (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  note_id     UUID REFERENCES eln.notes(id),
+  file_id     UUID NOT NULL,               -- FK → file-service
+  filename    VARCHAR(500),
+  mime_type   VARCHAR(100),
+  size_bytes  BIGINT,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 5.3 inventory 스키마
+
+```sql
+CREATE TABLE inventory.items (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(500) NOT NULL,
+  type        VARCHAR(50) NOT NULL,        -- reagent | sample | equipment | consumable | antibody | plasmid | cell_line
+  status      VARCHAR(30) DEFAULT 'available', -- available | in_use | depleted | maintenance
+  category    VARCHAR(100),
+  location    VARCHAR(200),                -- 예: "Building A / Room 301 / Shelf 2"
+  barcode     VARCHAR(100),
+  quantity    DECIMAL,
+  unit        VARCHAR(50),
+  metadata    JSONB DEFAULT '{}',          -- 유연한 추가 필드
+  tags        TEXT[] DEFAULT '{}',
+  created_by  UUID NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 5.4 scheduler 스키마
+
+```sql
+-- resources (장비/회의실)
+CREATE TABLE scheduler.resources (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(200) NOT NULL,
+  type        VARCHAR(50),                 -- equipment | room
+  location    VARCHAR(200),
+  is_active   BOOLEAN DEFAULT true
+);
+
+-- bookings
+CREATE TABLE scheduler.bookings (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  resource_id UUID REFERENCES scheduler.resources(id),
+  user_id     UUID NOT NULL,
+  title       VARCHAR(200),
+  start_time  TIMESTAMPTZ NOT NULL,
+  end_time    TIMESTAMPTZ NOT NULL,
+  status      VARCHAR(20) DEFAULT 'pending', -- pending | approved | rejected | cancelled
+  approved_by UUID,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 5.5 signature 스키마
+
+```sql
+-- signatures
+CREATE TABLE signature.signatures (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  note_id     UUID NOT NULL,
+  signer_id   UUID NOT NULL,
+  signature_hash TEXT,                     -- TODO: 실제 해시 체인
+  timestamp   TIMESTAMPTZ DEFAULT now(),
+  status      VARCHAR(20) DEFAULT 'valid'  -- valid | revoked
+);
+
+-- audit_logs
+CREATE TABLE signature.audit_logs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type VARCHAR(50) NOT NULL,        -- note | inventory | booking | user
+  entity_id   UUID NOT NULL,
+  action      VARCHAR(50) NOT NULL,        -- created | updated | signed | exported | deleted
+  actor_id    UUID NOT NULL,
+  details     JSONB DEFAULT '{}',
+  ip_address  INET,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## 6. 통신 방식
+
+### 6.1 동기 통신 (기본)
+
+- **REST API** (JSON over HTTP) — 모든 서비스 간 기본 통신
+- api-gateway가 `/api/{service}/...` 패턴으로 라우팅
+- 인증: `Authorization: Bearer <JWT>` 헤더 (gateway에서 검증 후 `X-User-Id` 헤더 주입)
+
+### 6.2 비동기 이벤트 (확장 시)
+
+Redis Pub/Sub 또는 메시지 큐를 통한 이벤트 전파:
+
+| 이벤트 | 발행자 | 구독자 | 설명 |
+|--------|--------|--------|------|
+| `note.created` | eln-service | search-service, ai-assistant | 검색 인덱스 갱신, 벡터 인덱싱 |
+| `note.updated` | eln-service | search-service | 인덱스 갱신 |
+| `note.signed` | signature-audit | eln-service | 노트 status → locked |
+| `inventory.updated` | inventory-service | search-service | 인덱스 갱신 |
+| `file.uploaded` | file-service | eln-service | 첨부 메타 연결 |
+| `export.completed` | signature-audit | (알림) | PDF/ZIP 생성 완료 |
+
+### 6.3 서비스 간 호출 흐름 예시
+
+```
+[사용자] → [api-gateway] → [eln-service]
+                                │
+                                ├─ POST /notes/:id/attachments
+                                │   └─→ [file-service] 파일 업로드
+                                │
+                                ├─ "서명하기" 클릭
+                                │   └─→ [signature-audit-service] POST /sign/:noteId
+                                │        └─→ eln-service에 status=locked 콜백
+                                │        └─→ audit_logs 기록
+                                │
+                                └─ PDF 내보내기
+                                    └─→ [signature-audit-service] POST /export/pdf/:noteId
+                                         └─→ [file-service] PDF 저장
+```
+
+---
+
+## 7. 프로젝트 구조 (모노레포)
+
+```
+labnote-eln/
+├── apps/
+│   └── web/                        # React + Vite 프론트엔드
+│       ├── src/
+│       │   ├── components/
+│       │   ├── pages/
+│       │   ├── lib/
+│       │   └── ...
+│       ├── Dockerfile
+│       └── package.json
+│
+├── services/
+│   ├── api-gateway/                # Node.js (Express/Fastify)
+│   │   ├── src/
+│   │   │   ├── index.ts
+│   │   │   ├── proxy.ts
+│   │   │   └── middleware/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   │
+│   ├── auth-service/               # Node.js + TypeScript
+│   │   ├── src/
+│   │   │   ├── index.ts
+│   │   │   ├── routes/
+│   │   │   ├── controllers/
+│   │   │   ├── dto/
+│   │   │   ├── interfaces/
+│   │   │   └── swagger.ts
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   │
+│   ├── eln-service/
+│   ├── signature-audit-service/
+│   ├── inventory-service/
+│   ├── scheduler-service/
+│   ├── search-service/
+│   ├── ai-assistant-service/
+│   └── file-service/
+│
+├── docker-compose.yml
+├── .env.example
+└── README.md                       # ← 이 문서
+```
+
+---
+
+## 8. 배포 (Docker Compose)
+
+```yaml
+# docker-compose.yml (개요)
+services:
+  # --- 인프라 ---
+  postgres:    { image: postgres:15, ports: ["5432:5432"] }
+  redis:       { image: redis:7-alpine, ports: ["6379:6379"] }
+  minio:       { image: minio/minio, ports: ["9000:9000", "9001:9001"] }
+  opensearch:  { image: opensearchproject/opensearch:2, ports: ["9200:9200"] }
+  qdrant:      { image: qdrant/qdrant, ports: ["6333:6333"] }
+
+  # --- 서비스 ---
+  api-gateway:           { build: ./services/api-gateway, ports: ["8000:8000"] }
+  auth-service:          { build: ./services/auth-service, ports: ["8001:8001"] }
+  eln-service:           { build: ./services/eln-service, ports: ["8002:8002"] }
+  signature-audit-service: { build: ./services/signature-audit-service, ports: ["8003:8003"] }
+  inventory-service:     { build: ./services/inventory-service, ports: ["8004:8004"] }
+  scheduler-service:     { build: ./services/scheduler-service, ports: ["8005:8005"] }
+  search-service:        { build: ./services/search-service, ports: ["8006:8006"] }
+  ai-assistant-service:  { build: ./services/ai-assistant-service, ports: ["8007:8007"] }
+  file-service:          { build: ./services/file-service, ports: ["8008:8008"] }
+
+  # --- 프론트엔드 ---
+  web:                   { build: ./apps/web, ports: ["3000:3000"] }
+```
+
+### 실행 방법
+
+```bash
+git clone <repo-url> && cd labnote-eln
+cp .env.example .env
+docker compose up --build
+```
+
+| 서비스 | URL |
+|--------|-----|
+| 프론트엔드 | http://localhost:3000 |
+| API Gateway | http://localhost:8000 |
+| MinIO 콘솔 | http://localhost:9001 |
+| OpenSearch | http://localhost:9200 |
+
+---
+
+## 9. 주요 TODO
+
+- [ ] JWT 발급/검증 실제 구현 (auth-service)
+- [ ] 비밀번호 해싱 (bcrypt)
+- [ ] DB 마이그레이션 스크립트 (Prisma / Drizzle)
+- [ ] 전자서명 해시 체인 구현
+- [ ] PDF 변환 엔진 연동 (Puppeteer / wkhtmltopdf)
+- [ ] MinIO 실제 파일 업/다운로드
+- [ ] OpenSearch 인덱싱 파이프라인
+- [ ] Qdrant 벡터 임베딩 + RAG 파이프라인
+- [ ] SSO/Keycloak 연동
+- [ ] RBAC 미들웨어 실제 권한 검증
+- [ ] WebSocket 실시간 협업 편집
+- [ ] i18n (ko/en)
