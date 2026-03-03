@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Building2, Shield, Plus, Settings } from "lucide-react";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const mockUsers = [
   { id: "u1", name: "김연구", email: "kim@biolab.kr", role: "Researcher", team: "유전체연구팀", status: "active" },
@@ -33,7 +34,10 @@ export default function AdminPage() {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">관리</h1>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          관리
+          <HelpTooltip text="조직의 사용자, 팀, 역할/권한, 시스템 설정을 관리하는 관리자 전용 화면입니다." />
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">조직, 팀, 사용자 및 권한 관리</p>
       </div>
 
@@ -48,7 +52,10 @@ export default function AdminPage() {
         <TabsContent value="users" className="mt-4">
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">사용자 목록</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                사용자 목록
+                <HelpTooltip text="조직에 등록된 모든 사용자를 관리합니다. 사용자 추가, 역할 변경, 팀 배정 등이 가능합니다." />
+              </CardTitle>
               <Button size="sm" className="gradient-primary text-primary-foreground gap-1"><Plus className="h-3.5 w-3.5" /> 사용자 추가</Button>
             </CardHeader>
             <CardContent className="p-0">
@@ -57,7 +64,7 @@ export default function AdminPage() {
                   <TableRow>
                     <TableHead>이름</TableHead>
                     <TableHead>이메일</TableHead>
-                    <TableHead>역할</TableHead>
+                    <TableHead className="flex items-center gap-1">역할 <HelpTooltip text="Admin: 전체 관리, PI: 서명 및 팀 관리, Researcher: 실험 기록, Viewer: 읽기 전용" /></TableHead>
                     <TableHead>팀</TableHead>
                     <TableHead>상태</TableHead>
                   </TableRow>
@@ -116,7 +123,12 @@ export default function AdminPage() {
 
         <TabsContent value="settings" className="mt-4">
           <Card className="shadow-card">
-            <CardHeader><CardTitle className="text-base">시스템 설정</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                시스템 설정
+                <HelpTooltip text="조직명, SSO 연동, 언어, 저장소 등 시스템 전반의 설정을 관리합니다. 백엔드 연동 후 변경이 활성화됩니다." />
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
