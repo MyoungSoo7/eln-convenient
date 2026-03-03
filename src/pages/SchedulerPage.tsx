@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const days = ["일", "월", "화", "수", "목", "금", "토"];
 const hours = Array.from({ length: 10 }, (_, i) => `${(i + 8).toString().padStart(2, "0")}:00`);
@@ -40,7 +41,10 @@ export default function SchedulerPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">스케줄러</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            스케줄러
+            <HelpTooltip text="장비, 회의실 등 공유 자원의 예약을 관리하는 캘린더입니다. 주간 뷰로 예약 현황을 확인하고 새 예약을 생성할 수 있습니다." />
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">장비 및 회의실 예약 관리</p>
         </div>
         <Dialog open={newBookingOpen} onOpenChange={setNewBookingOpen}>
@@ -48,7 +52,12 @@ export default function SchedulerPage() {
             <Button className="gradient-primary text-primary-foreground gap-2"><Plus className="h-4 w-4" /> 예약 생성</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>예약 생성</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                예약 생성
+                <HelpTooltip text="장비 또는 회의실을 선택하고 날짜, 시간, 사용 목적을 입력하여 예약을 생성합니다. 관리자 승인 후 확정됩니다." />
+              </DialogTitle>
+            </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>장비 / 회의실</Label>
@@ -85,6 +94,7 @@ export default function SchedulerPage() {
         <span className="text-sm font-medium">
           {weekDates[0].getMonth() + 1}월 {weekDates[0].getDate()}일 – {weekDates[6].getMonth() + 1}월 {weekDates[6].getDate()}일
         </span>
+        <HelpTooltip text="화살표 버튼으로 이전/다음 주를 탐색하고, '오늘' 버튼으로 현재 주로 돌아옵니다." />
       </div>
 
       {/* Calendar Grid */}
@@ -125,7 +135,12 @@ export default function SchedulerPage() {
 
       {/* Upcoming List */}
       <Card className="shadow-card">
-        <CardHeader><CardTitle className="text-base">예약 목록</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            예약 목록
+            <HelpTooltip text="모든 예약의 상세 목록입니다. 상태(대기/승인/거절/취소)를 한눈에 확인할 수 있습니다." />
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
           {mockBookings.map((b) => (
             <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">

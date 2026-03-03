@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search as SearchIcon, FileText, BookOpen, Package, Clock, Star } from "lucide-react";
 import { mockNotes, mockProtocols, mockInventory } from "@/lib/mockData";
 import { Link } from "react-router-dom";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const recentSearches = ["CRISPR", "Western Blot", "p53", "HEK293"];
 const favoriteSearches = ["RNA 추출", "세포독성 분석"];
@@ -21,7 +22,10 @@ export default function SearchPage() {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">통합검색</h1>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          통합검색
+          <HelpTooltip text="연구노트, 프로토콜, 인벤토리를 한 번에 검색합니다. 키워드를 입력하면 각 카테고리별 결과가 탭으로 분류됩니다." />
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">노트, 프로토콜, 인벤토리 통합 검색</p>
       </div>
 
@@ -39,7 +43,10 @@ export default function SearchPage() {
       {!hasQuery ? (
         <div className="max-w-2xl space-y-6">
           <div>
-            <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Clock className="h-4 w-4 text-muted-foreground" /> 최근 검색</h3>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <Clock className="h-4 w-4 text-muted-foreground" /> 최근 검색
+              <HelpTooltip text="최근에 검색했던 키워드입니다. 클릭하면 바로 검색됩니다." />
+            </h3>
             <div className="flex gap-2 flex-wrap">
               {recentSearches.map((s) => (
                 <Badge key={s} variant="secondary" className="cursor-pointer hover:bg-accent" onClick={() => setQuery(s)}>{s}</Badge>
@@ -47,7 +54,10 @@ export default function SearchPage() {
             </div>
           </div>
           <div>
-            <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Star className="h-4 w-4 text-warning" /> 즐겨찾기</h3>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <Star className="h-4 w-4 text-warning" /> 즐겨찾기
+              <HelpTooltip text="자주 사용하는 검색어를 즐겨찾기에 추가하여 빠르게 검색할 수 있습니다." />
+            </h3>
             <div className="flex gap-2 flex-wrap">
               {favoriteSearches.map((s) => (
                 <Badge key={s} variant="secondary" className="cursor-pointer hover:bg-accent" onClick={() => setQuery(s)}>{s}</Badge>

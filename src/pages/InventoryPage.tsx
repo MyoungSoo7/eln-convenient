@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Plus, Filter, Package } from "lucide-react";
 import { mockInventory, type InventoryItem } from "@/lib/mockData";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const typeLabels: Record<string, string> = { reagent: "시약", sample: "샘플", equipment: "장비", consumable: "소모품" };
 const statusLabels: Record<string, string> = { available: "사용 가능", low_stock: "재고 부족", out_of_stock: "품절", in_use: "사용 중" };
@@ -30,7 +31,10 @@ export default function InventoryPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">인벤토리</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            인벤토리
+            <HelpTooltip text="실험실의 시약, 샘플, 장비, 소모품을 통합 관리하는 화면입니다. 바코드 또는 이름으로 검색하고, 재고 상태를 실시간으로 확인할 수 있습니다." />
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">시약, 샘플, 장비 관리</p>
         </div>
         <Button className="gradient-primary text-primary-foreground gap-2"><Plus className="h-4 w-4" /> 항목 추가</Button>
@@ -41,7 +45,8 @@ export default function InventoryPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="이름, 바코드 검색..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 items-center">
+          <HelpTooltip text="유형별 필터: 시약(화학물질), 샘플(생물시료), 장비(기기), 소모품(일회용품)" side="bottom" />
           {["all", "reagent", "sample", "equipment", "consumable"].map((f) => (
             <Button key={f} variant={typeFilter === f ? "default" : "outline"} size="sm" onClick={() => setTypeFilter(f)} className="text-xs">
               {f === "all" ? "전체" : typeLabels[f]}
@@ -55,7 +60,7 @@ export default function InventoryPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>이름</TableHead>
+                <TableHead className="flex items-center gap-1">이름 <HelpTooltip text="인벤토리 항목의 정식 명칭입니다." /></TableHead>
                 <TableHead>유형</TableHead>
                 <TableHead>상태</TableHead>
                 <TableHead>수량</TableHead>
@@ -85,6 +90,7 @@ export default function InventoryPage() {
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
               {selectedItem?.name}
+              <HelpTooltip text="항목의 상세 정보를 확인하고, 연결된 연구노트를 조회할 수 있습니다." />
             </DialogTitle>
           </DialogHeader>
           {selectedItem && (

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { FileDown, FileText, Archive } from "lucide-react";
 import { mockNotes } from "@/lib/mockData";
 import { toast } from "@/hooks/use-toast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 export default function ExportsPage() {
   const signedNotes = mockNotes.filter((n) => n.status === "signed" || n.status === "locked");
@@ -15,7 +16,10 @@ export default function ExportsPage() {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">내보내기</h1>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          내보내기
+          <HelpTooltip text="서명 완료된 연구노트를 PDF 또는 ZIP 파일로 내보냅니다. 규정 제출용 문서나 보관 자료를 생성할 수 있습니다." />
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">연구노트 PDF 및 ZIP 내보내기</p>
       </div>
 
@@ -23,21 +27,26 @@ export default function ExportsPage() {
         <Card className="shadow-card hover:shadow-elevated transition-all cursor-pointer" onClick={() => toast({ title: "전체 내보내기", description: "모든 서명 노트를 ZIP으로 내보냅니다. (더미)" })}>
           <CardContent className="p-6 text-center">
             <Archive className="h-8 w-8 mx-auto text-primary" />
-            <p className="font-medium mt-3">전체 ZIP 내보내기</p>
+            <p className="font-medium mt-3 flex items-center justify-center gap-1">전체 ZIP 내보내기 <HelpTooltip text="서명된 모든 노트와 첨부파일을 하나의 ZIP 파일로 묶어 다운로드합니다." /></p>
             <p className="text-xs text-muted-foreground mt-1">서명된 모든 노트</p>
           </CardContent>
         </Card>
         <Card className="shadow-card hover:shadow-elevated transition-all cursor-pointer" onClick={() => toast({ title: "보고서 생성", description: "프로젝트별 보고서를 생성합니다. (더미)" })}>
           <CardContent className="p-6 text-center">
             <FileText className="h-8 w-8 mx-auto text-secondary" />
-            <p className="font-medium mt-3">프로젝트 보고서</p>
+            <p className="font-medium mt-3 flex items-center justify-center gap-1">프로젝트 보고서 <HelpTooltip text="프로젝트 단위로 노트를 묶어 목차 포함 종합 PDF 보고서를 생성합니다." /></p>
             <p className="text-xs text-muted-foreground mt-1">프로젝트별 종합 PDF</p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="shadow-card">
-        <CardHeader><CardTitle className="text-base">개별 노트 내보내기</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            개별 노트 내보내기
+            <HelpTooltip text="서명 완료된 노트를 개별적으로 PDF 또는 ZIP으로 다운로드할 수 있습니다." />
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
           {signedNotes.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">서명 완료된 노트가 없습니다</p>}
           {signedNotes.map((n) => (

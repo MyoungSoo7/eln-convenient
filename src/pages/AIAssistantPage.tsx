@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Bot, Sparkles, FileText, ArrowRight, CheckCircle2, Loader2, Database } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const templateSuggestions = [
   { id: 1, title: "CRISPR 유전자 편집 프로토콜", match: "95%", desc: "Cas9 기반 유전자 녹아웃 실험을 위한 표준 프로토콜" },
@@ -44,6 +45,7 @@ export default function AIAssistantPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Bot className="h-6 w-6 text-secondary" /> AI 어시스턴트
+          <HelpTooltip text="AI가 실험 주제에 맞는 템플릿을 추천하고, 연구노트 초안을 자동 생성합니다. 3단계 위자드를 따라 진행하세요." />
         </h1>
         <p className="text-sm text-muted-foreground mt-1">AI 기반 템플릿 추천 및 초안 작성</p>
       </div>
@@ -67,7 +69,10 @@ export default function AIAssistantPage() {
       {step === 1 && (
         <Card className="shadow-card max-w-2xl">
           <CardHeader>
-            <CardTitle className="text-base">실험 주제를 입력하세요</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              실험 주제를 입력하세요
+              <HelpTooltip text="수행하려는 실험의 키워드나 주제를 입력하면, AI가 관련 템플릿을 검색하여 추천합니다." />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <Input placeholder="예: CRISPR-Cas9 유전자 편집, Western Blot 분석..." value={topic} onChange={(e) => setTopic(e.target.value)} className="h-12" />
@@ -88,7 +93,10 @@ export default function AIAssistantPage() {
             </CardContent>
           </Card>
 
-          <h3 className="font-medium">추천 템플릿 (Top 3)</h3>
+          <h3 className="font-medium flex items-center gap-2">
+            추천 템플릿 (Top 3)
+            <HelpTooltip text="입력한 주제와 가장 유사한 프로토콜 템플릿을 AI가 선별했습니다. 클릭하면 해당 템플릿 기반으로 초안이 생성됩니다." />
+          </h3>
           {templateSuggestions.map((t) => (
             <Card key={t.id} className="shadow-card hover:shadow-elevated transition-all cursor-pointer group" onClick={handleGenerate}>
               <CardContent className="p-4 flex items-start justify-between">
@@ -117,7 +125,10 @@ export default function AIAssistantPage() {
             <>
               <Card className="shadow-card">
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-secondary" /> 생성된 초안</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-secondary" /> 생성된 초안
+                    <HelpTooltip text="AI가 생성한 연구노트 초안입니다. 내용을 직접 수정한 뒤, 새 노트로 생성하거나 기존 노트에 삽입할 수 있습니다." />
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0" />
@@ -140,7 +151,10 @@ export default function AIAssistantPage() {
       {/* Vector Indexing Status */}
       <Card className="shadow-card max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Database className="h-4 w-4 text-muted-foreground" /> 벡터 인덱싱 상태</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Database className="h-4 w-4 text-muted-foreground" /> 벡터 인덱싱 상태
+            <HelpTooltip text="AI 추천의 정확도를 높이기 위해 연구노트, 프로토콜, 논문을 벡터 DB에 인덱싱합니다. 완료율이 높을수록 더 정확한 추천이 가능합니다." />
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">

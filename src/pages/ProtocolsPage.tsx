@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Search, BookOpen, Copy, Plus } from "lucide-react";
 import { mockProtocols } from "@/lib/mockData";
 import { useState } from "react";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
@@ -16,7 +17,10 @@ export default function ProtocolsPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">프로토콜 / 템플릿</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            프로토콜 / 템플릿
+            <HelpTooltip text="표준 실험 프로토콜을 관리하는 화면입니다. 템플릿을 복사하여 새 연구노트를 빠르게 생성할 수 있습니다." />
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">표준 실험 프로토콜 관리</p>
         </div>
         <Button className="gradient-primary text-primary-foreground gap-2">
@@ -51,7 +55,7 @@ export default function ProtocolsPage() {
                 {p.tags.map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
               </div>
               <div className="flex items-center justify-between mt-4 pt-3 border-t">
-                <span className="text-xs text-muted-foreground">{p.usageCount}회 사용</span>
+                <span className="text-xs text-muted-foreground flex items-center gap-1">{p.usageCount}회 사용 <HelpTooltip text="이 프로토콜이 연구노트에 복사되어 사용된 횟수입니다." /></span>
                 <Button variant="ghost" size="sm" className="text-xs gap-1"><Copy className="h-3 w-3" /> 복사</Button>
               </div>
             </CardContent>

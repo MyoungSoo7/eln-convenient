@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, ClipboardList } from "lucide-react";
 import { mockAuditLog } from "@/lib/mockData";
 import { useState } from "react";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const actionColors: Record<string, string> = {
   "노트 서명": "bg-success/10 text-success",
@@ -24,7 +25,10 @@ export default function AuditLogsPage() {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">감사로그</h1>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          감사로그
+          <HelpTooltip text="시스템 내 모든 사용자 활동을 시간순으로 기록합니다. 규정 준수(GLP/GMP) 및 연구 무결성 검증에 활용됩니다." />
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">모든 활동 이력 추적 및 검색</p>
       </div>
 
@@ -39,10 +43,10 @@ export default function AuditLogsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>시간</TableHead>
-                <TableHead>활동</TableHead>
+                <TableHead className="flex items-center gap-1">활동 <HelpTooltip text="수행된 작업의 유형입니다 (서명, 수정, 출고, 예약 등)." /></TableHead>
                 <TableHead>사용자</TableHead>
                 <TableHead>상세</TableHead>
-                <TableHead>IP</TableHead>
+                <TableHead className="flex items-center gap-1">IP <HelpTooltip text="활동이 발생한 네트워크 주소입니다. 보안 감사 시 추적에 활용됩니다." /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

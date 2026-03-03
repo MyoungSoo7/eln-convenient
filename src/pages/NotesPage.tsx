@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Filter } from "lucide-react";
 import { mockNotes, type Note } from "@/lib/mockData";
 import { Link } from "react-router-dom";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -31,7 +32,10 @@ export default function NotesPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">연구노트</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            연구노트
+            <HelpTooltip text="모든 연구노트를 조회하고 관리하는 화면입니다. 제목이나 태그로 검색하고, 상태별로 필터링할 수 있습니다." />
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">실험 기록 관리 및 검색</p>
         </div>
         <Link to="/notes/new">
@@ -46,7 +50,8 @@ export default function NotesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="노트 제목, 태그 검색..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 items-center">
+          <HelpTooltip text="상태 필터: 초안(작성 중), 진행 중(실험 수행), 서명 완료(검증됨), 잠김(변경 불가)" side="bottom" />
           {["all", "draft", "in_progress", "signed", "locked"].map((f) => (
             <Button key={f} variant={filter === f ? "default" : "outline"} size="sm" onClick={() => setFilter(f)} className="text-xs">
               {f === "all" ? "전체" : statusLabels[f]}

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 const statusLabels: Record<string, string> = {
   draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
@@ -63,6 +64,7 @@ export default function NoteEditor() {
         <Link to="/notes">
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> 목록</Button>
         </Link>
+        <HelpTooltip text="연구노트 편집기입니다. Markdown 형식으로 작성하며, 첨부파일 추가, 시약/장비 연결, 버전 이력 확인이 가능합니다. 서명 시 노트가 잠금 처리됩니다." />
         <div className="flex-1" />
         {!isLocked && (
           <>
@@ -77,7 +79,10 @@ export default function NoteEditor() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>전자서명 확인</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2">
+                    전자서명 확인
+                    <HelpTooltip text="서명을 진행하면 노트 내용이 해시화되어 시점인증이 완료됩니다. 서명 후에는 내용 수정이 불가능합니다." />
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <p className="text-sm text-muted-foreground">
@@ -156,7 +161,10 @@ export default function NoteEditor() {
         <TabsContent value="links" className="mt-4">
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-base">연결된 항목</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                연결된 항목
+                <HelpTooltip text="이 노트에서 사용된 시약, 샘플, 장비를 연결하여 추적성을 확보합니다. 인벤토리 항목과 양방향으로 연결됩니다." />
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {note?.linkedItems?.map((item) => (
@@ -181,7 +189,10 @@ export default function NoteEditor() {
         <TabsContent value="revisions" className="mt-4">
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-base">버전 이력</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                버전 이력
+                <HelpTooltip text="노트의 모든 수정 이력을 시간순으로 표시합니다. 이전 버전과 비교(diff)하여 변경 내용을 확인할 수 있습니다." />
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {note?.revisions?.length ? (
