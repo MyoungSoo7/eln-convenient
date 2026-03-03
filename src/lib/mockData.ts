@@ -41,13 +41,14 @@ export interface Protocol {
 export interface InventoryItem {
   id: string;
   name: string;
-  type: 'reagent' | 'sample' | 'equipment' | 'consumable';
-  status: 'available' | 'low_stock' | 'out_of_stock' | 'in_use';
+  type: 'dev_equipment' | 'deliverable' | 'license' | 'infra';
+  status: 'available' | 'in_use' | 'completed' | 'expired' | 'archived';
   location: string;
   quantity: number;
   unit: string;
   barcode: string;
   tags: string[];
+  project?: string;
   lastUsed?: string;
 }
 
