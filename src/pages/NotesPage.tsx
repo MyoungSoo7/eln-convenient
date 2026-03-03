@@ -3,10 +3,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Filter } from "lucide-react";
+import { Plus, Search, ChevronDown } from "lucide-react";
 import { mockNotes, type Note } from "@/lib/mockData";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -18,11 +25,30 @@ const statusLabels: Record<string, string> = {
   draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
 };
 
+const statusTransitions: Record<string, string[]> = {
+  draft: ["in_progress"],
+  in_progress: ["draft", "locked"],
+  signed: [],
+  locked: [],
+};
+
 export default function NotesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
+  const [notes, setNotes] = useState<Note[]>(mockNotes);
 
-  const filtered = mockNotes.filter((n) => {
+  const handleStatusChange = (noteId: string, newStatus: string) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === noteId
+          ? { ...n, status: newStatus as Note["status"], updatedAt: new Date().toISOString().slice(0, 10) }
+          : n
+      )
+    );
+    toast.success(`상태가 "${statusLabels[newStatus]}"(으)로 변경되었습니다.`);
+  };
+
+  const filtered = notes.filter((n) => {
     const matchSearch = n.title.toLowerCase().includes(search.toLowerCase()) || n.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
     const matchFilter = filter === "all" || n.status === filter;
     return matchSearch && matchFilter;
@@ -62,28 +88,49 @@ export default function NotesPage() {
 
       <div className="space-y-3">
         {filtered.map((note) => (
-          <Link key={note.id} to={`/notes/${note.id}`}>
-            <Card className="shadow-card hover:shadow-elevated transition-all cursor-pointer group">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold group-hover:text-primary transition-colors">{note.title}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">{note.project}</p>
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      {note.tags.map((t) => (
-                        <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                      ))}
-                    </div>
+          <Card key={note.id} className="shadow-card hover:shadow-elevated transition-all group">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <Link to={`/notes/${note.id}`} className="min-w-0 flex-1">
+                  <h3 className="font-semibold group-hover:text-primary transition-colors">{note.title}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{note.project}</p>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {note.tags.map((t) => (
+                      <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                    ))}
                   </div>
-                  <div className="text-right shrink-0 ml-4">
+                </Link>
+                <div className="text-right shrink-0 ml-4 flex flex-col items-end gap-1">
+                  {statusTransitions[note.status]?.length > 0 ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${statusColors[note.status]}`}>
+                          {statusLabels[note.status]}
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[120px]">
+                        {statusTransitions[note.status].map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            onClick={() => handleStatusChange(note.id, s)}
+                            className="text-xs"
+                          >
+                            <span className={`inline-block w-2 h-2 rounded-full mr-2 ${statusColors[s].split(" ")[0]}`} />
+                            {statusLabels[s]}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
                     <Badge className={`text-[10px] ${statusColors[note.status]}`}>{statusLabels[note.status]}</Badge>
-                    <p className="text-xs text-muted-foreground mt-2">{note.author}</p>
-                    <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
-                  </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">{note.author}</p>
+                  <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
