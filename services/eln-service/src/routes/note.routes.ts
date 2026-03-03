@@ -10,6 +10,12 @@ router.get('/notes/:id', ctrl.getNoteById);
 router.put('/notes/:id', ctrl.updateNote);
 router.delete('/notes/:id', ctrl.deleteNote);
 
+// 상태 변경
+router.patch('/notes/:id/status', ctrl.changeNoteStatus);
+
+// 관리자 잠금 해제
+router.post('/notes/:id/admin-unlock', ctrl.adminUnlockNote);
+
 // 리비전
 router.get('/notes/:id/revisions', ctrl.getRevisions);
 router.get('/notes/:id/revisions/:rev', ctrl.getRevisionById);

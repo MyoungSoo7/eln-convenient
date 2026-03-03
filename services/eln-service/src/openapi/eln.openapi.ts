@@ -2,8 +2,8 @@ export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'ELN 서비스 API',
-    description: '연구노트 CRUD, 리비전 관리, 템플릿, 첨부파일, 링크',
-    version: '1.0.0',
+    description: '연구노트 CRUD, 상태 관리, 리비전, 템플릿, 첨부파일, 링크',
+    version: '1.1.0',
   },
   servers: [{ url: 'http://localhost:8002', description: '로컬 개발' }],
   paths: {
@@ -12,10 +12,10 @@ export const openApiDocument = {
         summary: '노트 목록 조회',
         tags: ['노트'],
         parameters: [
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'in_review', 'signed', 'locked'] } },
-          { name: 'tag', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'in_progress', 'signed', 'locked'] }, description: '노트 상태 필터' },
+          { name: 'tag', in: 'query', schema: { type: 'string' }, description: '태그 필터' },
         ],
-        responses: { '200': { description: '노트 배열' } },
+        responses: { '200': { description: '노트 배열 반환' } },
       },
       post: {
         summary: '노트 생성',
@@ -28,21 +28,86 @@ export const openApiDocument = {
                 type: 'object',
                 required: ['title'],
                 properties: {
-                  title: { type: 'string' },
-                  templateId: { type: 'string' },
-                  tags: { type: 'array', items: { type: 'string' } },
+                  title: { type: 'string', description: '노트 제목' },
+                  templateId: { type: 'string', description: '사용할 템플릿 ID' },
+                  tags: { type: 'array', items: { type: 'string' }, description: '태그 목록' },
                 },
               },
             },
           },
         },
-        responses: { '201': { description: '노트 생성 완료' } },
+        responses: { '201': { description: '노트 생성 완료 (초안 상태)' } },
       },
     },
     '/api/notes/{id}': {
       get: { summary: '노트 상세 조회', tags: ['노트'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '노트 상세' } } },
-      put: { summary: '노트 수정', tags: ['노트'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '수정 완료' } } },
-      delete: { summary: '노트 삭제', tags: ['노트'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '삭제 완료' } } },
+      put: {
+        summary: '노트 수정',
+        description: '잠긴 상태(locked)의 노트는 수정할 수 없습니다 (403 반환).',
+        tags: ['노트'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: '수정 완료' },
+          '403': { description: '잠긴 노트 수정 불가' },
+        },
+      },
+      delete: { summary: '노트 삭제 (소프트 삭제)', tags: ['노트'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '삭제 완료' } } },
+    },
+    '/api/notes/{id}/status': {
+      patch: {
+        summary: '노트 상태 변경',
+        description: '허용 전환: draft↔in_progress, in_progress→locked. 잠긴/서명된 노트는 이 엔드포인트로 상태 변경 불가.',
+        tags: ['노트', '상태관리'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['status'],
+                properties: {
+                  status: { type: 'string', enum: ['draft', 'in_progress', 'locked'], description: '변경할 상태' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: '상태 변경 완료' },
+          '400': { description: '허용되지 않은 상태 전환' },
+          '404': { description: '노트를 찾을 수 없음' },
+        },
+      },
+    },
+    '/api/notes/{id}/admin-unlock': {
+      post: {
+        summary: '관리자 잠금 해제',
+        description: '관리자 권한으로 잠긴 노트를 초안 상태로 해제합니다. 감사로그에 기록됩니다.',
+        tags: ['노트', '상태관리', '관리자'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['adminPassword'],
+                properties: {
+                  adminPassword: { type: 'string', description: '관리자 비밀번호' },
+                  reason: { type: 'string', description: '해제 사유 (선택)' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: '잠금 해제 완료 — 감사로그 기록됨' },
+          '400': { description: '잠긴 상태가 아님 / 비밀번호 미입력' },
+          '403': { description: '관리자 권한 없음' },
+          '404': { description: '노트를 찾을 수 없음' },
+        },
+      },
     },
     '/api/notes/{id}/revisions': {
       get: { summary: '리비전 목록', tags: ['리비전'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '리비전 배열' } } },
