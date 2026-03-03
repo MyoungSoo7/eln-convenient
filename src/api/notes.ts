@@ -1,6 +1,11 @@
 /**
  * ELN 서비스 API 클라이언트
  * 경로: /api/notes/*, /api/templates/*
+ * 
+ * 상태 전환 규칙:
+ *   draft ↔ in_progress (양방향)
+ *   in_progress → locked (단방향)
+ *   locked → draft (관리자 잠금 해제 전용)
  */
 import apiClient, { type ApiResponse } from './client';
 import { mockNotes, mockProtocols, type Note, type Protocol, type Revision, type LinkedItem } from '@/lib/mockData';
@@ -66,6 +71,52 @@ export async function deleteNote(id: string): Promise<ApiResponse<{ message: str
   }
 }
 
+// ── 상태 변경 API ──
+
+/** 노트 상태 전환 (draft↔in_progress, in_progress→locked) */
+export async function changeNoteStatus(
+  noteId: string,
+  status: 'draft' | 'in_progress' | 'locked'
+): Promise<ApiResponse<Note>> {
+  try {
+    return await apiClient.patch<Note>(`/notes/${noteId}/status`, { status });
+  } catch {
+    const note = mockNotes.find((n) => n.id === noteId) || mockNotes[0];
+    return { ok: true, data: { ...note, status, updatedAt: new Date().toISOString() } };
+  }
+}
+
+/** 관리자 잠금 해제 (locked → draft) */
+export async function adminUnlockNote(
+  noteId: string,
+  adminPassword: string,
+  reason?: string
+): Promise<ApiResponse<Note & { auditLog?: unknown }>> {
+  try {
+    return await apiClient.post<Note & { auditLog?: unknown }>(`/notes/${noteId}/admin-unlock`, {
+      adminPassword,
+      reason,
+    });
+  } catch {
+    const note = mockNotes.find((n) => n.id === noteId) || mockNotes[0];
+    return {
+      ok: true,
+      data: {
+        ...note,
+        status: 'draft',
+        updatedAt: new Date().toISOString(),
+        auditLog: {
+          action: 'admin_unlock',
+          noteId,
+          reason: reason || '관리자 잠금 해제',
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
+  }
+}
+
+// ── 리비전 API ──
 export async function listRevisions(noteId: string): Promise<ApiResponse<Revision[]>> {
   try {
     return await apiClient.get<Revision[]>(`/notes/${noteId}/revisions`);
