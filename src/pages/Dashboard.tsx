@@ -148,22 +148,22 @@ export default function Dashboard() {
         <Card className="shadow-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              재고 알림
-              <HelpTooltip text="재고 부족 또는 품절 상태인 시약/소모품을 표시합니다. 빠른 발주를 위해 확인하세요." />
+              만료/주의 항목
+              <HelpTooltip text="만료되었거나 보관 상태인 장비·라이선스·산출물을 표시합니다." />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {mockInventory.filter(i => i.status === 'low_stock' || i.status === 'out_of_stock').map((item) => (
+            {mockInventory.filter(i => i.status === 'expired' || i.status === 'archived').map((item) => (
               <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">잔량: {item.quantity} {item.unit} · {item.location}</p>
+                  <p className="text-xs text-muted-foreground">{item.quantity} {item.unit} · {item.location}</p>
                 </div>
               </div>
             ))}
-            {mockInventory.filter(i => i.status === 'low_stock' || i.status === 'out_of_stock').length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">재고 부족 항목 없음</p>
+            {mockInventory.filter(i => i.status === 'expired' || i.status === 'archived').length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">만료/주의 항목 없음</p>
             )}
           </CardContent>
         </Card>
