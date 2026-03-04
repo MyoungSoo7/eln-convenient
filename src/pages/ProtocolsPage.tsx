@@ -77,6 +77,8 @@ export default function ProtocolsPage() {
           </Card>
         ))}
       </div>
+
+      <NewProtocolDialog open={dialogOpen} onOpenChange={setDialogOpen} onCreated={handleCreated} />
     </div>
   );
 }
