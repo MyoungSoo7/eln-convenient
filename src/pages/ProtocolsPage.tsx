@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Search, BookOpen, Copy, Plus } from "lucide-react";
 import { mockProtocols, type Protocol } from "@/lib/mockData";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
 import NewProtocolDialog from "@/components/NewProtocolDialog";
+import { FileText } from "lucide-react";
 
 export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
