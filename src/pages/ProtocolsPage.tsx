@@ -15,6 +15,21 @@ export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
   const [protocols, setProtocols] = useState<Protocol[]>(mockProtocols);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleCreateNote = (p: Protocol) => {
+    navigate("/notes/new", {
+      state: {
+        fromProtocol: true,
+        protocolId: p.id,
+        title: `[${p.category}] ${p.title}`,
+        tags: p.tags,
+        category: p.category,
+        author: p.author,
+      },
+    });
+    toast.success("프로토콜 기반 연구노트를 생성합니다.", { description: `"${p.title}" 템플릿 적용` });
+  };
 
   const filtered = protocols.filter((p) =>
     p.title.toLowerCase().includes(search.toLowerCase()) || p.category.includes(search)
