@@ -38,7 +38,7 @@ export default function ProtocolsPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">표준 실험 프로토콜 관리</p>
         </div>
-        <Button className="gradient-primary text-primary-foreground gap-2">
+        <Button className="gradient-primary text-primary-foreground gap-2" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" /> 새 프로토콜
         </Button>
       </div>
