@@ -3,15 +3,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, BookOpen, Copy, Plus } from "lucide-react";
-import { mockProtocols } from "@/lib/mockData";
+import { mockProtocols, type Protocol } from "@/lib/mockData";
 import { useState } from "react";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { toast } from "sonner";
+import NewProtocolDialog from "@/components/NewProtocolDialog";
 
 export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
-  const filtered = mockProtocols.filter((p) =>
+  const [protocols, setProtocols] = useState<Protocol[]>(mockProtocols);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const filtered = protocols.filter((p) =>
     p.title.toLowerCase().includes(search.toLowerCase()) || p.category.includes(search)
   );
+
+  const handleCreated = (protocol: Protocol) => {
+    setProtocols((prev) => [protocol, ...prev]);
+  };
+
+  const handleCopy = (p: Protocol) => {
+    const copied: Protocol = { ...p, id: `prot-${Date.now()}`, title: `${p.title} (복사본)`, version: "1.0", usageCount: 0 };
+    setProtocols((prev) => [copied, ...prev]);
+    toast.success("프로토콜이 복사되었습니다.", { description: `"${copied.title}" 생성됨` });
+  };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
