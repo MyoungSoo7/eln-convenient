@@ -126,7 +126,19 @@ export default function NoteEditor() {
       </div>
 
       {isNew ? (
-        <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
+        <div className="space-y-2">
+          <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
+          {protocolState?.fromProtocol && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px] gap-1">
+                <FileText className="h-3 w-3" /> 프로토콜 기반
+              </Badge>
+              {protocolState.tags?.map((t) => (
+                <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
         <h1 className="text-xl font-bold">{note?.title}</h1>
       )}
