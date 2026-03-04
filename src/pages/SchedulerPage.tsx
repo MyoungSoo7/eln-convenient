@@ -70,10 +70,18 @@ export default function SchedulerPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>날짜</Label>
+                <Input type="date" />
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>날짜</Label><Input type="date" /></div>
-                <div className="space-y-2"><Label>시간</Label>
-                  <div className="flex gap-2"><Input type="time" defaultValue="09:00" /><Input type="time" defaultValue="12:00" /></div>
+                <div className="space-y-2">
+                  <Label>시작 시간</Label>
+                  <Input type="time" defaultValue="09:00" step="600" />
+                </div>
+                <div className="space-y-2">
+                  <Label>종료 시간</Label>
+                  <Input type="time" defaultValue="12:00" step="600" />
                 </div>
               </div>
               <div className="space-y-2"><Label>목적</Label><Input placeholder="사용 목적" /></div>
