@@ -5,14 +5,31 @@ import { Input } from "@/components/ui/input";
 import { Search, BookOpen, Copy, Plus } from "lucide-react";
 import { mockProtocols, type Protocol } from "@/lib/mockData";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
 import NewProtocolDialog from "@/components/NewProtocolDialog";
+import { FileText } from "lucide-react";
 
 export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
   const [protocols, setProtocols] = useState<Protocol[]>(mockProtocols);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleCreateNote = (p: Protocol) => {
+    navigate("/notes/new", {
+      state: {
+        fromProtocol: true,
+        protocolId: p.id,
+        title: `[${p.category}] ${p.title}`,
+        tags: p.tags,
+        category: p.category,
+        author: p.author,
+      },
+    });
+    toast.success("프로토콜 기반 연구노트를 생성합니다.", { description: `"${p.title}" 템플릿 적용` });
+  };
 
   const filtered = protocols.filter((p) =>
     p.title.toLowerCase().includes(search.toLowerCase()) || p.category.includes(search)
@@ -71,6 +88,7 @@ export default function ProtocolsPage() {
               </div>
               <div className="flex items-center justify-between mt-4 pt-3 border-t">
                 <span className="text-xs text-muted-foreground flex items-center gap-1">{p.usageCount}회 사용 <HelpTooltip text="이 프로토콜이 연구노트에 복사되어 사용된 횟수입니다." /></span>
+                <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCreateNote(p); }}><FileText className="h-3 w-3" /> 노트 생성</Button>
                 <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCopy(p); }}><Copy className="h-3 w-3" /> 복사</Button>
               </div>
             </CardContent>

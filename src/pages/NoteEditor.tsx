@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,27 @@ const sectionTemplate = `## 목적
 
 export default function NoteEditor() {
   const { id } = useParams();
+  const location = useLocation();
+  const protocolState = location.state as {
+    fromProtocol?: boolean;
+    protocolId?: string;
+    title?: string;
+    tags?: string[];
+    category?: string;
+    author?: string;
+  } | null;
+
   const isNew = id === "new";
   const note = isNew ? null : mockNotes.find((n) => n.id === id);
-  const [content, setContent] = useState(note?.content || sectionTemplate);
-  const [title, setTitle] = useState(note?.title || "");
+
+  const buildProtocolContent = () => {
+    if (!protocolState?.fromProtocol) return sectionTemplate;
+    const cat = protocolState.category || "";
+    return `## 목적\n[${cat}] 실험 목적을 기재하세요.\n\n## 재료\n- 시약/샘플 목록\n\n## 방법\n1. 실험 절차\n\n## 결과\n실험 결과 기재\n\n## 고찰\n결과에 대한 분석 및 해석\n\n---\n> 📋 프로토콜 "${protocolState.title}" 기반으로 생성됨`;
+  };
+
+  const [content, setContent] = useState(note?.content || buildProtocolContent());
+  const [title, setTitle] = useState(note?.title || protocolState?.title || "");
   const [noteStatus, setNoteStatus] = useState(note?.status || "draft");
   const [signDialogOpen, setSignDialogOpen] = useState(false);
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
@@ -109,7 +126,19 @@ export default function NoteEditor() {
       </div>
 
       {isNew ? (
-        <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
+        <div className="space-y-2">
+          <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
+          {protocolState?.fromProtocol && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px] gap-1">
+                <FileText className="h-3 w-3" /> 프로토콜 기반
+              </Badge>
+              {protocolState.tags?.map((t) => (
+                <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
         <h1 className="text-xl font-bold">{note?.title}</h1>
       )}
