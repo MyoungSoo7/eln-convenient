@@ -71,7 +71,7 @@ export default function ProtocolsPage() {
               </div>
               <div className="flex items-center justify-between mt-4 pt-3 border-t">
                 <span className="text-xs text-muted-foreground flex items-center gap-1">{p.usageCount}회 사용 <HelpTooltip text="이 프로토콜이 연구노트에 복사되어 사용된 횟수입니다." /></span>
-                <Button variant="ghost" size="sm" className="text-xs gap-1"><Copy className="h-3 w-3" /> 복사</Button>
+                <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCopy(p); }}><Copy className="h-3 w-3" /> 복사</Button>
               </div>
             </CardContent>
           </Card>
