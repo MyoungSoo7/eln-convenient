@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import signatureRoutes from './routes/signature.routes';
+import auditRoutes from './routes/audit.routes';
+import exportRoutes from './routes/export.routes';
 import { swaggerDocument } from './swagger';
 
 const app = express();
@@ -16,6 +18,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api', signatureRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/export', exportRoutes);
 
 app.listen(PORT, () => {
   console.log(`[signature-audit-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

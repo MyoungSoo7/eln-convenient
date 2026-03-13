@@ -1,20 +1,29 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+import { Request, Response } from 'express';
+import prisma from '../lib/prisma';
 
-const DUMMY_LOGS = [
-  { id: 'audit-001', entityId: 'note-001', entityType: 'note', action: 'created', userId: 'user-001', timestamp: '2024-03-15T09:00:00Z', details: '노트 생성' },
-  { id: 'audit-002', entityId: 'note-001', entityType: 'note', action: 'updated', userId: 'user-001', timestamp: '2024-03-15T10:00:00Z', details: '결과 섹션 수정' },
-  { id: 'audit-003', entityId: 'note-001', entityType: 'note', action: 'signed', userId: 'user-001', timestamp: '2024-03-15T10:30:00Z', details: '전자서명 완료' },
-];
+export async function listAuditLogs(req: Request, res: Response): Promise<void> {
+  const { entityId, type, page = '1', limit = '50' } = req.query;
+  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-export async function listAuditLogs(req: FastifyRequest<{ Querystring: { entityId?: string; type?: string } }>, reply: FastifyReply) {
-  const { entityId, type } = req.query as any;
-  let logs = DUMMY_LOGS;
-  if (entityId) logs = logs.filter((l) => l.entityId === entityId);
-  if (type) logs = logs.filter((l) => l.entityType === type);
-  return { ok: true, data: logs };
+  const where: Record<string, unknown> = {};
+  if (entityId) where.entityId = entityId as string;
+  if (type) where.entityType = type as string;
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parseInt(limit as string),
+    }),
+    prisma.auditLog.count({ where }),
+  ]);
+
+  res.json({ ok: true, data: logs, total });
 }
 
-export async function getAuditLog(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
-  const log = DUMMY_LOGS.find((l) => l.id === req.params.id) || DUMMY_LOGS[0];
-  return { ok: true, data: log };
+export async function getAuditLog(req: Request, res: Response): Promise<void> {
+  const log = await prisma.auditLog.findUnique({ where: { id: req.params.id } });
+  if (!log) { res.status(404).json({ ok: false, error: '감사로그를 찾을 수 없습니다.' }); return; }
+  res.json({ ok: true, data: log });
 }

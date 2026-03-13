@@ -1,9 +1,11 @@
-import { FastifyInstance } from 'fastify';
+import { Router } from 'express';
 import * as ctrl from '../controllers/template.controller';
 
-export async function templateRoutes(app: FastifyInstance) {
-  app.get('/', ctrl.listTemplates);
-  app.post('/', ctrl.createTemplate);
-  app.get('/:id', ctrl.getTemplate);
-  app.post('/recommend', ctrl.recommendTemplates);
-}
+const router = Router();
+
+router.get('/', ctrl.listTemplates);
+router.post('/', ctrl.createTemplate);
+router.get('/:id', ctrl.getTemplate);
+router.post('/recommend', ctrl.recommendTemplates);
+
+export default router;

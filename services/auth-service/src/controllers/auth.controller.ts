@@ -1,118 +1,177 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IUser, IOrganization, ITeam, IRole } from '../interfaces/user.interface';
+import * as bcrypt from 'bcryptjs';
+import * as jwt from 'jsonwebtoken';
+import prisma from '../lib/prisma';
 
-// ─── 더미 데이터 ───
-const DUMMY_USER: IUser = {
-  id: 'dev-user-001',
-  orgId: 'org-001',
-  email: 'researcher@labnote.dev',
-  name: '김연구',
-  roleId: 'role-admin',
-  status: 'active',
-  createdAt: new Date().toISOString(),
-};
-
-const DUMMY_ORGS: IOrganization[] = [
-  { id: 'org-001', name: 'LabNote 연구소', slug: 'labnote-lab', createdAt: new Date().toISOString() },
-];
-
-const DUMMY_TEAMS: ITeam[] = [
-  { id: 'team-001', orgId: 'org-001', name: '분자생물학팀', createdAt: new Date().toISOString() },
-  { id: 'team-002', orgId: 'org-001', name: '화학분석팀', createdAt: new Date().toISOString() },
-];
-
-const DUMMY_ROLES: IRole[] = [
-  { id: 'role-admin', orgId: 'org-001', name: 'admin', permissions: ['*'] },
-  { id: 'role-researcher', orgId: 'org-001', name: 'researcher', permissions: ['note:read', 'note:write', 'inventory:read'] },
-  { id: 'role-viewer', orgId: 'org-001', name: 'viewer', permissions: ['note:read', 'inventory:read'] },
-];
-
-// ─── 컨트롤러 ───
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret';
 
 /** POST /api/auth/login */
-export function login(req: Request, res: Response): void {
+export async function login(req: Request, res: Response): Promise<void> {
   const { email, password } = req.body;
-  // TODO: 실제 인증 로직 (비밀번호 해싱 검증, DB 조회)
-  console.log(`[auth] 로그인 시도: ${email}`);
+  if (!email || !password) {
+    res.status(400).json({ error: '이메일과 비밀번호를 입력해주세요.' });
+    return;
+  }
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { role: true },
+  });
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
+    return;
+  }
+  if (user.status !== 'active') {
+    res.status(403).json({ error: '비활성화된 계정입니다.' });
+    return;
+  }
+  const token = jwt.sign(
+    { sub: user.id, email: user.email, role: user.role?.name ?? 'viewer' },
+    JWT_SECRET,
+    { expiresIn: '8h' }
+  );
   res.json({
-    token: `dummy-jwt-token-${Date.now()}`,
-    user: DUMMY_USER,
+    token,
+    user: {
+      id: user.id,
+      orgId: user.orgId,
+      email: user.email,
+      name: user.name,
+      roleId: user.roleId,
+      status: user.status,
+      createdAt: user.createdAt.toISOString(),
+    },
   });
 }
 
 /** POST /api/auth/logout */
 export function logout(_req: Request, res: Response): void {
-  // TODO: 토큰 블랙리스트 또는 세션 무효화
+  // Redis 블랙리스트는 Phase 2에서 구현
   res.json({ message: '로그아웃 완료' });
 }
 
 /** GET /api/auth/me */
-export function getMe(_req: Request, res: Response): void {
-  res.json(DUMMY_USER);
-}
-
-/** GET /api/auth/orgs */
-export function getOrgs(_req: Request, res: Response): void {
-  res.json(DUMMY_ORGS);
-}
-
-/** POST /api/auth/orgs */
-export function createOrg(req: Request, res: Response): void {
-  const org: IOrganization = { id: uuidv4(), ...req.body, createdAt: new Date().toISOString() };
-  res.status(201).json(org);
-}
-
-/** GET /api/auth/teams */
-export function getTeams(_req: Request, res: Response): void {
-  res.json(DUMMY_TEAMS);
-}
-
-/** POST /api/auth/teams */
-export function createTeam(req: Request, res: Response): void {
-  const team: ITeam = { id: uuidv4(), ...req.body, createdAt: new Date().toISOString() };
-  res.status(201).json(team);
+export async function getMe(req: Request, res: Response): Promise<void> {
+  const userId = req.headers['x-user-id'] as string;
+  if (!userId) { res.status(401).json({ error: '인증 정보가 없습니다.' }); return; }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { role: true, org: true },
+  });
+  if (!user) { res.status(404).json({ error: '사용자를 찾을 수 없습니다.' }); return; }
+  res.json({
+    id: user.id,
+    orgId: user.orgId,
+    email: user.email,
+    name: user.name,
+    roleId: user.roleId,
+    role: user.role?.name,
+    status: user.status,
+    createdAt: user.createdAt.toISOString(),
+  });
 }
 
 /** GET /api/auth/users */
-export function getUsers(_req: Request, res: Response): void {
-  res.json([DUMMY_USER]);
+export async function getUsers(_req: Request, res: Response): Promise<void> {
+  const users = await prisma.user.findMany({
+    include: { role: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  res.json(users.map((u) => ({
+    id: u.id, orgId: u.orgId, email: u.email, name: u.name,
+    roleId: u.roleId, role: u.role?.name, status: u.status,
+    createdAt: u.createdAt.toISOString(),
+  })));
 }
 
 /** POST /api/auth/users */
-export function createUser(req: Request, res: Response): void {
-  const user: IUser = {
-    id: uuidv4(),
-    orgId: req.body.orgId || 'org-001',
-    email: req.body.email,
-    name: req.body.name,
-    roleId: req.body.roleId || 'role-researcher',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  };
-  // TODO: 비밀번호 해싱 후 DB 저장
-  res.status(201).json(user);
+export async function createUser(req: Request, res: Response): Promise<void> {
+  const { email, name, password, orgId, roleId } = req.body;
+  if (!email || !name || !password) {
+    res.status(400).json({ error: 'email, name, password는 필수입니다.' });
+    return;
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: {
+      id: uuidv4(),
+      email,
+      name,
+      passwordHash,
+      orgId: orgId || req.body.orgId,
+      roleId: roleId || null,
+      status: 'active',
+    },
+  });
+  res.status(201).json({
+    id: user.id, orgId: user.orgId, email: user.email, name: user.name,
+    roleId: user.roleId, status: user.status, createdAt: user.createdAt.toISOString(),
+  });
 }
 
 /** PUT /api/auth/users/:id */
-export function updateUser(req: Request, res: Response): void {
-  // TODO: DB 업데이트
-  res.json({ ...DUMMY_USER, ...req.body, id: req.params.id });
+export async function updateUser(req: Request, res: Response): Promise<void> {
+  const { name, roleId, status } = req.body;
+  const user = await prisma.user.update({
+    where: { id: req.params.id },
+    data: {
+      ...(name && { name }),
+      ...(roleId && { roleId }),
+      ...(status && { status }),
+    },
+  });
+  res.json({
+    id: user.id, orgId: user.orgId, email: user.email, name: user.name,
+    roleId: user.roleId, status: user.status, updatedAt: user.updatedAt.toISOString(),
+  });
+}
+
+/** GET /api/auth/orgs */
+export async function getOrgs(_req: Request, res: Response): Promise<void> {
+  const orgs = await prisma.organization.findMany({ orderBy: { createdAt: 'asc' } });
+  res.json(orgs.map((o) => ({ id: o.id, name: o.name, slug: o.slug, createdAt: o.createdAt.toISOString() })));
+}
+
+/** POST /api/auth/orgs */
+export async function createOrg(req: Request, res: Response): Promise<void> {
+  const { name, slug } = req.body;
+  if (!name || !slug) { res.status(400).json({ error: 'name과 slug는 필수입니다.' }); return; }
+  const org = await prisma.organization.create({ data: { id: uuidv4(), name, slug } });
+  res.status(201).json({ id: org.id, name: org.name, slug: org.slug, createdAt: org.createdAt.toISOString() });
+}
+
+/** GET /api/auth/teams */
+export async function getTeams(_req: Request, res: Response): Promise<void> {
+  const teams = await prisma.team.findMany({ orderBy: { createdAt: 'asc' } });
+  res.json(teams.map((t) => ({ id: t.id, orgId: t.orgId, name: t.name, createdAt: t.createdAt.toISOString() })));
+}
+
+/** POST /api/auth/teams */
+export async function createTeam(req: Request, res: Response): Promise<void> {
+  const { orgId, name } = req.body;
+  if (!orgId || !name) { res.status(400).json({ error: 'orgId와 name은 필수입니다.' }); return; }
+  const team = await prisma.team.create({ data: { id: uuidv4(), orgId, name } });
+  res.status(201).json({ id: team.id, orgId: team.orgId, name: team.name, createdAt: team.createdAt.toISOString() });
 }
 
 /** GET /api/auth/roles */
-export function getRoles(_req: Request, res: Response): void {
-  res.json(DUMMY_ROLES);
+export async function getRoles(_req: Request, res: Response): Promise<void> {
+  const roles = await prisma.role.findMany();
+  res.json(roles.map((r) => ({ id: r.id, orgId: r.orgId, name: r.name, permissions: r.permissions })));
 }
 
 /** POST /api/auth/roles */
-export function createRole(req: Request, res: Response): void {
-  const role: IRole = { id: uuidv4(), ...req.body };
-  res.status(201).json(role);
+export async function createRole(req: Request, res: Response): Promise<void> {
+  const { orgId, name, permissions } = req.body;
+  if (!orgId || !name) { res.status(400).json({ error: 'orgId와 name은 필수입니다.' }); return; }
+  const role = await prisma.role.create({ data: { id: uuidv4(), orgId, name, permissions: permissions || [] } });
+  res.status(201).json({ id: role.id, orgId: role.orgId, name: role.name, permissions: role.permissions });
 }
 
 /** PUT /api/auth/roles/:id/permissions */
-export function updatePermissions(req: Request, res: Response): void {
-  // TODO: DB 업데이트
-  res.json({ id: req.params.id, permissions: req.body.permissions, message: '권한 수정 완료' });
+export async function updatePermissions(req: Request, res: Response): Promise<void> {
+  const { permissions } = req.body;
+  if (!Array.isArray(permissions)) { res.status(400).json({ error: 'permissions는 배열이어야 합니다.' }); return; }
+  const role = await prisma.role.update({ where: { id: req.params.id }, data: { permissions } });
+  res.json({ id: role.id, permissions: role.permissions, message: '권한 수정 완료' });
 }

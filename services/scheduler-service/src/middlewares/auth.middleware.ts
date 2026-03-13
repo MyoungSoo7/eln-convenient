@@ -1,8 +1,19 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+import { Request, Response, NextFunction } from 'express';
 
-export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const userId = req.headers['x-user-id'];
   if (!userId) {
-    return reply.status(401).send({ ok: false, error: '인증이 필요합니다.' });
+    return res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
   }
+  next();
+}
+
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const userRole = req.headers['x-user-role'] as string;
+    if (!roles.includes(userRole)) {
+      return res.status(403).json({ ok: false, error: '권한이 부족합니다.' });
+    }
+    next();
+  };
 }

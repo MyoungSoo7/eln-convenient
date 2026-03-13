@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model InventoryItem {
+  id        String   @id @default(uuid())
+  name      String
+  type      String
+  status    String   @default("available")
+  category  String?
+  location  String?
+  barcode   String?  @unique
+  quantity  Float?
+  unit      String?
+  metadata  Json     @default("{}")
+  tags      String[]
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([category])
+}
+
+model Category {
+  id   String @id @default(uuid())
+  name String @unique
+}

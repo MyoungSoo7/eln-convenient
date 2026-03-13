@@ -1,8 +1,10 @@
-import { FastifyInstance } from 'fastify';
+import { Router } from 'express';
 import * as ctrl from '../controllers/export.controller';
 
-export async function exportRoutes(app: FastifyInstance) {
-  app.post('/pdf/:noteId', ctrl.exportPdf);
-  app.get('/status/:jobId', ctrl.getExportStatus);
-  app.post('/zip', ctrl.exportZip);
-}
+const router = Router();
+
+router.post('/pdf/:noteId', ctrl.exportPdf);
+router.get('/status/:jobId', ctrl.getExportStatus);
+router.post('/zip', ctrl.exportZip);
+
+export default router;

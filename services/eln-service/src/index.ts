@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import noteRoutes from './routes/note.routes';
+import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
 
 const app = express();
@@ -16,6 +17,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api', noteRoutes);
+app.use('/api/templates', templateRoutes);
 
 app.listen(PORT, () => {
   console.log(`[eln-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

@@ -51,6 +51,12 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   opensearch:
     image: opensearchproject/opensearch:2
@@ -63,6 +69,12 @@ services:
       - "9200:9200"
     volumes:
       - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -71,10 +83,169 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ═══════════════════════════════════════════
   #  백엔드 서비스
   # ═══════════════════════════════════════════
+
+  auth-service:
+    build: ./auth-service
+    container_name: labnote-auth
+    ports:
+      - "${AUTH_PORT:-8001}:8001"
+    environment:
+      - PORT=8001
+      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=auth
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  eln-service:
+    build: ./eln-service
+    container_name: labnote-eln
+    ports:
+      - "${ELN_PORT:-8002}:8002"
+    environment:
+      - PORT=8002
+      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=eln
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  signature-audit-service:
+    build: ./signature-audit-service
+    container_name: labnote-signature
+    ports:
+      - "${SIGNATURE_PORT:-8003}:8003"
+    environment:
+      - PORT=8003
+      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=signature
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  inventory-service:
+    build: ./inventory-service
+    container_name: labnote-inventory
+    ports:
+      - "${INVENTORY_PORT:-8004}:8004"
+    environment:
+      - PORT=8004
+      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=inventory
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  scheduler-service:
+    build: ./scheduler-service
+    container_name: labnote-scheduler
+    ports:
+      - "${SCHEDULER_PORT:-8005}:8005"
+    environment:
+      - PORT=8005
+      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  search-service:
+    build: ./search-service
+    container_name: labnote-search
+    ports:
+      - "${SEARCH_PORT:-8006}:8006"
+    environment:
+      - PORT=8006
+      - OPENSEARCH_URL=http://opensearch:9200
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8006/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-assistant-service:
+    build: ./ai-assistant-service
+    container_name: labnote-ai
+    ports:
+      - "${AI_PORT:-8007}:8007"
+    environment:
+      - PORT=8007
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8007/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  file-service:
+    build: ./file-service
+    container_name: labnote-file
+    ports:
+      - "${FILE_PORT:-8008}:8008"
+    environment:
+      - PORT=8008
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MINIO_BUCKET=labnote-files
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8008/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   api-gateway:
     build: ./api-gateway
@@ -94,116 +265,28 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
     depends_on:
-      - auth-service
-      - eln-service
-      - signature-audit-service
-      - inventory-service
-      - scheduler-service
-      - search-service
-      - ai-assistant-service
-      - file-service
-
-  auth-service:
-    build: ./auth-service
-    container_name: labnote-auth
-    ports:
-      - "${AUTH_PORT:-8001}:8001"
-    environment:
-      - PORT=8001
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=auth
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
-    depends_on:
-      postgres:
+      auth-service:
         condition: service_healthy
-      redis:
+      eln-service:
         condition: service_healthy
-
-  eln-service:
-    build: ./eln-service
-    container_name: labnote-eln
-    ports:
-      - "${ELN_PORT:-8002}:8002"
-    environment:
-      - PORT=8002
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=eln
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      postgres:
+      signature-audit-service:
         condition: service_healthy
-
-  signature-audit-service:
-    build: ./signature-audit-service
-    container_name: labnote-signature
-    ports:
-      - "${SIGNATURE_PORT:-8003}:8003"
-    environment:
-      - PORT=8003
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=signature
-    depends_on:
-      postgres:
+      inventory-service:
         condition: service_healthy
-
-  inventory-service:
-    build: ./inventory-service
-    container_name: labnote-inventory
-    ports:
-      - "${INVENTORY_PORT:-8004}:8004"
-    environment:
-      - PORT=8004
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=inventory
-    depends_on:
-      postgres:
+      scheduler-service:
         condition: service_healthy
-
-  scheduler-service:
-    build: ./scheduler-service
-    container_name: labnote-scheduler
-    ports:
-      - "${SCHEDULER_PORT:-8005}:8005"
-    environment:
-      - PORT=8005
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=scheduler
-    depends_on:
-      postgres:
+      search-service:
         condition: service_healthy
-
-  search-service:
-    build: ./search-service
-    container_name: labnote-search
-    ports:
-      - "${SEARCH_PORT:-8006}:8006"
-    environment:
-      - PORT=8006
-      - OPENSEARCH_URL=http://opensearch:9200
-    depends_on:
-      - opensearch
-
-  ai-assistant-service:
-    build: ./ai-assistant-service
-    container_name: labnote-ai
-    ports:
-      - "${AI_PORT:-8007}:8007"
-    environment:
-      - PORT=8007
-      - QDRANT_URL=http://qdrant:6333
-    depends_on:
-      - qdrant
-
-  file-service:
-    build: ./file-service
-    container_name: labnote-file
-    ports:
-      - "${FILE_PORT:-8008}:8008"
-    environment:
-      - PORT=8008
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
-      - MINIO_BUCKET=labnote-files
-    depends_on:
-      - minio
+      ai-assistant-service:
+        condition: service_healthy
+      file-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   postgres_data:

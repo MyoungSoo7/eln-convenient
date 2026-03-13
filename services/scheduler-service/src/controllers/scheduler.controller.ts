@@ -1,47 +1,115 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IResource, IBooking } from '../interfaces/scheduler.interface';
+import prisma from '../lib/prisma';
 
-const DUMMY_RESOURCES: IResource[] = [
-  { id: 'res-001', name: 'PCR Thermocycler #1', type: 'equipment', location: 'A동 302호', isActive: true },
-  { id: 'res-002', name: 'HPLC 시스템', type: 'equipment', location: 'B동 201호', isActive: true },
-  { id: 'res-003', name: '세미나실 A', type: 'room', location: 'C동 101호', isActive: true },
-];
-
-const DUMMY_BOOKINGS: IBooking[] = [
-  { id: 'book-001', resourceId: 'res-001', userId: 'dev-user-001', title: 'PCR 실험', startTime: '2024-01-20T09:00:00Z', endTime: '2024-01-20T12:00:00Z', status: 'approved', approvedBy: 'dev-user-001', createdAt: '2024-01-18T10:00:00Z' },
-];
-
-export function getResources(_req: Request, res: Response): void {
-  res.json({ data: DUMMY_RESOURCES, total: DUMMY_RESOURCES.length });
+export async function getResources(_req: Request, res: Response): Promise<void> {
+  const resources = await prisma.resource.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+  });
+  res.json({ data: resources, total: resources.length });
 }
 
-export function getBookings(req: Request, res: Response): void {
-  let bookings = DUMMY_BOOKINGS;
-  if (req.query.resourceId) bookings = bookings.filter((b) => b.resourceId === req.query.resourceId);
-  res.json({ data: bookings, total: bookings.length });
+export async function getBookings(req: Request, res: Response): Promise<void> {
+  const { resourceId, userId, from, to, page = '1', limit = '20' } = req.query;
+  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+  const where: Record<string, unknown> = {};
+  if (resourceId) where.resourceId = resourceId;
+  if (userId) where.userId = userId;
+  if (from || to) {
+    where.startTime = {
+      ...(from && { gte: new Date(from as string) }),
+      ...(to && { lte: new Date(to as string) }),
+    };
+  }
+
+  const [bookings, total] = await Promise.all([
+    prisma.booking.findMany({
+      where,
+      include: { resource: true },
+      orderBy: { startTime: 'asc' },
+      skip,
+      take: parseInt(limit as string),
+    }),
+    prisma.booking.count({ where }),
+  ]);
+
+  res.json({ data: bookings, total });
 }
 
-export function createBooking(req: Request, res: Response): void {
-  const booking: IBooking = {
-    id: uuidv4(), ...req.body, userId: req.headers['x-user-id'] as string || 'dev-user-001',
-    status: 'pending', createdAt: new Date().toISOString(),
-  };
+export async function createBooking(req: Request, res: Response): Promise<void> {
+  const userId = req.headers['x-user-id'] as string || 'anonymous';
+  const { resourceId, title, startTime, endTime } = req.body;
+  if (!resourceId || !title || !startTime || !endTime) {
+    res.status(400).json({ error: 'resourceId, title, startTime, endTime는 필수입니다.' });
+    return;
+  }
+
+  // 중복 예약 체크
+  const conflict = await prisma.booking.findFirst({
+    where: {
+      resourceId,
+      status: { in: ['pending', 'approved'] },
+      AND: [
+        { startTime: { lt: new Date(endTime) } },
+        { endTime: { gt: new Date(startTime) } },
+      ],
+    },
+  });
+  if (conflict) {
+    res.status(409).json({ error: '해당 시간에 이미 예약이 존재합니다.' });
+    return;
+  }
+
+  const booking = await prisma.booking.create({
+    data: {
+      id: uuidv4(),
+      resourceId,
+      userId,
+      title,
+      startTime: new Date(startTime),
+      endTime: new Date(endTime),
+      status: 'pending',
+    },
+    include: { resource: true },
+  });
   res.status(201).json(booking);
 }
 
-export function updateBooking(req: Request, res: Response): void {
-  res.json({ id: req.params.id, ...req.body, message: '예약이 수정되었습니다.' });
+export async function updateBooking(req: Request, res: Response): Promise<void> {
+  const booking = await prisma.booking.update({
+    where: { id: req.params.id },
+    data: {
+      ...(req.body.title && { title: req.body.title }),
+      ...(req.body.startTime && { startTime: new Date(req.body.startTime) }),
+      ...(req.body.endTime && { endTime: new Date(req.body.endTime) }),
+    },
+  });
+  res.json(booking);
 }
 
-export function deleteBooking(req: Request, res: Response): void {
+export async function deleteBooking(req: Request, res: Response): Promise<void> {
+  await prisma.booking.update({
+    where: { id: req.params.id },
+    data: { status: 'cancelled' },
+  });
   res.json({ id: req.params.id, status: 'cancelled', message: '예약이 취소되었습니다.' });
 }
 
-export function approveBooking(req: Request, res: Response): void {
-  res.json({ id: req.params.id, status: 'approved', approvedBy: req.headers['x-user-id'], message: '예약이 승인되었습니다.' });
+export async function approveBooking(req: Request, res: Response): Promise<void> {
+  const approvedBy = req.headers['x-user-id'] as string;
+  const booking = await prisma.booking.update({
+    where: { id: req.params.id },
+    data: { status: 'approved', approvedBy },
+  });
+  res.json(booking);
 }
 
-export function rejectBooking(req: Request, res: Response): void {
-  res.json({ id: req.params.id, status: 'rejected', message: '예약이 거절되었습니다.' });
+export async function rejectBooking(req: Request, res: Response): Promise<void> {
+  const booking = await prisma.booking.update({
+    where: { id: req.params.id },
+    data: { status: 'rejected' },
+  });
+  res.json(booking);
 }

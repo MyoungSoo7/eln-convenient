@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Signature {
+  id            String          @id @default(uuid())
+  noteId        String
+  signerId      String
+  signatureHash String
+  timestamp     DateTime        @default(now())
+  status        SignatureStatus @default(valid)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  action     String
+  actorId    String
+  details    Json     @default("{}")
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model ExportJob {
+  id          String       @id @default(uuid())
+  noteId      String
+  format      ExportFormat
+  status      ExportStatus @default(pending)
+  fileUrl     String?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+}
+
+enum SignatureStatus {
+  valid
+  revoked
+}
+
+enum ExportFormat {
+  pdf
+  zip
+}
+
+enum ExportStatus {
+  pending
+  processing
+  completed
+  failed
+}

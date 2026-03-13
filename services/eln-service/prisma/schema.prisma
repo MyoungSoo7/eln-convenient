@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Note {
+  id          String         @id @default(uuid())
+  title       String
+  content     String         @default("")
+  status      NoteStatus     @default(draft)
+  authorId    String
+  templateId  String?
+  tags        String[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  revisions   NoteRevision[]
+  links       NoteLink[]
+  attachments Attachment[]
+}
+
+model NoteRevision {
+  id            String   @id @default(uuid())
+  noteId        String
+  revision      Int
+  content       String
+  changedBy     String
+  changeSummary String   @default("")
+  createdAt     DateTime @default(now())
+  note          Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model NoteLink {
+  id         String   @id @default(uuid())
+  noteId     String
+  targetType String
+  targetId   String
+  label      String?
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  noteId     String
+  fileId     String
+  fileName   String
+  mimeType   String?
+  sizeBytes  Int?
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id          String   @id @default(uuid())
+  title       String
+  description String   @default("")
+  content     String   @default("")
+  category    String   @default("일반")
+  sections    String[]
+  tags        String[]
+  createdBy   String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+enum NoteStatus {
+  draft
+  in_progress
+  locked
+  signed
+}
