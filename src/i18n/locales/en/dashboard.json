@@ -1,0 +1,19 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Research activity overview and quick access",
+  "titleTooltip": "A comprehensive overview of key research metrics and recent changes.",
+  "stats": {
+    "notes": "Lab Notes",
+    "notesChange": "+3 this week",
+    "experiments": "Active Experiments",
+    "experimentsChange": "2 pending signature",
+    "inventory": "Inventory Items",
+    "inventoryChange": "3 low stock",
+    "bookings": "Equipment Bookings",
+    "bookingsChange": "2 pending approval"
+  },
+  "recentActivity": "Recent Activity",
+  "recentNotes": "Recent Lab Notes",
+  "viewAll": "View All",
+  "noActivity": "No recent activity"
+}

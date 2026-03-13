@@ -1,0 +1,32 @@
+{
+  "title": "Exports",
+  "subtitle": "Export lab notes as PDF or ZIP",
+  "titleTooltip": "Export signed lab notes as PDF or ZIP files for regulatory submission or archival.",
+  "allZip": "Export All as ZIP",
+  "allZipTooltip": "Bundle all signed notes and attachments into a single ZIP file for download.",
+  "allZipDesc": "All signed notes ({{count}})",
+  "projectReport": "Project Report",
+  "projectReportTooltip": "Generate a comprehensive PDF report with table of contents per project.",
+  "projectReportComingSoon": "Coming soon",
+  "inProgress": "Converting ({{count}})",
+  "converting": "Converting… ({{status}})",
+  "individual": "Individual Note Export",
+  "individualTooltip": "Download individual signed notes as PDF or ZIP.",
+  "noSignedNotes": "No signed notes available",
+  "completed": "Completed Exports",
+  "convertCompleted": "Conversion complete",
+  "convertFailed": "Conversion failed",
+  "toast": {
+    "pdfRequested": "PDF Export Requested",
+    "pdfRequestedDesc": "Starting conversion of \"{{title}}\".",
+    "zipRequested": "ZIP Export Requested",
+    "zipRequestedDesc": "Starting ZIP conversion of \"{{title}}\".",
+    "allZipRequested": "All ZIP Export Requested",
+    "allZipRequestedDesc": "Starting conversion of {{count}} notes.",
+    "completed": "Export Complete",
+    "completedDesc": "Your file is ready for download.",
+    "failed": "Export Failed",
+    "failedDesc": "An error occurred during file conversion.",
+    "requestFailed": "Request Failed"
+  }
+}

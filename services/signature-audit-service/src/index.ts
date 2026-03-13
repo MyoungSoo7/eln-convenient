@@ -5,6 +5,7 @@ import signatureRoutes from './routes/signature.routes';
 import auditRoutes from './routes/audit.routes';
 import exportRoutes from './routes/export.routes';
 import { swaggerDocument } from './swagger';
+import './workers/export.worker'; // BullMQ 워커 자동 시작
 
 const app = express();
 const PORT = process.env.PORT || 8003;

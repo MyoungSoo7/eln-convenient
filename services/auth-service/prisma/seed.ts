@@ -37,6 +37,7 @@ async function main() {
         'template:read', 'template:write', 'template:delete',
         'inventory:read', 'inventory:write', 'inventory:delete',
         'scheduler:read', 'scheduler:write',
+        'file:upload', 'file:read', 'file:delete',
         'user:read', 'user:write', 'user:delete',
         'audit:read', 'export:pdf',
       ],
@@ -55,6 +56,7 @@ async function main() {
         'template:read', 'template:write',
         'inventory:read', 'inventory:write',
         'scheduler:read', 'scheduler:write',
+        'file:upload', 'file:read',
         'export:pdf',
       ],
     },
@@ -72,6 +74,7 @@ async function main() {
         'template:read',
         'inventory:read',
         'scheduler:read',
+        'file:read',
       ],
     },
   });

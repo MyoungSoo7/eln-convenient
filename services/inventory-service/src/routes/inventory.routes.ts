@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/inventory.controller';
+import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-router.get('/items', ctrl.getItems);
-router.post('/items', ctrl.createItem);
-router.get('/items/:id', ctrl.getItemById);
-router.put('/items/:id', ctrl.updateItem);
-router.delete('/items/:id', ctrl.deleteItem);
-router.get('/categories', ctrl.getCategories);
+router.use(requireAuth);
+
+router.get('/items',         requirePermission('inventory:read'),    ctrl.getItems);
+router.post('/items',        requirePermission('inventory:write'),   ctrl.createItem);
+router.get('/items/:id',     requirePermission('inventory:read'),    ctrl.getItemById);
+router.put('/items/:id',     requirePermission('inventory:write'),   ctrl.updateItem);
+router.delete('/items/:id',  requirePermission('inventory:delete'),  ctrl.deleteItem);
+router.get('/categories',    requirePermission('inventory:read'),    ctrl.getCategories);
 
 export default router;

@@ -1,0 +1,19 @@
+{
+  "title": "대시보드",
+  "subtitle": "연구 활동 개요 및 빠른 접근",
+  "titleTooltip": "연구 활동의 주요 지표와 최근 변경 사항을 한눈에 확인할 수 있는 종합 현황판입니다.",
+  "stats": {
+    "notes": "연구노트",
+    "notesChange": "+3 이번 주",
+    "experiments": "진행 중 실험",
+    "experimentsChange": "2 서명 대기",
+    "inventory": "인벤토리 항목",
+    "inventoryChange": "3 재고 부족",
+    "bookings": "장비 예약",
+    "bookingsChange": "2 승인 대기"
+  },
+  "recentActivity": "최근 활동",
+  "recentNotes": "최근 연구노트",
+  "viewAll": "전체 보기",
+  "noActivity": "최근 활동이 없습니다"
+}

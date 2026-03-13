@@ -1,0 +1,45 @@
+{
+  "appName": "LabNote ELN",
+  "logout": "Logout",
+  "loading": "Loading...",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit",
+  "confirm": "Confirm",
+  "search": "Search",
+  "create": "Create",
+  "submit": "Submit",
+  "download": "Download",
+  "upload": "Upload",
+  "status": {
+    "draft": "Draft",
+    "in_progress": "In Progress",
+    "signed": "Signed",
+    "locked": "Locked"
+  },
+  "role": {
+    "admin": "Admin",
+    "researcher": "Researcher",
+    "viewer": "Viewer"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "notes": "Lab Notes",
+    "protocols": "Protocols",
+    "inventory": "Inventory",
+    "scheduler": "Scheduler",
+    "signatures": "Signatures",
+    "exports": "Exports",
+    "auditLogs": "Audit Logs",
+    "search": "Search",
+    "ai": "AI Assistant",
+    "admin": "Admin"
+  },
+  "error": {
+    "serverError": "Failed to connect to server.",
+    "unauthorized": "Authentication required.",
+    "forbidden": "Insufficient permissions.",
+    "notFound": "Not found."
+  }
+}

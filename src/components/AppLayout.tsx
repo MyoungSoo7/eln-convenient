@@ -13,9 +13,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "react-i18next";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation('common');
   const storedUser = getStoredUser();
   const userName = (storedUser?.name as string) || '사용자';
   const userRole = (storedUser?.role as string) || '';
@@ -23,6 +25,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     await logout();
     navigate('/login', { replace: true });
+  };
+
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === 'ko' ? 'en' : 'ko');
   };
 
   return (
@@ -35,6 +41,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             </div>
             <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs font-medium px-2 h-7"
+                onClick={toggleLanguage}
+              >
+                {i18n.language === 'ko' ? 'EN' : '한국어'}
+              </Button>
               <ThemeToggle />
               <button className="relative p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                 <Bell className="h-4 w-4" />
@@ -54,7 +68,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
-                    로그아웃
+                    {t('logout')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

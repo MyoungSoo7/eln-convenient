@@ -16,15 +16,20 @@ export interface SignatureResult {
 
 export interface VerifyResult {
   noteId: string;
-  valid: boolean;
-  verifiedAt: string;
+  verified: boolean;
+  chainLength?: number;
   message: string;
+  verifiedAt: string;
 }
 
 export interface ExportJob {
-  jobId: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  downloadUrl?: string;
+  id: string;
+  noteId: string;
+  format: 'pdf' | 'zip';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  fileUrl?: string;
+  createdAt: string;
+  completedAt?: string;
 }
 
 // ── 서명 API ──
@@ -52,7 +57,7 @@ export async function verifySignature(noteId: string): Promise<ApiResponse<Verif
   } catch {
     return {
       ok: true,
-      data: { noteId, valid: true, verifiedAt: new Date().toISOString(), message: '서명이 유효합니다.' },
+      data: { noteId, verified: true, verifiedAt: new Date().toISOString(), message: '서명이 유효합니다.' },
     };
   }
 }
@@ -70,19 +75,33 @@ export async function listAuditLogs(params?: { entityId?: string; type?: string 
 }
 
 // ── 내보내기 API ──
-export async function exportPdf(noteId: string): Promise<ApiResponse<ExportJob>> {
+export async function requestPdfExport(noteId: string): Promise<ApiResponse<ExportJob>> {
   try {
-    return await apiClient.post<ExportJob>(`/export/pdf/${noteId}`);
+    const res = await apiClient.post<{ job: ExportJob }>(`/export/pdf/${noteId}`);
+    return { ok: res.ok, data: res.data?.job ?? (res.data as any), error: res.error };
   } catch {
-    return { ok: true, data: { jobId: `job-pdf-${Date.now()}`, status: 'queued' } };
+    return {
+      ok: true,
+      data: {
+        id: `job-pdf-${Date.now()}`, noteId, format: 'pdf',
+        status: 'pending', createdAt: new Date().toISOString(),
+      },
+    };
   }
 }
 
-export async function exportZip(noteIds: string[]): Promise<ApiResponse<ExportJob>> {
+export async function requestZipExport(noteIds: string[]): Promise<ApiResponse<ExportJob>> {
   try {
-    return await apiClient.post<ExportJob>('/export/zip', { noteIds });
+    const res = await apiClient.post<{ job: ExportJob }>('/export/zip', { noteIds });
+    return { ok: res.ok, data: res.data?.job ?? (res.data as any), error: res.error };
   } catch {
-    return { ok: true, data: { jobId: `job-zip-${Date.now()}`, status: 'queued' } };
+    return {
+      ok: true,
+      data: {
+        id: `job-zip-${Date.now()}`, noteId: 'bulk', format: 'zip',
+        status: 'pending', createdAt: new Date().toISOString(),
+      },
+    };
   }
 }
 
@@ -90,6 +109,17 @@ export async function getExportStatus(jobId: string): Promise<ApiResponse<Export
   try {
     return await apiClient.get<ExportJob>(`/export/status/${jobId}`);
   } catch {
-    return { ok: true, data: { jobId, status: 'completed', downloadUrl: `/api/files/export-${jobId}.pdf` } };
+    return {
+      ok: true,
+      data: {
+        id: jobId, noteId: '', format: 'pdf',
+        status: 'completed', fileUrl: undefined, createdAt: new Date().toISOString(),
+      },
+    };
   }
 }
+
+// 하위 호환 alias
+export const exportPdf = requestPdfExport;
+export const exportZip = (noteIds: string[]) => requestZipExport(noteIds);
+export const getExportStatusById = getExportStatus;

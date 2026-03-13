@@ -90,6 +90,34 @@ services:
       retries: 5
       start_period: 10s
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: labnote-keycloak
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/labnote
+      - KC_DB_USERNAME=${POSTGRES_USER:-labnote}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-labnote_secret_2024}
+      - KC_DB_SCHEMA=keycloak
+      - KC_HOSTNAME_STRICT=false
+      - KC_HTTP_ENABLED=true
+    command: start-dev --import-realm
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    volumes:
+      - ./keycloak/realm-labnote.json:/opt/keycloak/data/import/realm-labnote.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   # ═══════════════════════════════════════════
   #  백엔드 서비스
   # ═══════════════════════════════════════════
@@ -143,15 +171,28 @@ services:
     environment:
       - PORT=8003
       - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=signature
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MINIO_BUCKET=labnote-files
+      - ELN_SERVICE_URL=http://eln-service:8002
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      eln-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
 
   inventory-service:
     build: ./inventory-service
@@ -247,6 +288,25 @@ services:
       retries: 5
       start_period: 15s
 
+  collab-service:
+    build: ./collab-service
+    container_name: labnote-collab
+    ports:
+      - "${COLLAB_PORT:-8009}:8009"
+    environment:
+      - PORT=8009
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8009/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   api-gateway:
     build: ./api-gateway
     container_name: labnote-gateway
@@ -262,8 +322,12 @@ services:
       - SEARCH_SERVICE_URL=http://search-service:8006
       - AI_SERVICE_URL=http://ai-assistant-service:8007
       - FILE_SERVICE_URL=http://file-service:8008
+      - COLLAB_SERVICE_URL=http://collab-service:8009
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
+      - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/labnote/protocol/openid-connect/certs
+      - KEYCLOAK_ISSUER=http://keycloak:8080/realms/labnote
     depends_on:
       auth-service:
         condition: service_healthy
@@ -281,6 +345,8 @@ services:
         condition: service_healthy
       file-service:
         condition: service_healthy
+      collab-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -294,3 +360,4 @@ volumes:
   minio_data:
   opensearch_data:
   qdrant_data:
+  keycloak_data:

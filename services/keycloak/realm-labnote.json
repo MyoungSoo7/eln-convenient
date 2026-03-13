@@ -1,0 +1,73 @@
+{
+  "realm": "labnote",
+  "enabled": true,
+  "displayName": "LabNote ELN",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 28800,
+  "roles": {
+    "realm": [
+      { "name": "admin",      "description": "관리자 — 전체 권한" },
+      { "name": "researcher", "description": "연구원 — 노트 작성/서명" },
+      { "name": "viewer",     "description": "열람자 — 읽기 전용" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "labnote-frontend",
+      "name": "LabNote Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173"
+      ],
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@labnote.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "관리자",
+      "lastName": "",
+      "credentials": [
+        { "type": "password", "value": "Admin1234!", "temporary": false }
+      ],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "researcher",
+      "email": "researcher@labnote.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "연구원",
+      "lastName": "",
+      "credentials": [
+        { "type": "password", "value": "Researcher1!", "temporary": false }
+      ],
+      "realmRoles": ["researcher"]
+    }
+  ],
+  "defaultDefaultClientScopes": ["roles", "profile", "email", "web-origins"],
+  "browserSecurityHeaders": {
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self' http://localhost:3000 http://localhost:5173; object-src 'none';"
+  }
+}

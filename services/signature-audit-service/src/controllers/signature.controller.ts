@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
+import { exportQueue } from '../lib/queue';
 
 /** SHA-256 해시 계산 */
 function sha256(data: string): string {
@@ -136,15 +137,18 @@ export async function getAuditLogs(req: Request, res: Response): Promise<void> {
 
 /** POST /api/export/pdf/:noteId */
 export async function exportPdf(req: Request, res: Response): Promise<void> {
+  const jobId = uuidv4();
   const job = await prisma.exportJob.create({
-    data: {
-      id: uuidv4(),
-      noteId: req.params.noteId,
-      format: 'pdf',
-      status: 'pending',
-    },
+    data: { id: jobId, noteId: req.params.noteId, format: 'pdf', status: 'pending' },
   });
-  // TODO: BullMQ 큐 등록 (Phase 6)
+
+  await exportQueue.add('pdf', {
+    jobId,
+    noteId: req.params.noteId,
+    format: 'pdf',
+    requestedBy: req.headers['x-user-id'] as string || 'anonymous',
+  });
+
   res.status(202).json({ job, message: 'PDF 변환이 요청되었습니다.' });
 }
 
@@ -157,13 +161,24 @@ export async function getExportStatus(req: Request, res: Response): Promise<void
 
 /** POST /api/export/zip */
 export async function exportZip(req: Request, res: Response): Promise<void> {
+  const noteIds: string[] = req.body.noteIds ?? [];
+  if (noteIds.length === 0) {
+    res.status(400).json({ error: 'noteIds 배열이 필요합니다.' });
+    return;
+  }
+
+  const jobId = uuidv4();
   const job = await prisma.exportJob.create({
-    data: {
-      id: uuidv4(),
-      noteId: 'bulk',
-      format: 'zip',
-      status: 'pending',
-    },
+    data: { id: jobId, noteId: 'bulk', format: 'zip', status: 'pending' },
   });
-  res.status(202).json({ job, noteIds: req.body.noteIds, message: 'ZIP 내보내기가 요청되었습니다.' });
+
+  await exportQueue.add('zip', {
+    jobId,
+    noteId: 'bulk',
+    format: 'zip',
+    noteIds,
+    requestedBy: req.headers['x-user-id'] as string || 'anonymous',
+  });
+
+  res.status(202).json({ job, noteIds, message: 'ZIP 내보내기가 요청되었습니다.' });
 }

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{note.title}}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 20mm 15mm 25mm 15mm;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Apple SD Gothic Neo',
+                   'Malgun Gothic', sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.6;
+      color: #1a1a1a;
+    }
+
+    /* ── 문서 헤더 ── */
+    .doc-header {
+      border-bottom: 2px solid #1d4ed8;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+
+    .doc-logo {
+      font-size: 8pt;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .doc-title {
+      font-size: 18pt;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+
+    .doc-meta {
+      display: flex;
+      gap: 20px;
+      font-size: 8.5pt;
+      color: #6b7280;
+    }
+
+    .doc-meta span strong {
+      color: #374151;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 9999px;
+      font-size: 7.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-draft     { background: #f3f4f6; color: #374151; }
+    .status-in_progress { background: #dbeafe; color: #1d4ed8; }
+    .status-locked    { background: #fef3c7; color: #92400e; }
+    .status-signed    { background: #d1fae5; color: #065f46; }
+
+    /* ── 태그 ── */
+    .tags { margin: 10px 0; }
+    .tag {
+      display: inline-block;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      margin-right: 4px;
+    }
+
+    /* ── 섹션 ── */
+    .section {
+      margin-bottom: 18px;
+      page-break-inside: avoid;
+    }
+
+    .section-title {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #111827;
+      border-left: 3px solid #1d4ed8;
+      padding-left: 8px;
+      margin-bottom: 8px;
+    }
+
+    .section-content {
+      padding-left: 11px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* 내용 없을 때 */
+    .section-empty {
+      padding-left: 11px;
+      color: #9ca3af;
+      font-style: italic;
+      font-size: 9pt;
+    }
+
+    /* ── 첨부파일 목록 ── */
+    .attachments {
+      margin-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 12px;
+    }
+
+    .attachments-title {
+      font-size: 10pt;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #374151;
+    }
+
+    .attachment-item {
+      font-size: 8.5pt;
+      color: #6b7280;
+      padding: 2px 0;
+    }
+
+    /* ── 전자서명 블록 ── */
+    .signature-block {
+      margin-top: 24px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 14px;
+      background: #f9fafb;
+      page-break-inside: avoid;
+    }
+
+    .signature-title {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .signature-title::before {
+      content: "✓";
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      background: #065f46;
+      color: white;
+      border-radius: 50%;
+      font-size: 9pt;
+      text-align: center;
+      line-height: 16px;
+    }
+
+    .signature-row {
+      display: flex;
+      font-size: 8.5pt;
+      margin-bottom: 4px;
+    }
+
+    .signature-label {
+      width: 80px;
+      color: #6b7280;
+      flex-shrink: 0;
+    }
+
+    .signature-value {
+      color: #111827;
+    }
+
+    .signature-hash {
+      font-family: 'Courier New', monospace;
+      font-size: 7pt;
+      color: #374151;
+      background: #f3f4f6;
+      padding: 4px 6px;
+      border-radius: 3px;
+      word-break: break-all;
+      margin-top: 6px;
+    }
+
+    /* ── 푸터 ── */
+    .doc-footer {
+      position: fixed;
+      bottom: 8mm;
+      left: 15mm;
+      right: 15mm;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 4px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.5pt;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 문서 헤더 -->
+  <div class="doc-header">
+    <div class="doc-logo">LabNote ELN — 전자실험노트</div>
+    <div class="doc-title">{{note.title}}</div>
+    <div class="doc-meta">
+      <span><strong>작성자</strong> {{note.authorId}}</span>
+      <span><strong>작성일</strong> {{note.createdAt}}</span>
+      <span><strong>최종수정</strong> {{note.updatedAt}}</span>
+      <span>
+        <span class="status-badge status-{{note.status}}">{{note.status}}</span>
+      </span>
+    </div>
+    {{#if note.tags.length}}
+    <div class="tags">
+      {{#each note.tags}}
+      <span class="tag"># {{this}}</span>
+      {{/each}}
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- 노트 내용 섹션 -->
+  {{#if sections}}
+    {{#each sections}}
+    <div class="section">
+      <div class="section-title">{{this.title}}</div>
+      {{#if this.content}}
+        <div class="section-content">{{this.content}}</div>
+      {{else}}
+        <div class="section-empty">(내용 없음)</div>
+      {{/if}}
+    </div>
+    {{/each}}
+  {{else}}
+    <!-- 섹션 구분 없이 content 전체 출력 -->
+    <div class="section">
+      <div class="section-title">내용</div>
+      {{#if note.content}}
+        <div class="section-content">{{note.content}}</div>
+      {{else}}
+        <div class="section-empty">(내용 없음)</div>
+      {{/if}}
+    </div>
+  {{/if}}
+
+  <!-- 첨부파일 -->
+  {{#if attachments.length}}
+  <div class="attachments">
+    <div class="attachments-title">첨부파일 ({{attachments.length}}개)</div>
+    {{#each attachments}}
+    <div class="attachment-item">📎 {{this.fileName}} ({{this.mimeType}})</div>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  <!-- 전자서명 블록 -->
+  {{#if signature}}
+  <div class="signature-block">
+    <div class="signature-title">전자서명 정보</div>
+    <div class="signature-row">
+      <span class="signature-label">서명자</span>
+      <span class="signature-value">{{signature.signerId}}</span>
+    </div>
+    <div class="signature-row">
+      <span class="signature-label">서명 시각</span>
+      <span class="signature-value">{{signature.timestamp}}</span>
+    </div>
+    <div class="signature-row">
+      <span class="signature-label">체인 인덱스</span>
+      <span class="signature-value">#{{signature.chainIndex}}</span>
+    </div>
+    <div class="signature-hash">{{signature.signatureHash}}</div>
+  </div>
+  {{/if}}
+
+  <!-- 푸터 -->
+  <div class="doc-footer">
+    <span>LabNote ELN | {{note.title}}</span>
+    <span>출력일: {{printedAt}}</span>
+  </div>
+
+</body>
+</html>

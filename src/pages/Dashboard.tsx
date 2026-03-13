@@ -4,13 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { mockNotes, mockBookings, mockAuditLog, mockInventory } from "@/lib/mockData";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
-
-const stats = [
-  { label: "연구노트", value: "24", change: "+3 이번 주", icon: FileText, color: "text-primary", help: "작성된 전체 연구노트 수입니다. 클릭하면 노트 목록으로 이동합니다." },
-  { label: "진행 중 실험", value: "5", change: "2 서명 대기", icon: FlaskConical, color: "text-secondary", help: "현재 진행 중인 실험 노트와 서명 대기 중인 노트 수를 표시합니다." },
-  { label: "인벤토리 항목", value: "156", change: "3 재고 부족", icon: Package, color: "text-warning", help: "등록된 시약, 샘플, 장비의 총 수량입니다. 재고 부족 항목을 확인하세요." },
-  { label: "장비 예약", value: "8", change: "2 승인 대기", icon: CalendarDays, color: "text-info", help: "금주 장비/회의실 예약 건수와 승인 대기 중인 예약을 보여줍니다." },
-];
+import { useTranslation } from "react-i18next";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -19,22 +13,25 @@ const statusColors: Record<string, string> = {
   locked: "bg-destructive/10 text-destructive",
 };
 
-const statusLabels: Record<string, string> = {
-  draft: "초안",
-  in_progress: "진행 중",
-  signed: "서명 완료",
-  locked: "잠김",
-};
-
 export default function Dashboard() {
+  const { t } = useTranslation('dashboard');
+  const { t: tc } = useTranslation('common');
+
+  const stats = [
+    { label: t('stats.notes'), value: "24", change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: "작성된 전체 연구노트 수입니다." },
+    { label: t('stats.experiments'), value: "5", change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: "현재 진행 중인 실험 노트 수입니다." },
+    { label: t('stats.inventory'), value: "156", change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: "등록된 시약, 샘플, 장비의 총 수량입니다." },
+    { label: t('stats.bookings'), value: "8", change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: "금주 장비/회의실 예약 건수입니다." },
+  ];
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          대시보드
-          <HelpTooltip text="연구 활동의 주요 지표와 최근 변경 사항을 한눈에 확인할 수 있는 종합 현황판입니다." />
+          {t('title')}
+          <HelpTooltip text={t('titleTooltip')} />
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">연구 활동 개요 및 빠른 접근</p>
+        <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
       </div>
 
       {/* Stats */}
@@ -66,10 +63,10 @@ export default function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                최근 연구노트
-                <HelpTooltip text="최근에 수정된 연구노트 4개를 보여줍니다. 클릭하면 노트 편집기로 이동합니다." />
+                {t('recentNotes')}
+                <HelpTooltip text="최근에 수정된 연구노트 4개를 보여줍니다." />
               </CardTitle>
-              <Link to="/notes" className="text-xs text-primary hover:underline">전체 보기</Link>
+              <Link to="/notes" className="text-xs text-primary hover:underline">{t('viewAll')}</Link>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -84,7 +81,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <Badge variant="secondary" className={`text-[10px] shrink-0 ${statusColors[note.status]}`}>
-                  {statusLabels[note.status]}
+                  {tc(`status.${note.status}`)}
                 </Badge>
               </Link>
             ))}

@@ -1,0 +1,45 @@
+{
+  "appName": "LabNote ELN",
+  "logout": "로그아웃",
+  "loading": "로딩 중...",
+  "save": "저장",
+  "cancel": "취소",
+  "delete": "삭제",
+  "edit": "편집",
+  "confirm": "확인",
+  "search": "검색",
+  "create": "생성",
+  "submit": "제출",
+  "download": "다운로드",
+  "upload": "업로드",
+  "status": {
+    "draft": "초안",
+    "in_progress": "진행 중",
+    "signed": "서명 완료",
+    "locked": "잠김"
+  },
+  "role": {
+    "admin": "관리자",
+    "researcher": "연구원",
+    "viewer": "열람자"
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "notes": "연구노트",
+    "protocols": "프로토콜",
+    "inventory": "인벤토리",
+    "scheduler": "스케줄러",
+    "signatures": "전자서명",
+    "exports": "내보내기",
+    "auditLogs": "감사 로그",
+    "search": "검색",
+    "ai": "AI 어시스턴트",
+    "admin": "관리자"
+  },
+  "error": {
+    "serverError": "서버 연결에 실패했습니다.",
+    "unauthorized": "인증이 필요합니다.",
+    "forbidden": "권한이 부족합니다.",
+    "notFound": "찾을 수 없습니다."
+  }
+}

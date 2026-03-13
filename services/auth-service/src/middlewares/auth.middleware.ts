@@ -17,3 +17,14 @@ export function requireRole(...roles: string[]) {
     next();
   };
 }
+
+export function requirePermission(permission: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const raw = req.headers['x-user-permissions'] as string | undefined;
+    const permissions: string[] = raw ? JSON.parse(raw) : [];
+    if (permissions.includes('*') || permissions.includes(permission)) {
+      return next();
+    }
+    return res.status(403).json({ ok: false, error: `권한 부족: '${permission}' 권한이 필요합니다.` });
+  };
+}

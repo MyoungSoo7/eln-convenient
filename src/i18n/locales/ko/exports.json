@@ -1,0 +1,32 @@
+{
+  "title": "내보내기",
+  "subtitle": "연구노트 PDF 및 ZIP 내보내기",
+  "titleTooltip": "서명 완료된 연구노트를 PDF 또는 ZIP 파일로 내보냅니다. 규정 제출용 문서나 보관 자료를 생성할 수 있습니다.",
+  "allZip": "전체 ZIP 내보내기",
+  "allZipTooltip": "서명된 모든 노트와 첨부파일을 하나의 ZIP 파일로 묶어 다운로드합니다.",
+  "allZipDesc": "서명된 모든 노트 ({{count}}개)",
+  "projectReport": "프로젝트 보고서",
+  "projectReportTooltip": "프로젝트 단위로 노트를 묶어 목차 포함 종합 PDF 보고서를 생성합니다.",
+  "projectReportComingSoon": "준비 중",
+  "inProgress": "변환 진행 중 ({{count}})",
+  "converting": "변환 중… ({{status}})",
+  "individual": "개별 노트 내보내기",
+  "individualTooltip": "서명 완료된 노트를 개별적으로 PDF 또는 ZIP으로 다운로드할 수 있습니다.",
+  "noSignedNotes": "서명 완료된 노트가 없습니다",
+  "completed": "완료된 내보내기",
+  "convertCompleted": "변환 완료",
+  "convertFailed": "변환 실패",
+  "toast": {
+    "pdfRequested": "PDF 변환 요청",
+    "pdfRequestedDesc": "\"{{title}}\" 변환을 시작합니다.",
+    "zipRequested": "ZIP 변환 요청",
+    "zipRequestedDesc": "\"{{title}}\" ZIP 변환을 시작합니다.",
+    "allZipRequested": "전체 ZIP 변환 요청",
+    "allZipRequestedDesc": "{{count}}개 노트 변환을 시작합니다.",
+    "completed": "내보내기 완료",
+    "completedDesc": "파일이 준비되었습니다.",
+    "failed": "내보내기 실패",
+    "failedDesc": "파일 변환 중 오류가 발생했습니다.",
+    "requestFailed": "요청 실패"
+  }
+}

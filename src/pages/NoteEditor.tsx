@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Save, ShieldCheck, Paperclip, Link2, Clock, FileText, Upload } from "lucide-react";
+import { ArrowLeft, Save, ShieldCheck, Paperclip, Link2, Clock, FileText, Upload, Users } from "lucide-react";
 import { mockNotes } from "@/lib/mockData";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { getToken } from "@/lib/authToken";
 
 const statusLabels: Record<string, string> = {
   draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
@@ -64,6 +65,72 @@ export default function NoteEditor() {
   const [noteStatus, setNoteStatus] = useState(note?.status || "draft");
   const [signDialogOpen, setSignDialogOpen] = useState(false);
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
+
+  // ── 실시간 협업 WebSocket ──
+  const wsRef = useRef<WebSocket | null>(null);
+  const lastLocalEditRef = useRef<number>(0);
+  const sendTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // colorIdx 0–7 → Tailwind bg 클래스 (collab-service COLOR_COUNT=8 과 동기화)
+  const COLLAB_COLORS = [
+    'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-500',
+    'bg-violet-500', 'bg-pink-500', 'bg-teal-500', 'bg-orange-500',
+  ] as const;
+
+  const [connectedUsers, setConnectedUsers] = useState<Array<{ id: string; name: string; colorIdx: number }>>([]);
+
+  useEffect(() => {
+    if (isNew) return;
+    const token = getToken() ?? '';
+    if (!token) return;
+
+    const base = (import.meta.env.VITE_COLLAB_URL as string | undefined) ?? 'ws://localhost:8009';
+    const ws = new WebSocket(`${base}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data as string);
+        if (msg.type === 'joined') {
+          setConnectedUsers(
+            (msg.users ?? []).map((u: { id: string; name: string; colorIdx?: number }) => ({
+              id: u.id, name: u.name, colorIdx: u.colorIdx ?? 0,
+            }))
+          );
+        } else if (msg.type === 'user-joined') {
+          setConnectedUsers((prev) => [
+            ...prev.filter((u) => u.id !== msg.userId),
+            { id: msg.userId, name: msg.userName, colorIdx: msg.colorIdx ?? 0 },
+          ]);
+        } else if (msg.type === 'user-left') {
+          setConnectedUsers((prev) => prev.filter((u) => u.id !== msg.userId));
+        } else if (msg.type === 'content-update') {
+          // 로컬 편집 후 1초 이내에는 원격 업데이트 무시 (타이핑 중 덮어쓰기 방지)
+          if (Date.now() - lastLocalEditRef.current > 1000) {
+            setContent(msg.content as string);
+          }
+        }
+      } catch {}
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = () => {
+      wsRef.current = null;
+      setConnectedUsers([]);
+    };
+
+    return () => { ws.close(); };
+  }, [id, isNew]);
+
+  const handleContentChange = useCallback((newContent: string) => {
+    setContent(newContent);
+    lastLocalEditRef.current = Date.now();
+    clearTimeout(sendTimerRef.current);
+    sendTimerRef.current = setTimeout(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'content-update', content: newContent }));
+      }
+    }, 400);
+  }, []);
 
   const handleSign = () => {
     setNoteStatus("signed");
@@ -125,6 +192,31 @@ export default function NoteEditor() {
         <Badge className={`${statusColors[noteStatus]}`}>{statusLabels[noteStatus]}</Badge>
       </div>
 
+      {/* 실시간 협업 참여자 표시 */}
+      {!isNew && connectedUsers.length > 0 && (
+        <div className="flex items-center gap-2 px-1 py-1 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 w-fit text-xs">
+          <span className="flex items-center gap-1.5 text-green-700 dark:text-green-400 font-medium">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            <Users className="h-3 w-3" />
+            실시간 편집 중
+          </span>
+          <div className="flex items-center gap-1">
+            {connectedUsers.slice(0, 6).map((u) => (
+              <div
+                key={u.id}
+                title={u.name}
+                className={`h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-1 ring-white dark:ring-gray-900 ${COLLAB_COLORS[u.colorIdx % COLLAB_COLORS.length]}`}
+              >
+                {u.name[0]?.toUpperCase() ?? '?'}
+              </div>
+            ))}
+            {connectedUsers.length > 6 && (
+              <span className="text-green-600 dark:text-green-400">+{connectedUsers.length - 6}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {isNew ? (
         <div className="space-y-2">
           <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
@@ -165,7 +257,7 @@ export default function NoteEditor() {
             <CardContent className="p-0">
               <Textarea
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => handleContentChange(e.target.value)}
                 disabled={isLocked}
                 className="min-h-[500px] border-0 rounded-lg font-mono text-sm resize-none focus-visible:ring-0 p-6"
                 placeholder="Markdown 형식으로 작성하세요..."

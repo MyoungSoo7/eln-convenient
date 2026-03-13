@@ -455,15 +455,15 @@ docker compose up --build
 
 ## 9. 주요 TODO
 
-- [ ] JWT 발급/검증 실제 구현 (auth-service)
-- [ ] 비밀번호 해싱 (bcrypt)
-- [ ] DB 마이그레이션 스크립트 (Prisma / Drizzle)
-- [ ] 전자서명 해시 체인 구현
-- [ ] PDF 변환 엔진 연동 (Puppeteer / wkhtmltopdf)
-- [ ] MinIO 실제 파일 업/다운로드
-- [ ] OpenSearch 인덱싱 파이프라인
-- [ ] Qdrant 벡터 임베딩 + RAG 파이프라인
-- [ ] SSO/Keycloak 연동
-- [ ] RBAC 미들웨어 실제 권한 검증
-- [ ] WebSocket 실시간 협업 편집
-- [ ] i18n (ko/en)
+- [x] JWT 발급/검증 실제 구현 — 게이트웨이 `jose` 검증 + auth-service `jsonwebtoken` 발급
+- [x] 비밀번호 해싱 (bcrypt) — auth-service `bcryptjs` 적용
+- [x] DB 마이그레이션 스크립트 — Prisma schema 완비 + Dockerfile 기동 시 `prisma migrate deploy` 자동 실행
+- [x] 전자서명 해시 체인 구현 — `prevHash + chainIndex` 체인 + `/verify` 무결성 검증
+- [x] PDF 변환 엔진 연동 (Puppeteer) — BullMQ 큐 + Puppeteer-core + MinIO presigned URL + 프론트 폴링 UI 완료
+- [x] MinIO 실제 파일 업/다운로드 — `@aws-sdk/client-s3` presigned URL + 스트리밍
+- [x] OpenSearch 인덱싱 파이프라인 — 인덱스 자동 생성 + `POST /api/search/index` 수신 API
+- [ ] Qdrant 벡터 임베딩 + RAG 파이프라인 — 미구현 (ai-assistant-service 더미 응답)
+- [x] SSO/Keycloak 연동 — Keycloak 컨테이너 + realm 자동 임포트 + api-gateway 듀얼 모드(JWKS/로컬JWT) + 프론트 PKCE 리다이렉트 완료
+- [x] RBAC 미들웨어 실제 권한 검증 — JWT에 permissions 배열 포함, `requirePermission()` 전 서비스 라우트 적용 완료
+- [x] WebSocket 실시간 협업 편집 — collab-service(ws+Redis pub/sub) + NoteEditor 프레즌스 UI + 디바운스 콘텐츠 동기화 완료
+- [x] i18n (ko/en) — react-i18next 적용, LoginPage/Dashboard/ExportsPage/AppLayout 번역 완료, 언어 토글 버튼 추가
