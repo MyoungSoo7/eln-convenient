@@ -3,6 +3,7 @@
  * 경로: /api/auth/*
  */
 import apiClient, { type ApiResponse } from './client';
+import { setToken, clearToken, setStoredUser } from '@/lib/authToken';
 import { currentUser } from '@/lib/mockData';
 
 export interface User {
@@ -16,14 +17,23 @@ export interface User {
 
 export interface LoginResponse {
   token: string;
-  userId: string;
+  user: User;
 }
 
 // ── Mock fallback ──
 const mockFallback = {
   login: (): ApiResponse<LoginResponse> => ({
     ok: true,
-    data: { token: 'mock-jwt-token', userId: 'user-001' },
+    data: {
+      token: 'mock-jwt-token',
+      user: {
+        id: currentUser.id,
+        name: currentUser.name,
+        email: currentUser.email,
+        role: currentUser.role,
+        orgId: 'org-001',
+      },
+    },
   }),
   me: (): ApiResponse<User> => ({
     ok: true,
@@ -39,11 +49,30 @@ const mockFallback = {
 };
 
 // ── API 함수 ──
+
 export async function login(email: string, password: string): Promise<ApiResponse<LoginResponse>> {
   try {
-    return await apiClient.post<LoginResponse>('/auth/login', { email, password });
+    const result = await apiClient.post<LoginResponse>('/auth/login', { email, password });
+    if (result.ok && result.data.token) {
+      setToken(result.data.token);
+      setStoredUser(result.data.user as unknown as Record<string, unknown>);
+    }
+    return result;
   } catch {
-    return mockFallback.login();
+    const mock = mockFallback.login();
+    setToken(mock.data.token);
+    setStoredUser(mock.data.user as unknown as Record<string, unknown>);
+    return mock;
+  }
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await apiClient.post('/auth/logout');
+  } catch {
+    // 서버 오류 무시
+  } finally {
+    clearToken();
   }
 }
 

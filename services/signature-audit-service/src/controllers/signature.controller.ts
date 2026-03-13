@@ -3,24 +3,38 @@ import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
 
+/** SHA-256 해시 계산 */
+function sha256(data: string): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
 /** POST /api/signatures/sign/:noteId */
 export async function signNote(req: Request, res: Response): Promise<void> {
   const signerId = req.headers['x-user-id'] as string || 'anonymous';
   const { noteId } = req.params;
 
-  // 해시: noteId + signerId + timestamp (실제 RFC 3161 시점인증은 Phase 3에서 구현)
+  // 이전 서명 조회 (해시 체인용)
+  const prevSignature = await prisma.signature.findFirst({
+    where: { noteId, status: 'valid' },
+    orderBy: { chainIndex: 'desc' },
+  });
+
+  const prevHash = prevSignature?.signatureHash ?? null;
+  const chainIndex = prevSignature ? prevSignature.chainIndex + 1 : 0;
   const timestamp = new Date().toISOString();
-  const signatureHash = crypto
-    .createHash('sha256')
-    .update(`${noteId}:${signerId}:${timestamp}`)
-    .digest('hex');
+
+  // 해시 체인: hash(noteId + signerId + timestamp + prevHash)
+  const hashInput = `${noteId}:${signerId}:${timestamp}:${prevHash ?? 'genesis'}`;
+  const signatureHash = `sha256:${sha256(hashInput)}`;
 
   const signature = await prisma.signature.create({
     data: {
       id: uuidv4(),
       noteId,
       signerId,
-      signatureHash: `sha256:${signatureHash}`,
+      signatureHash,
+      prevHash,
+      chainIndex,
       status: 'valid',
     },
   });
@@ -33,29 +47,67 @@ export async function signNote(req: Request, res: Response): Promise<void> {
       entityId: noteId,
       action: 'signed',
       actorId: signerId,
-      details: { signatureId: signature.id, hash: signature.signatureHash },
+      details: {
+        signatureId: signature.id,
+        hash: signature.signatureHash,
+        chainIndex,
+        prevHash,
+      },
       ipAddress: req.ip,
     },
   });
 
-  res.status(201).json({ signature, message: '전자서명이 완료되었습니다. 노트가 잠금 상태로 전환됩니다.' });
+  res.status(201).json({
+    signature,
+    chainIndex,
+    message: '전자서명이 완료되었습니다. 노트가 잠금 상태로 전환됩니다.',
+  });
 }
 
-/** GET /api/signatures/verify/:noteId */
+/** GET /api/signatures/verify/:noteId — 해시 체인 전체 무결성 검증 */
 export async function verifySignature(req: Request, res: Response): Promise<void> {
-  const signature = await prisma.signature.findFirst({
-    where: { noteId: req.params.noteId, status: 'valid' },
-    orderBy: { timestamp: 'desc' },
+  const { noteId } = req.params;
+
+  const signatures = await prisma.signature.findMany({
+    where: { noteId, status: 'valid' },
+    orderBy: { chainIndex: 'asc' },
   });
-  if (!signature) {
-    res.json({ noteId: req.params.noteId, verified: false, message: '유효한 서명이 없습니다.' });
+
+  if (signatures.length === 0) {
+    res.json({ noteId, verified: false, message: '유효한 서명이 없습니다.' });
     return;
   }
+
+  // 체인 무결성 검증
+  let chainIntact = true;
+  const chainErrors: string[] = [];
+
+  for (let i = 0; i < signatures.length; i++) {
+    const sig = signatures[i];
+    const expectedPrevHash = i === 0 ? null : signatures[i - 1].signatureHash;
+
+    if (sig.prevHash !== expectedPrevHash) {
+      chainIntact = false;
+      chainErrors.push(
+        `체인 인덱스 ${sig.chainIndex}: prevHash 불일치 (expected: ${expectedPrevHash}, actual: ${sig.prevHash})`
+      );
+    }
+
+    if (sig.chainIndex !== i) {
+      chainIntact = false;
+      chainErrors.push(`chainIndex 불연속: expected ${i}, got ${sig.chainIndex}`);
+    }
+  }
+
   res.json({
-    noteId: req.params.noteId,
-    verified: true,
-    signature,
-    message: '서명이 유효합니다.',
+    noteId,
+    verified: chainIntact,
+    chainLength: signatures.length,
+    latestSignature: signatures[signatures.length - 1],
+    chainErrors: chainErrors.length > 0 ? chainErrors : undefined,
+    message: chainIntact
+      ? `서명 체인이 유효합니다. (${signatures.length}개 서명)`
+      : '서명 체인 무결성 오류가 감지되었습니다.',
     verifiedAt: new Date().toISOString(),
   });
 }
@@ -92,7 +144,7 @@ export async function exportPdf(req: Request, res: Response): Promise<void> {
       status: 'pending',
     },
   });
-  // TODO: 실제 PDF 변환 큐(Bull/BullMQ) 등록
+  // TODO: BullMQ 큐 등록 (Phase 6)
   res.status(202).json({ job, message: 'PDF 변환이 요청되었습니다.' });
 }
 

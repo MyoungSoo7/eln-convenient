@@ -7,6 +7,7 @@ const router = Router();
 
 router.post('/', upload.single('file'), ctrl.uploadFile);
 router.get('/:id', ctrl.downloadFile);
+router.get('/:id/stream', ctrl.streamFile);
 router.delete('/:id', ctrl.deleteFile);
 router.get('/:id/meta', ctrl.getFileMeta);
 

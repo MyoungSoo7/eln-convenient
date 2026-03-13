@@ -1,7 +1,9 @@
 /**
  * API 클라이언트 기본 설정
- * 개발 시 mock 데이터 사용, 운영 시 게이트웨이 URL로 교체
+ * - JWT 토큰 자동 주입 (Authorization: Bearer ...)
+ * - 401 응답 시 토큰 삭제 후 /login 리디렉트
  */
+import { getToken, clearToken } from '@/lib/authToken';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -22,35 +24,38 @@ class ApiClient {
     method: string,
     path: string,
     body?: unknown,
-    headers?: Record<string, string>
+    extraHeaders?: Record<string, string>
   ): Promise<ApiResponse<T>> {
-    try {
-      const url = `${this.baseURL}${path}`;
-      const config: RequestInit = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
-        },
-      };
+    const token = getToken();
+    const url = `${this.baseURL}${path}`;
+    const config: RequestInit = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extraHeaders,
+      },
+    };
 
-      if (body && method !== 'GET') {
-        config.body = JSON.stringify(body);
-      }
-
-      const response = await fetch(url, config);
-      const data = await response.json();
-
-      if (!response.ok) {
-        return { ok: false, data: data.data, error: data.error || '요청 실패' };
-      }
-
-      return data;
-    } catch (error) {
-      // 백엔드 미연결 시 mock fallback
-      console.warn(`[API] ${method} ${path} - 백엔드 미연결, mock 데이터 사용`);
-      throw error;
+    if (body && method !== 'GET') {
+      config.body = JSON.stringify(body);
     }
+
+    const response = await fetch(url, config);
+
+    if (response.status === 401) {
+      clearToken();
+      window.location.href = '/login';
+      throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { ok: false, data: data.data, error: data.error || '요청 실패' };
+    }
+
+    return data;
   }
 
   async get<T>(path: string, params?: Record<string, string>): Promise<ApiResponse<T>> {

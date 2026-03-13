@@ -3,8 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
+import redis from '../lib/redis';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 /** POST /api/auth/login */
 export async function login(req: Request, res: Response): Promise<void> {
@@ -28,7 +30,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   const token = jwt.sign(
     { sub: user.id, email: user.email, role: user.role?.name ?? 'viewer' },
     JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
   );
   res.json({
     token,
@@ -38,15 +40,28 @@ export async function login(req: Request, res: Response): Promise<void> {
       email: user.email,
       name: user.name,
       roleId: user.roleId,
+      role: user.role?.name ?? 'viewer',
       status: user.status,
       createdAt: user.createdAt.toISOString(),
     },
   });
 }
 
-/** POST /api/auth/logout */
-export function logout(_req: Request, res: Response): void {
-  // Redis 블랙리스트는 Phase 2에서 구현
+/** POST /api/auth/logout — Redis 블랙리스트에 토큰 등록 */
+export async function logout(req: Request, res: Response): Promise<void> {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.replace('Bearer ', '');
+    try {
+      const decoded = jwt.decode(token) as { exp?: number } | null;
+      const ttl = decoded?.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 28800;
+      if (ttl > 0) {
+        await redis.set(`blacklist:${token}`, '1', 'EX', ttl);
+      }
+    } catch {
+      // Redis 오류 무시 — 로그아웃은 항상 성공
+    }
+  }
   res.json({ message: '로그아웃 완료' });
 }
 
