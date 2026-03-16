@@ -462,7 +462,7 @@ docker compose up --build
 - [x] PDF 변환 엔진 연동 (Puppeteer) — BullMQ 큐 + Puppeteer-core + MinIO presigned URL + 프론트 폴링 UI 완료
 - [x] MinIO 실제 파일 업/다운로드 — `@aws-sdk/client-s3` presigned URL + 스트리밍
 - [x] OpenSearch 인덱싱 파이프라인 — 인덱스 자동 생성 + `POST /api/search/index` 수신 API
-- [ ] Qdrant 벡터 임베딩 + RAG 파이프라인 — 미구현 (ai-assistant-service 더미 응답)
+- [x] Qdrant 벡터 임베딩 + RAG 파이프라인 — @qdrant/js-client-rest + OpenAI text-embedding-3-small + BullMQ 비동기 인덱싱 + RAG 질의 완료
 - [x] SSO/Keycloak 연동 — Keycloak 컨테이너 + realm 자동 임포트 + api-gateway 듀얼 모드(JWKS/로컬JWT) + 프론트 PKCE 리다이렉트 완료
 - [x] RBAC 미들웨어 실제 권한 검증 — JWT에 permissions 배열 포함, `requirePermission()` 전 서비스 라우트 적용 완료
 - [x] WebSocket 실시간 협업 편집 — collab-service(ws+Redis pub/sub) + NoteEditor 프레즌스 UI + 디바운스 콘텐츠 동기화 완료
