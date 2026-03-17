@@ -43,7 +43,8 @@ class ApiClient {
 
     const response = await fetch(url, config);
 
-    if (response.status === 401) {
+    // 로그인 엔드포인트의 401은 "인증 만료"가 아닌 "잘못된 자격증명"이므로 예외 처리
+    if (response.status === 401 && !path.includes('/auth/login')) {
       clearToken();
       window.location.href = '/login';
       throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
