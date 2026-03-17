@@ -64,6 +64,14 @@ export async function getFavorites(req: Request, res: Response): Promise<void> {
   const userId = req.headers['x-user-id'] as string;
   const docType = req.query.docType as string | undefined;
 
+  if (docType && !VALID_DOC_TYPES.includes(docType as any)) {
+    res.status(400).json({
+      ok: false,
+      error: `유효하지 않은 docType입니다. 가능한 값: ${VALID_DOC_TYPES.join(', ')}`,
+    });
+    return;
+  }
+
   try {
     // Prisma 타입 호환을 위해 명시적 타입 사용
     const where: { userId: string; docType?: string } = { userId };
