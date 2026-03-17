@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 
 /** GET /api/audit */
@@ -70,5 +71,40 @@ export async function listAuditActions(_req: Request, res: Response): Promise<vo
   } catch (err) {
     console.error('[listAuditActions]', err);
     res.status(500).json({ ok: false, error: '감사로그 액션 목록 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+/** POST /api/audit/internal — eln-service 전용 내부 감사로그 생성 */
+export async function createAuditLogInternal(req: Request, res: Response): Promise<void> {
+  const secret = req.headers['x-internal-secret'];
+  if (!INTERNAL_SECRET || !secret || secret !== INTERNAL_SECRET) {
+    res.status(401).json({ ok: false, error: '내부 인증 실패' });
+    return;
+  }
+
+  const { entityType, entityId, action, actorId, details, ipAddress } = req.body;
+  if (!entityType || !entityId || !action || !actorId) {
+    res.status(400).json({ ok: false, error: 'entityType, entityId, action, actorId는 필수입니다.' });
+    return;
+  }
+
+  try {
+    const log = await prisma.auditLog.create({
+      data: {
+        id: uuidv4(),
+        entityType,
+        entityId,
+        action,
+        actorId,
+        details: details ?? {},
+        ipAddress: ipAddress ?? null,
+      },
+    });
+    res.status(201).json({ ok: true, data: { id: log.id } });
+  } catch (err) {
+    console.error('[createAuditLogInternal]', err);
+    res.status(500).json({ ok: false, error: '감사로그 기록 중 오류가 발생했습니다.' });
   }
 }
