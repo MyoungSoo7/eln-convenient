@@ -1,6 +1,6 @@
 export interface ISearchResult {
   id: string;
-  type: 'note' | 'protocol' | 'inventory';
+  type: string;  // INDICES 키: notes / templates / inventory
   title: string;
   snippet: string;
   score: number;
@@ -12,4 +12,9 @@ export interface ISuggestion {
   text: string;
   type: string;
   id: string;
+}
+
+export interface IBulkDocItem {
+  id: string;
+  doc: Record<string, unknown>;
 }

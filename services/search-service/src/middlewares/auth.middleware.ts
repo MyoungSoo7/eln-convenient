@@ -21,10 +21,25 @@ export function requireRole(...roles: string[]) {
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const raw = req.headers['x-user-permissions'] as string | undefined;
-    const permissions: string[] = raw ? JSON.parse(raw) : [];
+    let permissions: string[] = [];
+    try {
+      permissions = raw ? JSON.parse(raw) : [];
+    } catch {
+      return res.status(400).json({ ok: false, error: '잘못된 권한 헤더 형식입니다.' });
+    }
     if (permissions.includes('*') || permissions.includes(permission)) {
       return next();
     }
     return res.status(403).json({ ok: false, error: `권한 부족: '${permission}' 권한이 필요합니다.` });
   };
+}
+
+/** 내부 서비스 간 호출 전용 미들웨어 (x-internal-secret 헤더 검증) */
+export function requireInternalSecret(req: Request, res: Response, next: NextFunction) {
+  const secret = req.headers['x-internal-secret'];
+  const expected = process.env.INTERNAL_SECRET || 'dev-internal-secret';
+  if (!secret || secret !== expected) {
+    return res.status(403).json({ ok: false, error: '내부 서비스 전용 엔드포인트입니다.' });
+  }
+  next();
 }
