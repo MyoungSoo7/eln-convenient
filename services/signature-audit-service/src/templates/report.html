@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>{{reportTitle}}</title>
+  <style>
+    @page { size: A4; margin: 20mm 15mm 25mm 15mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.6;
+      color: #1a1a1a;
+    }
+    .report-cover {
+      text-align: center;
+      padding: 40px 20px;
+      page-break-after: always;
+    }
+    .report-cover h1 { font-size: 22pt; margin-bottom: 12px; color: #111827; }
+    .report-cover .sub { font-size: 10pt; color: #6b7280; margin-bottom: 32px; }
+    .toc { text-align: left; max-width: 400px; margin: 0 auto; }
+    .toc-title { font-size: 12pt; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    .toc-item { padding: 6px 0; font-size: 10pt; color: #374151; border-bottom: 1px dotted #e5e7eb; }
+    .toc-item span { color: #6b7280; font-size: 9pt; margin-left: 8px; }
+    .note-section { page-break-before: always; }
+    .note-section:first-of-type { page-break-before: avoid; }
+    .doc-header { border-bottom: 2px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 20px; }
+    .doc-title { font-size: 16pt; font-weight: 700; color: #111827; margin-bottom: 6px; }
+    .doc-meta { font-size: 8.5pt; color: #6b7280; margin-bottom: 8px; }
+    .section { margin-bottom: 18px; page-break-inside: avoid; }
+    .section-title { font-size: 12pt; font-weight: 700; border-left: 3px solid #1d4ed8; padding-left: 8px; margin-bottom: 8px; }
+    .section-content { padding-left: 11px; white-space: pre-wrap; word-break: break-word; }
+    .doc-footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 7.5pt; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="report-cover">
+    <h1>{{reportTitle}}</h1>
+    <p class="sub">종합 보고서 · 출력일 {{printedAt}}</p>
+    <div class="toc">
+      <div class="toc-title">목차</div>
+      {{#each notes}}
+      <div class="toc-item">{{this.note.title}} <span>{{this.note.updatedAt}}</span></div>
+      {{/each}}
+    </div>
+  </div>
+
+  {{#each notes}}
+  <div class="note-section">
+    <div class="doc-header">
+      <div class="doc-title">{{this.note.title}}</div>
+      <div class="doc-meta">작성자 {{this.note.authorId}} · 작성일 {{this.note.createdAt}} · 최종수정 {{this.note.updatedAt}}</div>
+    </div>
+    {{#each this.sections}}
+    <div class="section">
+      <div class="section-title">{{this.title}}</div>
+      <div class="section-content">{{this.content}}</div>
+    </div>
+    {{/each}}
+    <div class="doc-footer">LabNote ELN | {{this.note.title}}</div>
+  </div>
+  {{/each}}
+</body>
+</html>
