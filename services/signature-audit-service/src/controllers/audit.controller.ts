@@ -74,12 +74,12 @@ export async function listAuditActions(_req: Request, res: Response): Promise<vo
   }
 }
 
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
-
 /** POST /api/audit/internal — eln-service 전용 내부 감사로그 생성 */
 export async function createAuditLogInternal(req: Request, res: Response): Promise<void> {
+  // 매 요청마다 live env 값으로 검증 (모듈 로드 시 캡처 방지)
+  const internalSecret = process.env.INTERNAL_SECRET;
   const secret = req.headers['x-internal-secret'];
-  if (!INTERNAL_SECRET || !secret || secret !== INTERNAL_SECRET) {
+  if (!internalSecret || !secret || secret !== internalSecret) {
     res.status(401).json({ ok: false, error: '내부 인증 실패' });
     return;
   }
@@ -93,13 +93,13 @@ export async function createAuditLogInternal(req: Request, res: Response): Promi
   try {
     const log = await prisma.auditLog.create({
       data: {
-        id: uuidv4(),
         entityType,
         entityId,
         action,
         actorId,
         details: details ?? {},
         ipAddress: ipAddress ?? null,
+        // id, createdAt: DB default 사용
       },
     });
     res.status(201).json({ ok: true, data: { id: log.id } });
