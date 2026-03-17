@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import https from 'https';
 import http from 'http';
 import prisma from '../lib/prisma';
+import { callAuditLog, AuditServiceError } from '../lib/audit';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
@@ -167,6 +168,26 @@ export async function createNote(req: Request, res: Response): Promise<void> {
       });
     }
 
+    // audit 기록 (실패 시 보상 삭제 후 503)
+    try {
+      await callAuditLog({
+        entityType: 'note',
+        entityId: note.id,
+        action: 'note.created',
+        actorId: authorId,
+        details: { type: noteType, title: note.title, templateId: templateId || null },
+        ipAddress: req.ip,
+      });
+    } catch (auditErr) {
+      if (auditErr instanceof AuditServiceError) {
+        await prisma.note.delete({ where: { id: note.id } }).catch((e: Error) => {
+          console.error('[AUDIT_ORPHAN] note 보상 삭제 실패', { noteId: note.id, err: e.message });
+        });
+        res.status(503).json({ ok: false, error: '서버 장애가 발생했습니다.' });
+        return;
+      }
+      throw auditErr;
+    }
     res.status(201).json({ ok: true, data: note });
   } catch (err) {
     console.error('[createNote]', err);
@@ -218,6 +239,23 @@ export async function updateNote(req: Request, res: Response): Promise<void> {
       },
     });
 
+    try {
+      await callAuditLog({
+        entityType: 'note',
+        entityId: req.params.id,
+        action: 'note.updated',
+        actorId: userId,
+        details: { changedFields: Object.keys(req.body).filter(k => ['title','content','sections','tags'].includes(k)) },
+        ipAddress: req.ip,
+      });
+    } catch (auditErr) {
+      if (auditErr instanceof AuditServiceError) {
+        console.error('[AUDIT_ORPHAN] note.updated audit 실패 (이미 변경됨)', { noteId: req.params.id });
+        res.status(503).json({ ok: false, error: '서버 장애가 발생했습니다.' });
+        return;
+      }
+      throw auditErr;
+    }
     res.json({ ok: true, data: updated });
   } catch (err) {
     console.error('[updateNote]', err);
@@ -245,6 +283,23 @@ export async function deleteNote(req: Request, res: Response): Promise<void> {
     }
 
     await prisma.note.delete({ where: { id: req.params.id } });
+    try {
+      await callAuditLog({
+        entityType: 'note',
+        entityId: req.params.id,
+        action: 'note.deleted',
+        actorId: userId,
+        details: { title: existing.title },
+        ipAddress: req.ip,
+      });
+    } catch (auditErr) {
+      if (auditErr instanceof AuditServiceError) {
+        console.error('[AUDIT_ORPHAN] note.deleted audit 실패 (이미 삭제됨)', { noteId: req.params.id });
+        res.status(503).json({ ok: false, error: '서버 장애가 발생했습니다.' });
+        return;
+      }
+      throw auditErr;
+    }
     res.json({ ok: true, message: '노트가 삭제되었습니다.', id: req.params.id });
   } catch (err) {
     console.error('[deleteNote]', err);
@@ -278,6 +333,24 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
       data: { status: newStatus },
     });
 
+    const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
+    try {
+      await callAuditLog({
+        entityType: 'note',
+        entityId: req.params.id,
+        action: 'note.status_changed',
+        actorId,
+        details: { from: note.status, to: newStatus },
+        ipAddress: req.ip,
+      });
+    } catch (auditErr) {
+      if (auditErr instanceof AuditServiceError) {
+        console.error('[AUDIT_ORPHAN] note.status_changed audit 실패', { noteId: req.params.id });
+        res.status(503).json({ ok: false, error: '서버 장애가 발생했습니다.' });
+        return;
+      }
+      throw auditErr;
+    }
     res.json({ ok: true, data: updated, message: `상태가 "${newStatus}"(으)로 변경되었습니다.` });
   } catch (err) {
     console.error('[changeNoteStatus]', err);
@@ -319,6 +392,23 @@ export async function adminUnlockNote(req: Request, res: Response): Promise<void
       data: { status: 'draft' },
     });
 
+    try {
+      await callAuditLog({
+        entityType: 'note',
+        entityId: req.params.id,
+        action: 'note.admin_unlocked',
+        actorId: adminId,
+        details: { reason: reason || '관리자 잠금 해제' },
+        ipAddress: req.ip,
+      });
+    } catch (auditErr) {
+      if (auditErr instanceof AuditServiceError) {
+        console.error('[AUDIT_ORPHAN] note.admin_unlocked audit 실패', { noteId: req.params.id });
+        res.status(503).json({ ok: false, error: '서버 장애가 발생했습니다.' });
+        return;
+      }
+      throw auditErr;
+    }
     res.json({
       ok: true,
       data: updated,
