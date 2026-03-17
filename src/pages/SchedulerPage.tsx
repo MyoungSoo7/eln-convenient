@@ -1,27 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Clock } from "lucide-react";
-import { mockBookings } from "@/lib/mockData";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { toast } from "@/hooks/use-toast";
+import { listResources, listBookings, createBooking, type Resource, type BackendBooking } from "@/api/scheduler";
 
-const days = ["일", "월", "화", "수", "목", "금", "토"];
+const days = ["월", "화", "수", "목", "금", "토", "일"];
 const hours = Array.from({ length: 10 }, (_, i) => `${(i + 8).toString().padStart(2, "0")}:00`);
-const statusLabels: Record<string, string> = { pending: "대기", approved: "승인", rejected: "거절", cancelled: "취소" };
-const statusColors: Record<string, string> = {
-  pending: "bg-warning/10 text-warning border-warning/30", approved: "bg-success/10 text-success border-success/30",
-  rejected: "bg-destructive/10 text-destructive", cancelled: "bg-muted text-muted-foreground",
-};
 
-function getWeekDates(offset: number) {
+const statusLabels: Record<string, string> = {
+  pending: "대기", approved: "승인", rejected: "거절", cancelled: "취소",
+};
+const statusColors: Record<string, string> = {
+  pending: "bg-warning/10 text-warning border-warning/30",
+  approved: "bg-success/10 text-success border-success/30",
+  rejected: "bg-destructive/10 text-destructive",
+  cancelled: "bg-muted text-muted-foreground",
+};
+const typeLabels: Record<string, string> = { equipment: "장비", room: "회의실" };
+
+// ISO datetime → "YYYY-MM-DD" (로컬 시간 기준)
+function toLocalDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+}
+
+// ISO datetime → "HH:MM" (로컬 시간 기준)
+function toLocalHHMM(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function getWeekDates(offset: number): Date[] {
   const today = new Date();
   const start = new Date(today);
-  start.setDate(today.getDate() - today.getDay() + 1 + offset * 7);
+  // 월요일 기준 주
+  const day = today.getDay() === 0 ? 6 : today.getDay() - 1;
+  start.setDate(today.getDate() - day + offset * 7);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
@@ -29,16 +50,89 @@ function getWeekDates(offset: number) {
   });
 }
 
+function formatDate(d: Date): string {
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+}
+
 export default function SchedulerPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
-  const weekDates = getWeekDates(weekOffset);
+  const [submitting, setSubmitting] = useState(false);
 
-  const formatDate = (d: Date) => `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [bookings, setBookings] = useState<BackendBooking[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // 예약 폼
+  const [formResourceId, setFormResourceId] = useState("");
+  const [formTitle, setFormTitle] = useState("");
+  const [formDate, setFormDate] = useState(formatDate(new Date()));
+  const [formStartTime, setFormStartTime] = useState("09:00");
+  const [formEndTime, setFormEndTime] = useState("12:00");
+
+  const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const [resRes, bookRes] = await Promise.all([listResources(), listBookings()]);
+    if (resRes.ok) setResources(resRes.data);
+    if (bookRes.ok) setBookings(bookRes.data);
+    setLoading(false);
+  }
+
+  const resetForm = () => {
+    setFormResourceId("");
+    setFormTitle("");
+    setFormDate(formatDate(new Date()));
+    setFormStartTime("09:00");
+    setFormEndTime("12:00");
+  };
+
+  const handleCreate = async () => {
+    if (!formResourceId) {
+      toast({ title: "장비/회의실을 선택해주세요.", variant: "destructive" });
+      return;
+    }
+    if (!formTitle.trim()) {
+      toast({ title: "예약 목적을 입력해주세요.", variant: "destructive" });
+      return;
+    }
+    if (formStartTime >= formEndTime) {
+      toast({ title: "종료 시간이 시작 시간보다 늦어야 합니다.", variant: "destructive" });
+      return;
+    }
+
+    const startTime = new Date(`${formDate}T${formStartTime}:00`).toISOString();
+    const endTime = new Date(`${formDate}T${formEndTime}:00`).toISOString();
+
+    setSubmitting(true);
+    const res = await createBooking({ resourceId: formResourceId, title: formTitle, startTime, endTime });
+    setSubmitting(false);
+
+    if (res.ok) {
+      const resource = resources.find((r) => r.id === formResourceId);
+      const newBooking: BackendBooking = {
+        ...res.data,
+        resource: resource ? { id: resource.id, name: resource.name, type: resource.type } : undefined,
+      };
+      setBookings((prev) => [newBooking, ...prev]);
+      toast({ title: "예약 생성 완료", description: `${resource?.name || ""} 예약이 등록되었습니다. (대기 중)` });
+      setNewBookingOpen(false);
+      resetForm();
+    } else {
+      toast({ title: "예약 실패", description: res.error || "예약 생성에 실패했습니다.", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
+      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -47,73 +141,125 @@ export default function SchedulerPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">장비 및 회의실 예약 관리</p>
         </div>
-        <Dialog open={newBookingOpen} onOpenChange={setNewBookingOpen}>
-          <DialogTrigger asChild>
-            <Button className="gradient-primary text-primary-foreground gap-2"><Plus className="h-4 w-4" /> 예약 생성</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                예약 생성
-                <HelpTooltip text="장비 또는 회의실을 선택하고 날짜, 시간, 사용 목적을 입력하여 예약을 생성합니다. 관리자 승인 후 확정됩니다." />
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>장비 / 회의실</Label>
-                <Select><SelectTrigger><SelectValue placeholder="선택하세요" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="neon">Neon Transfection System</SelectItem>
-                    <SelectItem value="facs">BD FACSCanto II</SelectItem>
-                    <SelectItem value="confocal">Confocal Microscope</SelectItem>
-                    <SelectItem value="room">A동 세미나실</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>날짜</Label>
-                <Input type="date" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={loadData} className="gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> 새로고침
+          </Button>
+          <Dialog open={newBookingOpen} onOpenChange={(open) => { setNewBookingOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gradient-primary text-primary-foreground gap-2">
+                <Plus className="h-4 w-4" /> 예약 생성
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  예약 생성
+                  <HelpTooltip text="장비 또는 회의실을 선택하고 날짜, 시간, 사용 목적을 입력하여 예약을 생성합니다. 관리자 승인 후 확정됩니다." />
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>시작 시간</Label>
-                  <Input type="time" defaultValue="09:00" step="600" />
+                  <Label>장비 / 회의실 <span className="text-destructive">*</span></Label>
+                  <Select value={formResourceId} onValueChange={setFormResourceId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="선택하세요" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {resources.length === 0 ? (
+                        <SelectItem value="_none" disabled>자원이 없습니다</SelectItem>
+                      ) : (
+                        resources.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            <span className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-[10px]">{typeLabels[r.type] || r.type}</Badge>
+                              {r.name}
+                              {r.location && <span className="text-muted-foreground text-xs">· {r.location}</span>}
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>종료 시간</Label>
-                  <Input type="time" defaultValue="12:00" step="600" />
+                  <Label>예약 목적 <span className="text-destructive">*</span></Label>
+                  <Input
+                    placeholder="예: CRISPR 실험 장비 사용"
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>날짜 <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="date"
+                    value={formDate}
+                    min={formatDate(new Date())}
+                    onChange={(e) => setFormDate(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>시작 시간</Label>
+                    <Input
+                      type="time"
+                      value={formStartTime}
+                      step="600"
+                      onChange={(e) => setFormStartTime(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>종료 시간</Label>
+                    <Input
+                      type="time"
+                      value={formEndTime}
+                      step="600"
+                      onChange={(e) => setFormEndTime(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2"><Label>목적</Label><Input placeholder="사용 목적" /></div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNewBookingOpen(false)}>취소</Button>
-              <Button onClick={() => { setNewBookingOpen(false); }} className="gradient-primary text-primary-foreground">예약하기</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setNewBookingOpen(false); resetForm(); }}>취소</Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={submitting}
+                  className="gradient-primary text-primary-foreground"
+                >
+                  {submitting ? "처리 중..." : "예약하기"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Week Navigation */}
+      {/* 주간 네비게이션 */}
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={() => setWeekOffset(0)}>오늘</Button>
-        <Button variant="ghost" size="icon" onClick={() => setWeekOffset(weekOffset - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" onClick={() => setWeekOffset(weekOffset + 1)}><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" onClick={() => setWeekOffset(weekOffset - 1)}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => setWeekOffset(weekOffset + 1)}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
         <span className="text-sm font-medium">
-          {weekDates[0].getMonth() + 1}월 {weekDates[0].getDate()}일 – {weekDates[6].getMonth() + 1}월 {weekDates[6].getDate()}일
+          {weekDates[0].getMonth() + 1}월 {weekDates[0].getDate()}일 –{" "}
+          {weekDates[6].getMonth() + 1}월 {weekDates[6].getDate()}일
         </span>
-        <HelpTooltip text="화살표 버튼으로 이전/다음 주를 탐색하고, '오늘' 버튼으로 현재 주로 돌아옵니다." />
+        <HelpTooltip text="화살표로 이전/다음 주를 탐색하고, '오늘' 버튼으로 현재 주로 돌아옵니다." />
       </div>
 
-      {/* Calendar Grid */}
+      {/* 캘린더 그리드 */}
       <Card className="shadow-card overflow-hidden">
         <CardContent className="p-0">
           <div className="grid grid-cols-8 border-b">
             <div className="p-3 text-xs text-muted-foreground border-r" />
             {weekDates.map((d, i) => (
-              <div key={i} className={`p-3 text-center border-r last:border-r-0 ${isToday(d) ? 'bg-primary/5' : ''}`}>
-                <p className="text-xs text-muted-foreground">{days[(i + 1) % 7]}</p>
-                <p className={`text-sm font-semibold mt-0.5 ${isToday(d) ? 'text-primary' : ''}`}>{d.getDate()}</p>
+              <div key={i} className={`p-3 text-center border-r last:border-r-0 ${isToday(d) ? "bg-primary/5" : ""}`}>
+                <p className="text-xs text-muted-foreground">{days[i]}</p>
+                <p className={`text-sm font-semibold mt-0.5 ${isToday(d) ? "text-primary" : ""}`}>{d.getDate()}</p>
               </div>
             ))}
           </div>
@@ -124,13 +270,20 @@ export default function SchedulerPage() {
               </div>
               {weekDates.map((d, i) => {
                 const dateStr = formatDate(d);
-                const booking = mockBookings.find((b) => b.date === dateStr && b.startTime <= hour && b.endTime > hour);
+                const booking = bookings.find((b) => {
+                  const bDate = toLocalDate(b.startTime);
+                  const bStart = toLocalHHMM(b.startTime);
+                  const bEnd = toLocalHHMM(b.endTime);
+                  return bDate === dateStr && bStart <= hour && bEnd > hour;
+                });
                 return (
-                  <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? 'bg-primary/5' : ''}`}>
-                    {booking && booking.startTime === hour && (
+                  <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
+                    {booking && toLocalHHMM(booking.startTime) === hour && (
                       <div className={`rounded p-1.5 text-[10px] border ${statusColors[booking.status]}`}>
-                        <p className="font-medium truncate">{booking.resourceName}</p>
-                        <p className="opacity-70">{booking.user}</p>
+                        <p className="font-medium truncate">
+                          {booking.resource?.name || booking.resourceId}
+                        </p>
+                        <p className="opacity-70 truncate">{booking.title}</p>
                       </div>
                     )}
                   </div>
@@ -141,27 +294,52 @@ export default function SchedulerPage() {
         </CardContent>
       </Card>
 
-      {/* Upcoming List */}
+      {/* 예약 목록 */}
       <Card className="shadow-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             예약 목록
             <HelpTooltip text="모든 예약의 상세 목록입니다. 상태(대기/승인/거절/취소)를 한눈에 확인할 수 있습니다." />
+            {bookings.length > 0 && (
+              <span className="text-xs text-muted-foreground font-normal ml-1">({bookings.length}건)</span>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {mockBookings.map((b) => (
-            <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-              <div className={`p-2 rounded-lg ${statusColors[b.status]}`}>
-                <CalendarDays className="h-4 w-4" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">{b.resourceName}</p>
-                <p className="text-xs text-muted-foreground">{b.date} · {b.startTime}–{b.endTime} · {b.user}</p>
-              </div>
-              <Badge className={`text-[10px] ${statusColors[b.status]}`}>{statusLabels[b.status]}</Badge>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
+          ) : bookings.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              예약이 없습니다. 새 예약을 생성해보세요.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {bookings.map((b) => (
+                <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className={`p-2 rounded-lg ${statusColors[b.status]}`}>
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{b.resource?.name || b.resourceId}</p>
+                      {b.resource?.type && (
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                          {typeLabels[b.resource.type] || b.resource.type}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{b.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {toLocalDate(b.startTime)} · {toLocalHHMM(b.startTime)}–{toLocalHHMM(b.endTime)}
+                    </p>
+                  </div>
+                  <Badge className={`text-[10px] shrink-0 ${statusColors[b.status]}`}>
+                    {statusLabels[b.status]}
+                  </Badge>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </CardContent>
       </Card>
     </div>
