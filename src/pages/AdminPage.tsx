@@ -47,7 +47,11 @@ export default function AdminPage() {
   });
 
   const createUserMutation = useMutation({
-    mutationFn: (payload: CreateUserPayload) => createUser(payload),
+    mutationFn: async (payload: CreateUserPayload) => {
+      const res = await createUser(payload);
+      if (!res.ok) throw new Error(res.error ?? '사용자 추가에 실패했습니다.');
+      return res.data;
+    },
     onSuccess: () => {
       toast({ title: '사용자 추가 완료' });
       setAddUserOpen(false);
