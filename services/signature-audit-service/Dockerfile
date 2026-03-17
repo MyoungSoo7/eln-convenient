@@ -2,6 +2,7 @@ FROM node:20-alpine
 
 # Puppeteer용 Chromium + 한국어 폰트
 RUN apk add --no-cache \
+    openssl \
     chromium \
     nss \
     freetype \
@@ -19,7 +20,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npx prisma generate
-RUN npm run build
+RUN npx prisma generate && npm run build && cp -r src/templates dist/templates
 EXPOSE 8003
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]

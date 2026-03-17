@@ -1,12 +1,12 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-export const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+export const redisConnection: any = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null, // BullMQ 필수 설정
   enableReadyCheck: false,
 });
 
-redisConnection.on('error', (err) => {
+redisConnection.on('error', (err: any) => {
   console.error('[signature-audit-service] Redis 연결 오류:', err.message);
 });
 

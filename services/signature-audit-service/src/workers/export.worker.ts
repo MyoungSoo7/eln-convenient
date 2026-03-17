@@ -23,7 +23,7 @@ const template = Handlebars.compile(templateSrc);
 async function fetchNote(noteId: string): Promise<any> {
   const res = await fetch(`${ELN_URL}/api/notes/${noteId}`);
   if (!res.ok) throw new Error(`노트 조회 실패: ${noteId} (${res.status})`);
-  const body = await res.json();
+  const body = await res.json() as any;
   return body.data ?? body;
 }
 
@@ -192,7 +192,7 @@ exportWorker.on('failed', (job, err) => {
   if (job?.data?.jobId) {
     prisma.exportJob.update({
       where: { id: job.data.jobId },
-      data: { status: 'failed' },
+      data: { status: 'failed', errorMsg: err.message.slice(0, 500) },
     }).catch(() => {});
   }
 });

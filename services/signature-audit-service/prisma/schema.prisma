@@ -38,9 +38,12 @@ model AuditLog {
 model ExportJob {
   id          String       @id @default(uuid())
   noteId      String
+  noteIds     String[]     @default([])  // zip 일 때 복수 노트
   format      ExportFormat
   status      ExportStatus @default(pending)
+  requestedBy String       @default("")
   fileUrl     String?
+  errorMsg    String?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
 }

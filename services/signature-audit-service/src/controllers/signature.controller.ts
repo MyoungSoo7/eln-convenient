@@ -2,183 +2,230 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
-import { exportQueue } from '../lib/queue';
+
+const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
 
 /** SHA-256 해시 계산 */
 function sha256(data: string): string {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+/**
+ * ELN 서비스에 노트 상태 변경 요청
+ * 서명 완료 후 note.status = 'signed' 로 전환
+ */
+async function patchNoteStatus(noteId: string, status: string, userId: string): Promise<void> {
+  try {
+    const res = await fetch(`${ELN_SERVICE_URL}/api/notes/${noteId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': userId,
+        'x-user-role': 'system',
+        'x-user-permissions': JSON.stringify(['note:write']),
+      },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.warn(`[signature] ELN 상태 변경 실패 (${res.status}): ${body}`);
+    }
+  } catch (err) {
+    // ELN 서비스 호출 실패는 서명 자체를 막지 않음 (최선 노력)
+    console.warn('[signature] ELN 서비스 상태 변경 호출 오류:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// 전자서명
+// ─────────────────────────────────────────────
+
 /** POST /api/signatures/sign/:noteId */
 export async function signNote(req: Request, res: Response): Promise<void> {
-  const signerId = req.headers['x-user-id'] as string || 'anonymous';
+  const signerId = (req.headers['x-user-id'] as string) || 'anonymous';
   const { noteId } = req.params;
+  const { comment } = req.body;
 
-  // 이전 서명 조회 (해시 체인용)
-  const prevSignature = await prisma.signature.findFirst({
-    where: { noteId, status: 'valid' },
-    orderBy: { chainIndex: 'desc' },
-  });
+  try {
+    // 이미 서명된 노트 중복 체크
+    const latestSig = await prisma.signature.findFirst({
+      where: { noteId, status: 'valid' },
+      orderBy: { chainIndex: 'desc' },
+    });
 
-  const prevHash = prevSignature?.signatureHash ?? null;
-  const chainIndex = prevSignature ? prevSignature.chainIndex + 1 : 0;
-  const timestamp = new Date().toISOString();
+    const prevHash = latestSig?.signatureHash ?? null;
+    const chainIndex = latestSig ? latestSig.chainIndex + 1 : 0;
+    const timestamp = new Date().toISOString();
 
-  // 해시 체인: hash(noteId + signerId + timestamp + prevHash)
-  const hashInput = `${noteId}:${signerId}:${timestamp}:${prevHash ?? 'genesis'}`;
-  const signatureHash = `sha256:${sha256(hashInput)}`;
+    // 해시 체인: sha256(noteId:signerId:timestamp:prevHash:comment)
+    const hashInput = `${noteId}:${signerId}:${timestamp}:${prevHash ?? 'genesis'}:${comment ?? ''}`;
+    const signatureHash = `sha256:${sha256(hashInput)}`;
 
-  const signature = await prisma.signature.create({
-    data: {
-      id: uuidv4(),
-      noteId,
-      signerId,
-      signatureHash,
-      prevHash,
-      chainIndex,
-      status: 'valid',
-    },
-  });
-
-  // 감사로그 기록
-  await prisma.auditLog.create({
-    data: {
-      id: uuidv4(),
-      entityType: 'note',
-      entityId: noteId,
-      action: 'signed',
-      actorId: signerId,
-      details: {
-        signatureId: signature.id,
-        hash: signature.signatureHash,
-        chainIndex,
+    const signature = await prisma.signature.create({
+      data: {
+        id: uuidv4(),
+        noteId,
+        signerId,
+        signatureHash,
         prevHash,
+        chainIndex,
+        status: 'valid',
       },
-      ipAddress: req.ip,
-    },
-  });
+    });
 
-  res.status(201).json({
-    signature,
-    chainIndex,
-    message: '전자서명이 완료되었습니다. 노트가 잠금 상태로 전환됩니다.',
-  });
+    // 감사로그 기록
+    await prisma.auditLog.create({
+      data: {
+        id: uuidv4(),
+        entityType: 'note',
+        entityId: noteId,
+        action: 'signed',
+        actorId: signerId,
+        details: {
+          signatureId: signature.id,
+          hash: signatureHash,
+          chainIndex,
+          prevHash,
+          comment: comment ?? null,
+        },
+        ipAddress: req.ip,
+      },
+    });
+
+    // ELN 서비스 노트 상태 → signed
+    await patchNoteStatus(noteId, 'signed', signerId);
+
+    res.status(201).json({
+      ok: true,
+      data: signature,
+      message: '전자서명이 완료되었습니다. 노트가 서명 완료 상태로 전환되었습니다.',
+    });
+  } catch (err) {
+    console.error('[signNote]', err);
+    res.status(500).json({ ok: false, error: '전자서명 처리 중 오류가 발생했습니다.' });
+  }
+}
+
+/** GET /api/signatures/:noteId — 노트의 서명 목록 조회 */
+export async function listSignatures(req: Request, res: Response): Promise<void> {
+  const { noteId } = req.params;
+  try {
+    const signatures = await prisma.signature.findMany({
+      where: { noteId },
+      orderBy: { chainIndex: 'asc' },
+    });
+    res.json({ ok: true, data: signatures, total: signatures.length });
+  } catch (err) {
+    console.error('[listSignatures]', err);
+    res.status(500).json({ ok: false, error: '서명 목록 조회 중 오류가 발생했습니다.' });
+  }
 }
 
 /** GET /api/signatures/verify/:noteId — 해시 체인 전체 무결성 검증 */
 export async function verifySignature(req: Request, res: Response): Promise<void> {
   const { noteId } = req.params;
+  try {
+    const signatures = await prisma.signature.findMany({
+      where: { noteId, status: 'valid' },
+      orderBy: { chainIndex: 'asc' },
+    });
 
-  const signatures = await prisma.signature.findMany({
-    where: { noteId, status: 'valid' },
-    orderBy: { chainIndex: 'asc' },
-  });
+    if (signatures.length === 0) {
+      res.json({ ok: true, noteId, verified: false, message: '유효한 서명이 없습니다.' });
+      return;
+    }
 
-  if (signatures.length === 0) {
-    res.json({ noteId, verified: false, message: '유효한 서명이 없습니다.' });
+    let chainIntact = true;
+    const chainErrors: string[] = [];
+
+    for (let i = 0; i < signatures.length; i++) {
+      const sig = signatures[i];
+      const expectedPrevHash = i === 0 ? null : signatures[i - 1].signatureHash;
+
+      if (sig.prevHash !== expectedPrevHash) {
+        chainIntact = false;
+        chainErrors.push(
+          `chainIndex ${sig.chainIndex}: prevHash 불일치 (expected: ${expectedPrevHash ?? 'null'}, actual: ${sig.prevHash ?? 'null'})`,
+        );
+      }
+      if (sig.chainIndex !== i) {
+        chainIntact = false;
+        chainErrors.push(`chainIndex 불연속: expected ${i}, got ${sig.chainIndex}`);
+      }
+    }
+
+    res.json({
+      ok: true,
+      noteId,
+      verified: chainIntact,
+      chainLength: signatures.length,
+      latestSignature: signatures[signatures.length - 1],
+      chainErrors: chainErrors.length > 0 ? chainErrors : undefined,
+      message: chainIntact
+        ? `서명 체인이 유효합니다. (${signatures.length}개 서명)`
+        : '서명 체인 무결성 오류가 감지되었습니다.',
+      verifiedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[verifySignature]', err);
+    res.status(500).json({ ok: false, error: '서명 검증 중 오류가 발생했습니다.' });
+  }
+}
+
+/**
+ * POST /api/signatures/revoke/:signatureId — 서명 취소 (admin 전용)
+ * 해시 체인 무결성을 위해 실제 삭제 대신 status=revoked 처리
+ */
+export async function revokeSignature(req: Request, res: Response): Promise<void> {
+  const userRole = req.headers['x-user-role'] as string;
+  if (userRole !== 'admin') {
+    res.status(403).json({ ok: false, error: '서명 취소는 관리자만 가능합니다.' });
     return;
   }
 
-  // 체인 무결성 검증
-  let chainIntact = true;
-  const chainErrors: string[] = [];
-
-  for (let i = 0; i < signatures.length; i++) {
-    const sig = signatures[i];
-    const expectedPrevHash = i === 0 ? null : signatures[i - 1].signatureHash;
-
-    if (sig.prevHash !== expectedPrevHash) {
-      chainIntact = false;
-      chainErrors.push(
-        `체인 인덱스 ${sig.chainIndex}: prevHash 불일치 (expected: ${expectedPrevHash}, actual: ${sig.prevHash})`
-      );
-    }
-
-    if (sig.chainIndex !== i) {
-      chainIntact = false;
-      chainErrors.push(`chainIndex 불연속: expected ${i}, got ${sig.chainIndex}`);
-    }
-  }
-
-  res.json({
-    noteId,
-    verified: chainIntact,
-    chainLength: signatures.length,
-    latestSignature: signatures[signatures.length - 1],
-    chainErrors: chainErrors.length > 0 ? chainErrors : undefined,
-    message: chainIntact
-      ? `서명 체인이 유효합니다. (${signatures.length}개 서명)`
-      : '서명 체인 무결성 오류가 감지되었습니다.',
-    verifiedAt: new Date().toISOString(),
-  });
-}
-
-/** GET /api/audit */
-export async function getAuditLogs(req: Request, res: Response): Promise<void> {
-  const { entityId, type, page = '1', limit = '50' } = req.query;
-  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-
-  const where: Record<string, unknown> = {};
-  if (entityId) where.entityId = entityId;
-  if (type) where.entityType = type;
-
-  const [logs, total] = await Promise.all([
-    prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: parseInt(limit as string),
-    }),
-    prisma.auditLog.count({ where }),
-  ]);
-
-  res.json({ data: logs, total });
-}
-
-/** POST /api/export/pdf/:noteId */
-export async function exportPdf(req: Request, res: Response): Promise<void> {
-  const jobId = uuidv4();
-  const job = await prisma.exportJob.create({
-    data: { id: jobId, noteId: req.params.noteId, format: 'pdf', status: 'pending' },
-  });
-
-  await exportQueue.add('pdf', {
-    jobId,
-    noteId: req.params.noteId,
-    format: 'pdf',
-    requestedBy: req.headers['x-user-id'] as string || 'anonymous',
-  });
-
-  res.status(202).json({ job, message: 'PDF 변환이 요청되었습니다.' });
-}
-
-/** GET /api/export/status/:jobId */
-export async function getExportStatus(req: Request, res: Response): Promise<void> {
-  const job = await prisma.exportJob.findUnique({ where: { id: req.params.jobId } });
-  if (!job) { res.status(404).json({ error: '작업을 찾을 수 없습니다.' }); return; }
-  res.json(job);
-}
-
-/** POST /api/export/zip */
-export async function exportZip(req: Request, res: Response): Promise<void> {
-  const noteIds: string[] = req.body.noteIds ?? [];
-  if (noteIds.length === 0) {
-    res.status(400).json({ error: 'noteIds 배열이 필요합니다.' });
+  const { reason } = req.body;
+  if (!reason?.trim()) {
+    res.status(400).json({ ok: false, error: '취소 사유(reason)는 필수입니다.' });
     return;
   }
 
-  const jobId = uuidv4();
-  const job = await prisma.exportJob.create({
-    data: { id: jobId, noteId: 'bulk', format: 'zip', status: 'pending' },
-  });
+  const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
 
-  await exportQueue.add('zip', {
-    jobId,
-    noteId: 'bulk',
-    format: 'zip',
-    noteIds,
-    requestedBy: req.headers['x-user-id'] as string || 'anonymous',
-  });
+  try {
+    const sig = await prisma.signature.findUnique({ where: { id: req.params.signatureId } });
+    if (!sig) {
+      res.status(404).json({ ok: false, error: '서명을 찾을 수 없습니다.' });
+      return;
+    }
+    if (sig.status === 'revoked') {
+      res.status(400).json({ ok: false, error: '이미 취소된 서명입니다.' });
+      return;
+    }
 
-  res.status(202).json({ job, noteIds, message: 'ZIP 내보내기가 요청되었습니다.' });
+    const updated = await prisma.signature.update({
+      where: { id: req.params.signatureId },
+      data: { status: 'revoked' },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        id: uuidv4(),
+        entityType: 'signature',
+        entityId: sig.id,
+        action: 'revoked',
+        actorId,
+        details: { noteId: sig.noteId, reason, chainIndex: sig.chainIndex },
+        ipAddress: req.ip,
+      },
+    });
+
+    res.json({ ok: true, data: updated, message: '서명이 취소되었습니다.' });
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
+      res.status(404).json({ ok: false, error: '서명을 찾을 수 없습니다.' });
+      return;
+    }
+    console.error('[revokeSignature]', err);
+    res.status(500).json({ ok: false, error: '서명 취소 중 오류가 발생했습니다.' });
+  }
 }

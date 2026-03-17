@@ -6,7 +6,9 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get('/',    requirePermission('audit:read'), ctrl.listAuditLogs);
-router.get('/:id', requirePermission('audit:read'), ctrl.getAuditLog);
+// actions는 /:id 보다 먼저 등록
+router.get('/actions', requirePermission('audit:read'), ctrl.listAuditActions);
+router.get('/',        requirePermission('audit:read'), ctrl.listAuditLogs);
+router.get('/:id',     requirePermission('audit:read'), ctrl.getAuditLog);
 
 export default router;

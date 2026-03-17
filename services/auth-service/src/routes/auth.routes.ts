@@ -1,29 +1,46 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/auth.controller';
+import { requireAuth, requireRole } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// 인증
+// ─── 공개 (인증 불필요) ───────────────────────────
 router.post('/login', ctrl.login);
+router.post('/register', ctrl.register);
+
+// ─── SSO 훅 (Keycloak → auth-service, 시크릿으로 보호) ───
+router.post('/sso-hook', ctrl.ssoHook);
+
+// ─── 이하 모든 라우트: 로그인 필요 ──────────────────
+router.use(requireAuth);
+
+// 내 정보
 router.post('/logout', ctrl.logout);
 router.get('/me', ctrl.getMe);
 
-// 조직
+// 조직 (읽기: 인증만, 쓰기/삭제: admin)
 router.get('/orgs', ctrl.getOrgs);
-router.post('/orgs', ctrl.createOrg);
+router.post('/orgs', requireRole('admin'), ctrl.createOrg);
+router.delete('/orgs/:id', requireRole('admin'), ctrl.deleteOrg);
 
-// 팀
+// 팀 (읽기: 인증만, 쓰기/삭제: admin)
 router.get('/teams', ctrl.getTeams);
-router.post('/teams', ctrl.createTeam);
+router.post('/teams', requireRole('admin'), ctrl.createTeam);
+router.delete('/teams/:id', requireRole('admin'), ctrl.deleteTeam);
+router.get('/teams/:id/members', ctrl.getTeamMembers);
+router.post('/teams/:id/members', requireRole('admin'), ctrl.addTeamMember);
+router.delete('/teams/:id/members/:userId', requireRole('admin'), ctrl.removeTeamMember);
 
-// 사용자
-router.get('/users', ctrl.getUsers);
-router.post('/users', ctrl.createUser);
-router.put('/users/:id', ctrl.updateUser);
+// 사용자 (읽기: admin, 쓰기/삭제: admin)
+router.get('/users', requireRole('admin'), ctrl.getUsers);
+router.post('/users', requireRole('admin'), ctrl.createUser);
+router.put('/users/:id', requireRole('admin'), ctrl.updateUser);
+router.delete('/users/:id', requireRole('admin'), ctrl.deleteUser);
 
-// 역할/권한
-router.get('/roles', ctrl.getRoles);
-router.post('/roles', ctrl.createRole);
-router.put('/roles/:id/permissions', ctrl.updatePermissions);
+// 역할 (읽기: admin, 쓰기/삭제: admin)
+router.get('/roles', requireRole('admin'), ctrl.getRoles);
+router.post('/roles', requireRole('admin'), ctrl.createRole);
+router.put('/roles/:id/permissions', requireRole('admin'), ctrl.updatePermissions);
+router.delete('/roles/:id', requireRole('admin'), ctrl.deleteRole);
 
 export default router;

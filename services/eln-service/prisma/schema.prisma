@@ -7,10 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 노트 타입: 연구노트 vs 프로토콜
+enum NoteType {
+  note
+  protocol
+}
+
+enum NoteStatus {
+  draft
+  in_progress
+  locked
+  signed
+}
+
 model Note {
   id          String         @id @default(uuid())
+  type        NoteType       @default(note)
   title       String
   content     String         @default("")
+  sections    Json           @default("[]")
   status      NoteStatus     @default(draft)
   authorId    String
   templateId  String?
@@ -27,6 +42,7 @@ model NoteRevision {
   noteId        String
   revision      Int
   content       String
+  sections      Json     @default("[]")
   changedBy     String
   changeSummary String   @default("")
   createdAt     DateTime @default(now())
@@ -61,16 +77,10 @@ model Template {
   description String   @default("")
   content     String   @default("")
   category    String   @default("일반")
-  sections    String[]
+  sections    Json     @default("[]")
   tags        String[]
   createdBy   String
   isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
-}
-
-enum NoteStatus {
-  draft
-  in_progress
-  locked
-  signed
+  updatedAt   DateTime @updatedAt
 }

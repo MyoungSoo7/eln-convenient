@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
+import SsoCallbackPage from "./pages/SsoCallbackPage";
 import Dashboard from "./pages/Dashboard";
 import NotesPage from "./pages/NotesPage";
 import NoteEditor from "./pages/NoteEditor";
@@ -42,6 +43,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/sso-callback" element={<SsoCallbackPage />} />
             <Route
               path="/*"
               element={

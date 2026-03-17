@@ -1,30 +1,46 @@
 /**
- * 연구노트 서비스 DTO (Data Transfer Object) 정의
- * 
- * 노트 상태 흐름:
- *   draft(초안) ↔ in_progress(진행 중) → locked(잠김)
- *   locked → draft (관리자 잠금 해제 전용)
+ * 연구노트 서비스 DTO
+ *
+ * 노트/프로토콜 상태 흐름:
+ *   draft ↔ in_progress → signed (서명)
+ *                       → locked  (잠금)
+ *   locked → draft  (관리자 잠금 해제)
  */
 
-/** 노트 상태 타입 */
+/** 노트 타입 */
+export type NoteType = 'note' | 'protocol';
+
+/** 노트 상태 */
 export type NoteStatus = 'draft' | 'in_progress' | 'signed' | 'locked';
 
-/** 노트 생성 DTO */
+/** 섹션 DTO */
+export interface SectionDto {
+  type: string;
+  title: string;
+  content: string;
+  order?: number;
+}
+
+/** 노트/프로토콜 생성 DTO */
 export interface CreateNoteDto {
   title: string;
+  type?: NoteType;
+  content?: string;
+  sections?: SectionDto[];
   templateId?: string;
   tags?: string[];
-  sections?: SectionDto[];
 }
 
-/** 노트 수정 DTO */
+/** 노트/프로토콜 수정 DTO */
 export interface UpdateNoteDto {
   title?: string;
+  content?: string;
   sections?: SectionDto[];
   tags?: string[];
+  changeSummary?: string;
 }
 
-/** 노트 상태 변경 DTO */
+/** 상태 변경 DTO */
 export interface ChangeStatusDto {
   status: NoteStatus;
 }
@@ -35,32 +51,42 @@ export interface AdminUnlockDto {
   reason?: string;
 }
 
-/** 섹션 DTO */
-export interface SectionDto {
-  type: string;
-  title: string;
-  content: string;
-}
-
 /** 노트 링크 추가 DTO */
 export interface AddLinkDto {
-  type: 'inventory' | 'equipment' | 'protocol' | 'note';
+  targetType: 'inventory' | 'equipment' | 'protocol' | 'note';
   targetId: string;
-  label: string;
+  label?: string;
 }
 
 /** 템플릿 생성 DTO */
 export interface CreateTemplateDto {
-  name: string;
-  category: string;
-  sections: string[];
+  title: string;
+  category?: string;
   description?: string;
+  content?: string;
+  sections?: SectionDto[];
+  tags?: string[];
+  isPublic?: boolean;
 }
 
-/** 허용 가능한 상태 전환 맵 */
+/** 템플릿 수정 DTO */
+export interface UpdateTemplateDto {
+  title?: string;
+  category?: string;
+  description?: string;
+  content?: string;
+  sections?: SectionDto[];
+  tags?: string[];
+  isPublic?: boolean;
+}
+
+/**
+ * 허용 상태 전환 맵
+ * in_progress → signed: 서명 서비스가 PATCH /notes/:id/status 호출
+ */
 export const ALLOWED_STATUS_TRANSITIONS: Record<NoteStatus, NoteStatus[]> = {
-  draft: ['in_progress'],
-  in_progress: ['draft', 'locked'],
-  signed: [],
-  locked: [],  // 관리자 잠금 해제는 별도 엔드포인트
+  draft:       ['in_progress'],
+  in_progress: ['draft', 'signed', 'locked'],
+  signed:      [],              // 서명 완료는 불변
+  locked:      [],              // 관리자 잠금 해제는 별도 엔드포인트
 };
