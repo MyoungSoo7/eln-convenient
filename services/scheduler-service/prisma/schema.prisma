@@ -8,29 +8,39 @@ datasource db {
 }
 
 model Resource {
-  id       String    @id @default(uuid())
-  name     String
-  type     String
-  location String?
-  isActive Boolean   @default(true)
-  bookings Booking[]
+  id          String    @id @default(uuid())
+  name        String
+  type        String    // "equipment" | "room"
+  location    String?
+  description String?
+  capacity    Int?      // 수용 인원 (room 전용)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  bookings    Booking[]
+
+  @@index([type])
+  @@index([isActive])
 }
 
 model Booking {
-  id         String        @id @default(uuid())
-  resourceId String
-  userId     String
-  title      String
-  startTime  DateTime
-  endTime    DateTime
-  status     BookingStatus @default(pending)
-  approvedBy String?
-  createdAt  DateTime      @default(now())
-  resource   Resource      @relation(fields: [resourceId], references: [id])
+  id              String        @id @default(uuid())
+  resourceId      String
+  userId          String
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  status          BookingStatus @default(pending)
+  approvedBy      String?
+  rejectedReason  String?
+  createdAt       DateTime      @default(now())
+  resource        Resource      @relation(fields: [resourceId], references: [id])
 
   @@index([resourceId])
   @@index([userId])
+  @@index([status])
   @@index([startTime, endTime])
+  @@index([createdAt])
 }
 
 enum BookingStatus {
