@@ -1,5 +1,3 @@
-glpat-0w6WHvsHvCAwgilsI7bObG86MQp1OmsH.01.0w07s0xgh
-
 # LabNote ELN — MSA 설계 문서
 
 ## 1. 시스템 개요

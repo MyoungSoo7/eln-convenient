@@ -8,24 +8,25 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
-import type { Protocol } from "@/lib/mockData";
+import { createTemplate, type TemplateRecord } from "@/api/notes";
 
-const CATEGORIES = ["기본", "분자생물학", "세포생물학", "생화학", "미생물학", "분석화학", "기타"];
+const CATEGORIES = ["기본", "분자생물학", "세포생물학", "생화학", "미생물학", "분석화학", "일반", "기타"];
 
 interface NewProtocolDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (protocol: Protocol) => void;
+  onCreated: (template: TemplateRecord) => void;
 }
 
 export default function NewProtocolDialog({ open, onOpenChange, onCreated }: NewProtocolDialogProps) {
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState("기본");
   const [description, setDescription] = useState("");
   const [sections, setSections] = useState<string[]>(["목적", "재료", "방법", "결과", "고찰"]);
   const [newSection, setNewSection] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const resetForm = () => {
     setTitle("");
@@ -59,7 +60,7 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
     setTags(tags.filter((t) => t !== tag));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim()) {
       toast.error("프로토콜 제목을 입력해주세요.");
       return;
@@ -73,22 +74,27 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
       return;
     }
 
-    const newProtocol: Protocol = {
-      id: `prot-${Date.now()}`,
+    setSubmitting(true);
+    const res = await createTemplate({
       title: title.trim(),
+      description: description.trim() || undefined,
       category,
-      author: "현재 사용자",
-      version: "1.0",
-      usageCount: 0,
-      tags,
-    };
-
-    onCreated(newProtocol);
-    toast.success("프로토콜이 생성되었습니다.", {
-      description: `"${newProtocol.title}" 템플릿이 등록되었습니다.`,
+      sections,
+      tags: tags.length > 0 ? tags : undefined,
+      isPublic: true,
     });
-    resetForm();
-    onOpenChange(false);
+    setSubmitting(false);
+
+    if (res.ok && res.data) {
+      onCreated(res.data);
+      toast.success("프로토콜이 생성되었습니다.", {
+        description: `"${res.data.title}" 템플릿이 등록되었습니다.`,
+      });
+      resetForm();
+      onOpenChange(false);
+    } else {
+      toast.error(res.error ?? "프로토콜 생성에 실패했습니다.");
+    }
   };
 
   return (
@@ -169,7 +175,9 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>취소</Button>
-          <Button onClick={handleSubmit} className="gradient-primary text-primary-foreground">생성</Button>
+          <Button onClick={handleSubmit} disabled={submitting} className="gradient-primary text-primary-foreground">
+            {submitting ? "저장 중..." : "생성"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

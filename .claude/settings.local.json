@@ -59,7 +59,23 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"feat: file-service 미비사항 전면 구현:*)",
       "Bash(find C:vscodelablab-companion-feature-phase1-backend-infraservicesinventory-service -not -path */node_modules/* -not -path */dist/* -type f)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git commit:*)",
+      "Bash(ls c:/vscode/lab/lab-companion-feature-phase1-backend-infra/.env*)",
+      "Bash(docker build:*)",
+      "Bash(claude /plugin marketplace add obra/superpowers-marketplace)",
+      "Bash(echo \"EXIT_CODE: $?\")",
+      "Bash(claude --version)",
+      "Bash(claude plugin:*)",
+      "Bash(for d:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d[''''version'''']\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(''''prisma:'''', d.get\\(''''devDependencies'''',{}\\).get\\(''''prisma'''',''''N/A''''\\)\\); print\\(''''@prisma/client:'''', d.get\\(''''dependencies'''',{}\\).get\\(''''@prisma/client'''',''''N/A''''\\)\\)\")",
+      "Bash(node_modules/.bin/prisma --version)",
+      "Bash(npx vitest:*)",
+      "Bash(grep -rn DATABASE_URL /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/inventory-service/ --include=*.yml --include=*.yaml --include=*.env*)",
+      "Bash(grep -r \"callAuditLog\\\\|AuditService\\\\|SIGNATURE_AUDIT\" /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/eln-service/src --include=*.ts)",
+      "Bash(npm test:*)",
+      "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=search\" npx prisma migrate dev --name init)"
     ]
   }
 }
