@@ -196,7 +196,7 @@ export default function NoteEditor() {
       setSaving(false);
       if (res.ok && res.data?.id) {
         toast({ title: "노트 생성 완료", description: "노트가 저장되었습니다." });
-        navigate(`/notes/${res.data.id}`);
+        navigate('/notes');
       } else {
         toast({ title: "저장 실패", description: res.error || "노트 생성에 실패했습니다.", variant: "destructive" });
       }
