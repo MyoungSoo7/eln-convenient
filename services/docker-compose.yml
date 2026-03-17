@@ -236,6 +236,7 @@ services:
       - PORT=8006
       - OPENSEARCH_URL=http://opensearch:9200
       - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=search
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
