@@ -3,7 +3,9 @@
  * 경로: /api/signatures/*, /api/audit/*, /api/export/*
  */
 import apiClient, { type ApiResponse } from './client';
-import { mockAuditLog, type AuditEntry } from '@/lib/mockData';
+import { type AuditEntry } from '@/lib/mockData';
+
+const ERR_CONN = '서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.';
 
 export interface SignatureResult {
   signatureId: string;
@@ -36,18 +38,8 @@ export interface ExportJob {
 export async function signNote(noteId: string, password: string): Promise<ApiResponse<SignatureResult>> {
   try {
     return await apiClient.post<SignatureResult>(`/signatures/sign/${noteId}`, { password });
-  } catch {
-    return {
-      ok: true,
-      data: {
-        signatureId: `sig-${Date.now()}`,
-        noteId,
-        signedBy: 'user-001',
-        signedAt: new Date().toISOString(),
-        hash: 'sha256:mock-hash',
-        status: 'signed',
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as SignatureResult, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -66,11 +58,8 @@ export async function verifySignature(noteId: string): Promise<ApiResponse<Verif
 export async function listAuditLogs(params?: { entityId?: string; type?: string }): Promise<ApiResponse<AuditEntry[]>> {
   try {
     return await apiClient.get<AuditEntry[]>('/audit', params as Record<string, string>);
-  } catch {
-    let logs = mockAuditLog;
-    if (params?.entityId) logs = logs.filter((l) => l.entityId === params.entityId);
-    if (params?.type) logs = logs.filter((l) => l.entityType === params.type);
-    return { ok: true, data: logs };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 

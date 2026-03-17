@@ -59,20 +59,8 @@ export async function uploadFile(
       throw new Error('401');
     }
     return await response.json();
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: `file-${Date.now()}`,
-        key: `${Date.now()}.${file.name.split('.').pop() || 'bin'}`,
-        originalName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        sizeBytes: file.size,
-        storagePath: '',
-        uploadedBy: 'me',
-        createdAt: new Date().toISOString(),
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as UploadedFile, error: (err as Error).message || '파일 업로드에 실패했습니다.' };
   }
 }
 
@@ -83,19 +71,8 @@ export async function getFile(id: string): Promise<ApiResponse<FileMetadata>> {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
     return await response.json();
-  } catch {
-    return {
-      ok: true,
-      data: {
-        fileId: id,
-        filename: 'experiment_result.png',
-        mimeType: 'image/png',
-        size: 1024000,
-        uploadedBy: 'user-001',
-        uploadedAt: '2024-03-15T09:30:00Z',
-        url: `${API_BASE_URL}/files/${id}`,
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as FileMetadata, error: (err as Error).message || '파일 조회에 실패했습니다.' };
   }
 }
 
@@ -107,8 +84,8 @@ export async function deleteFile(id: string): Promise<ApiResponse<{ message: str
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
     return await response.json();
-  } catch {
-    return { ok: true, data: { message: `파일 ${id} 삭제 완료` } };
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || '파일 삭제에 실패했습니다.' };
   }
 }
 

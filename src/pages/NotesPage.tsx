@@ -48,6 +48,7 @@ export default function NotesPage() {
   const [filter, setFilter] = useState<string>("all");
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [unlockTarget, setUnlockTarget] = useState<Note | null>(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [unlocking, setUnlocking] = useState(false);
@@ -56,9 +57,15 @@ export default function NotesPage() {
   // 노트 목록 API 로드
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     listNotes(filter !== "all" ? { status: filter } : undefined)
       .then((res) => {
-        if (res.ok) setNotes(res.data);
+        if (res.ok) {
+          setNotes(res.data);
+        } else {
+          setLoadError(res.error || "노트 목록을 불러오지 못했습니다.");
+          setNotes([]);
+        }
       })
       .finally(() => setLoading(false));
   }, [filter]);
@@ -159,6 +166,10 @@ export default function NotesPage() {
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground text-sm">로딩 중...</div>
+      ) : loadError ? (
+        <div className="text-center py-12 text-destructive text-sm">
+          ⚠️ {loadError}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
           {search ? "검색 결과가 없습니다." : "노트가 없습니다. 새 노트를 작성해보세요."}

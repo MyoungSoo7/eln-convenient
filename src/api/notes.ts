@@ -9,7 +9,7 @@
  *   locked → draft (관리자 잠금 해제 전용)
  */
 import apiClient, { type ApiResponse } from './client';
-import { mockNotes, mockProtocols, type Note, type Protocol } from '@/lib/mockData';
+import { type Note } from '@/lib/mockData';
 
 export interface NoteDetail extends Note {
   sections?: { type: string; title: string; content: string }[];
@@ -45,79 +45,75 @@ export interface RevisionRecord {
   createdAt: string;
 }
 
-// ── Mock fallback ──
-function mockNoteDetail(id: string): NoteDetail {
-  const note = mockNotes.find((n) => n.id === id) || mockNotes[0];
-  return {
-    ...note,
-    sections: [
-      { type: 'objective', title: '목적', content: note.content?.split('## 재료')[0]?.replace('## 목적\n', '') || '' },
-      { type: 'materials', title: '재료', content: '' },
-      { type: 'methods', title: '방법', content: '' },
-      { type: 'results', title: '결과', content: '' },
-      { type: 'discussion', title: '고찰', content: '' },
-    ],
-  };
-}
+const ERR_CONN = '서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.';
 
 // ── 노트 API ──
 export async function listNotes(params?: { status?: string; tag?: string }): Promise<ApiResponse<Note[]>> {
   try {
-    return await apiClient.get<Note[]>('/notes', params as Record<string, string>);
-  } catch {
-    return { ok: true, data: mockNotes };
+    const res = await apiClient.get<{ data?: Note[] } | Note[]>('/notes', params as Record<string, string>);
+    if (!res.ok) return { ok: false, data: [], error: res.error };
+    // 백엔드가 { ok, data: [...], total, page } 형태로 반환
+    const raw = res.data as { data?: Note[] } | Note[];
+    const notes = Array.isArray(raw) ? raw : (Array.isArray((raw as { data?: Note[] }).data) ? (raw as { data?: Note[] }).data! : []);
+    return { ok: true, data: notes };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function getNote(id: string): Promise<ApiResponse<NoteDetail>> {
   try {
     return await apiClient.get<NoteDetail>(`/notes/${id}`);
-  } catch {
-    return { ok: true, data: mockNoteDetail(id) };
+  } catch (err) {
+    return { ok: false, data: null as unknown as NoteDetail, error: (err as Error).message || ERR_CONN };
   }
 }
 
-export async function createNote(data: { title: string; content?: string; templateId?: string; tags?: string[] }): Promise<ApiResponse<{ id: string; [key: string]: unknown }>> {
+export async function createNote(data: {
+  title: string;
+  content?: string;
+  templateId?: string;
+  tags?: string[];
+}): Promise<ApiResponse<{ id: string; [key: string]: unknown }>> {
   try {
     return await apiClient.post<{ id: string }>('/notes', data);
-  } catch {
-    return { ok: true, data: { id: `note-${Date.now()}` } };
+  } catch (err) {
+    return { ok: false, data: null as unknown as { id: string }, error: (err as Error).message || ERR_CONN };
   }
 }
 
-export async function updateNote(id: string, data: { title?: string; content?: string; tags?: string[]; changeSummary?: string }): Promise<ApiResponse<Note>> {
+export async function updateNote(
+  id: string,
+  data: { title?: string; content?: string; tags?: string[]; changeSummary?: string },
+): Promise<ApiResponse<Note>> {
   try {
     return await apiClient.put<Note>(`/notes/${id}`, data);
-  } catch {
-    const note = mockNotes.find((n) => n.id === id) || mockNotes[0];
-    return { ok: true, data: { ...note, ...data, updatedAt: new Date().toISOString() } };
+  } catch (err) {
+    return { ok: false, data: null as unknown as Note, error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function deleteNote(id: string): Promise<ApiResponse<{ message: string }>> {
   try {
     return await apiClient.delete<{ message: string }>(`/notes/${id}`);
-  } catch {
-    return { ok: true, data: { message: `노트 ${id} 삭제 완료` } };
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
   }
 }
 
 // ── 상태 변경 API ──
 
-/** 노트 상태 전환 */
 export async function changeNoteStatus(
   noteId: string,
   status: 'draft' | 'in_progress' | 'signed' | 'locked',
 ): Promise<ApiResponse<Note>> {
   try {
     return await apiClient.patch<Note>(`/notes/${noteId}/status`, { status });
-  } catch {
-    const note = mockNotes.find((n) => n.id === noteId) || mockNotes[0];
-    return { ok: true, data: { ...note, status, updatedAt: new Date().toISOString() } };
+  } catch (err) {
+    return { ok: false, data: null as unknown as Note, error: (err as Error).message || ERR_CONN };
   }
 }
 
-/** 관리자 잠금 해제 (locked → draft) */
 export async function adminUnlockNote(
   noteId: string,
   adminPassword: string,
@@ -128,17 +124,8 @@ export async function adminUnlockNote(
       adminPassword,
       reason,
     });
-  } catch {
-    const note = mockNotes.find((n) => n.id === noteId) || mockNotes[0];
-    return {
-      ok: true,
-      data: {
-        ...note,
-        status: 'draft',
-        updatedAt: new Date().toISOString(),
-        auditLog: { action: 'admin_unlock', noteId, reason: reason || '관리자 잠금 해제', timestamp: new Date().toISOString() },
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as Note, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -146,20 +133,8 @@ export async function adminUnlockNote(
 export async function listRevisions(noteId: string): Promise<ApiResponse<RevisionRecord[]>> {
   try {
     return await apiClient.get<RevisionRecord[]>(`/notes/${noteId}/revisions`);
-  } catch {
-    const note = mockNotes.find((n) => n.id === noteId);
-    return {
-      ok: true,
-      data: (note?.revisions || []).map((r) => ({
-        id: r.id,
-        noteId,
-        revision: r.version,
-        content: '',
-        changedBy: r.author,
-        changeSummary: r.summary,
-        createdAt: r.timestamp,
-      })),
-    };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -167,8 +142,8 @@ export async function listRevisions(noteId: string): Promise<ApiResponse<Revisio
 export async function listAttachments(noteId: string): Promise<ApiResponse<AttachmentRecord[]>> {
   try {
     return await apiClient.get<AttachmentRecord[]>(`/notes/${noteId}/attachments`);
-  } catch {
-    return { ok: true, data: [] };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -178,28 +153,19 @@ export async function addAttachment(
 ): Promise<ApiResponse<AttachmentRecord>> {
   try {
     return await apiClient.post<AttachmentRecord>(`/notes/${noteId}/attachments`, data);
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: `att-${Date.now()}`,
-        noteId,
-        fileId: data.fileId,
-        fileName: data.fileName,
-        mimeType: data.mimeType || null,
-        sizeBytes: data.sizeBytes || null,
-        uploadedBy: 'me',
-        createdAt: new Date().toISOString(),
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as AttachmentRecord, error: (err as Error).message || ERR_CONN };
   }
 }
 
-export async function deleteAttachmentRecord(noteId: string, attachmentId: string): Promise<ApiResponse<{ message: string }>> {
+export async function deleteAttachmentRecord(
+  noteId: string,
+  attachmentId: string,
+): Promise<ApiResponse<{ message: string }>> {
   try {
     return await apiClient.delete<{ message: string }>(`/notes/${noteId}/attachments/${attachmentId}`);
-  } catch {
-    return { ok: true, data: { message: '삭제 완료' } };
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -207,18 +173,8 @@ export async function deleteAttachmentRecord(noteId: string, attachmentId: strin
 export async function getLinks(noteId: string): Promise<ApiResponse<NoteLink[]>> {
   try {
     return await apiClient.get<NoteLink[]>(`/notes/${noteId}/links`);
-  } catch {
-    const note = mockNotes.find((n) => n.id === noteId);
-    return {
-      ok: true,
-      data: (note?.linkedItems || []).map((item) => ({
-        id: item.id,
-        noteId,
-        targetType: item.type,
-        targetId: item.id,
-        label: item.name,
-      })),
-    };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -228,19 +184,16 @@ export async function createNoteLink(
 ): Promise<ApiResponse<NoteLink>> {
   try {
     return await apiClient.post<NoteLink>(`/notes/${noteId}/links`, data);
-  } catch {
-    return {
-      ok: true,
-      data: { id: `link-${Date.now()}`, noteId, targetType: data.targetType, targetId: data.targetId, label: data.label || null },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as NoteLink, error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function deleteNoteLink(noteId: string, linkId: string): Promise<ApiResponse<{ message: string }>> {
   try {
     return await apiClient.delete<{ message: string }>(`/notes/${noteId}/links/${linkId}`);
-  } catch {
-    return { ok: true, data: { message: '삭제 완료' } };
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -261,27 +214,33 @@ export interface TemplateRecord {
   updatedAt?: string;
 }
 
-export async function listTemplates(params?: { category?: string; page?: number; limit?: number }): Promise<ApiResponse<TemplateRecord[]>> {
+export async function listTemplates(params?: {
+  category?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ApiResponse<TemplateRecord[]>> {
   try {
     const q: Record<string, string> = {};
     if (params?.category) q.category = params.category;
     if (params?.page != null) q.page = String(params.page);
     if (params?.limit != null) q.limit = String(params.limit);
-    const res = await apiClient.get<{ data: TemplateRecord[] }>('/templates', Object.keys(q).length ? q : undefined);
-    const data = (res as { data?: TemplateRecord[] }).data;
+    const res = await apiClient.get<{ data: TemplateRecord[] }>(
+      '/templates',
+      Object.keys(q).length ? q : undefined,
+    );
+    if (!res.ok) return { ok: false, data: [], error: res.error };
+    const data = (res as unknown as { data?: TemplateRecord[] }).data;
     return { ok: true, data: Array.isArray(data) ? data : [] };
-  } catch {
-    return { ok: true, data: mockProtocols.map((p) => ({ id: p.id, title: p.title, category: p.category, tags: p.tags, useCount: p.usageCount ?? 0 })) };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function getTemplate(id: string): Promise<ApiResponse<TemplateRecord>> {
   try {
-    const res = await apiClient.get<TemplateRecord>(`/templates/${id}`);
-    return res;
-  } catch {
-    const p = mockProtocols.find((x) => x.id === id) || mockProtocols[0];
-    return { ok: true, data: { id: p.id, title: p.title, category: p.category, tags: p.tags, useCount: p.usageCount ?? 0 } };
+    return await apiClient.get<TemplateRecord>(`/templates/${id}`);
+  } catch (err) {
+    return { ok: false, data: null as unknown as TemplateRecord, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -295,38 +254,16 @@ export async function createTemplate(data: {
   isPublic?: boolean;
 }): Promise<ApiResponse<TemplateRecord>> {
   try {
-    const res = await apiClient.post<TemplateRecord>('/templates', data);
-    return res;
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: `tmpl-${Date.now()}`,
-        title: data.title,
-        description: data.description ?? '',
-        category: data.category ?? '일반',
-        tags: data.tags ?? [],
-        useCount: 0,
-      },
-    };
+    return await apiClient.post<TemplateRecord>('/templates', data);
+  } catch (err) {
+    return { ok: false, data: null as unknown as TemplateRecord, error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function copyTemplate(templateId: string): Promise<ApiResponse<TemplateRecord>> {
   try {
-    const res = await apiClient.post<TemplateRecord>(`/templates/${templateId}/copy`, {});
-    return res;
-  } catch {
-    const p = mockProtocols.find((x) => x.id === templateId) || mockProtocols[0];
-    return {
-      ok: true,
-      data: {
-        id: `tmpl-copy-${Date.now()}`,
-        title: `${p.title} (복사본)`,
-        category: p.category,
-        tags: p.tags,
-        useCount: 0,
-      },
-    };
+    return await apiClient.post<TemplateRecord>(`/templates/${templateId}/copy`, {});
+  } catch (err) {
+    return { ok: false, data: null as unknown as TemplateRecord, error: (err as Error).message || ERR_CONN };
   }
 }
