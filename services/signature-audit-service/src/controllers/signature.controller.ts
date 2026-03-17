@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
+import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
 
 const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
@@ -253,5 +254,120 @@ export async function revokeSignature(req: Request, res: Response): Promise<void
     }
     console.error('[revokeSignature]', err);
     res.status(500).json({ ok: false, error: '서명 취소 중 오류가 발생했습니다.' });
+  }
+}
+
+/** GET /api/signatures/compliance/stats */
+export async function getComplianceStats(_req: Request, res: Response): Promise<void> {
+  try {
+    const [signed, pending, locked, draft, totalSignatures] = await Promise.all([
+      fetchNoteCount('signed'),
+      fetchNoteCount('in_progress'),
+      fetchNoteCount('locked'),
+      fetchNoteCount('draft'),
+      prisma.signature.count({ where: { status: 'valid' } }),
+    ]);
+
+    res.json({
+      ok: true,
+      data: { signed, pending, locked, draft, totalSignatures },
+    });
+  } catch (err) {
+    if (err instanceof ElnServiceError) {
+      res.status(503).json({ ok: false, error: '노트 데이터를 가져올 수 없습니다.' });
+      return;
+    }
+    console.error('[getComplianceStats]', err);
+    res.status(500).json({ ok: false, error: '컴플라이언스 통계 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+/** GET /api/signatures/compliance/list */
+export async function getComplianceList(req: Request, res: Response): Promise<void> {
+  const { status, page = '1', limit = '20' } = req.query;
+  const limitNum = Math.min(parseInt(limit as string), 100);
+
+  try {
+    const params: Record<string, string> = {
+      type: 'note',
+      page: page as string,
+      limit: String(limitNum),
+    };
+    if (status) params.status = status as string;
+
+    const noteList = await fetchNotes(params);
+    const noteIds = noteList.data.map((n) => n.id);
+
+    const signatures = noteIds.length > 0
+      ? await prisma.signature.findMany({
+          where: { noteId: { in: noteIds }, status: 'valid' },
+          orderBy: { chainIndex: 'desc' },
+        })
+      : [];
+
+    const sigMap = new Map<string, typeof signatures>();
+    for (const sig of signatures) {
+      if (!sigMap.has(sig.noteId)) sigMap.set(sig.noteId, []);
+      sigMap.get(sig.noteId)!.push(sig);
+    }
+
+    const data = noteList.data.map((note) => {
+      const noteSigs = sigMap.get(note.id) ?? [];
+      const latest = noteSigs[0] ?? null;
+      return {
+        noteId: note.id,
+        title: note.title,
+        status: note.status,
+        authorId: note.authorId,
+        updatedAt: note.updatedAt,
+        isSigned: noteSigs.length > 0,
+        signatureCount: noteSigs.length,
+        latestSignature: latest
+          ? {
+              id: latest.id,
+              signerId: latest.signerId,
+              signatureHash: latest.signatureHash,
+              timestamp: latest.timestamp.toISOString(),
+            }
+          : null,
+        editable: ['draft', 'in_progress'].includes(note.status),
+      };
+    });
+
+    res.json({ ok: true, data, total: noteList.total, page: parseInt(page as string) });
+  } catch (err) {
+    if (err instanceof ElnServiceError) {
+      res.status(503).json({ ok: false, error: '노트 데이터를 가져올 수 없습니다.' });
+      return;
+    }
+    console.error('[getComplianceList]', err);
+    res.status(500).json({ ok: false, error: '서명 현황 목록 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+/** GET /api/signatures/editable/:noteId */
+export async function getNoteEditable(req: Request, res: Response): Promise<void> {
+  const { noteId } = req.params;
+  try {
+    const note = await fetchNote(noteId);
+    if (!note) {
+      res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' });
+      return;
+    }
+
+    const editable = ['draft', 'in_progress'].includes(note.status);
+    const reason = editable ? 'editable' : note.status as 'locked' | 'signed';
+
+    res.json({
+      ok: true,
+      data: { noteId: note.id, status: note.status, editable, reason },
+    });
+  } catch (err) {
+    if (err instanceof ElnServiceError) {
+      res.status(503).json({ ok: false, error: '노트 데이터를 가져올 수 없습니다.' });
+      return;
+    }
+    console.error('[getNoteEditable]', err);
+    res.status(500).json({ ok: false, error: '수정 가능 여부 조회 중 오류가 발생했습니다.' });
   }
 }
