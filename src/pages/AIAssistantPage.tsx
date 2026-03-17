@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,37 +8,69 @@ import { Textarea } from "@/components/ui/textarea";
 import { Bot, Sparkles, FileText, ArrowRight, CheckCircle2, Loader2, Database } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { HelpTooltip } from "@/components/HelpTooltip";
-
-const templateSuggestions = [
-  { id: 1, title: "CRISPR 유전자 편집 프로토콜", match: "95%", desc: "Cas9 기반 유전자 녹아웃 실험을 위한 표준 프로토콜" },
-  { id: 2, title: "세포배양 기본 프로토콜", match: "87%", desc: "부착성 세포주의 일반적인 배양 및 계대 절차" },
-  { id: 3, title: "웨스턴 블롯 분석", match: "72%", desc: "단백질 발현 분석을 위한 WB 프로토콜" },
-];
+import { recommendTemplate, generateDraft, getIndexStatus } from "@/api/ai";
+import type { TemplateRecommendation } from "@/api/ai";
 
 export default function AIAssistantPage() {
   const [step, setStep] = useState(1);
   const [topic, setTopic] = useState("");
+  const [recommending, setRecommending] = useState(false);
+  const [recommendations, setRecommendations] = useState<TemplateRecommendation[]>([]);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [draft, setDraft] = useState("");
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const handleRecommend = () => {
+  const { data: indexStatus, isError: indexError } = useQuery({
+    queryKey: ['ai', 'indexStatus'],
+    queryFn: async () => {
+      const res = await getIndexStatus();
+      if (!res.ok) throw new Error(res.error ?? '조회 실패');
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+
+  const handleRecommend = async () => {
     if (!topic.trim()) return;
+    setRecommending(true);
+    setRecommendError(null);
+    const res = await recommendTemplate(topic);
+    setRecommending(false);
+    if (!res.ok || !res.data) {
+      setRecommendError(res.error ?? '템플릿 추천에 실패했습니다.');
+      return;
+    }
+    setRecommendations(res.data);
     setStep(2);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async (templateId: string) => {
+    setSelectedTemplateId(templateId);
     setGenerating(true);
-    setTimeout(() => {
-      setDraft(`## ${topic} 실험 초안\n\n### 목적\n${topic}에 대한 실험을 수행하여 결과를 분석한다.\n\n### 재료\n- 시약 A (제조사: XXX)\n- 시약 B (제조사: YYY)\n- 세포주: HEK293\n\n### 방법\n1. 세포 준비 (배양 조건: 37°C, 5% CO2)\n2. 처리 및 배양\n3. 분석 수행\n\n### 예상 결과\n- 처리군과 대조군의 차이를 비교\n- 통계적 유의성 확인 (p < 0.05)\n\n### 참고문헌\n- [AI 추천] 관련 논문 검색 중...`);
-      setGenerating(false);
-      setStep(3);
-    }, 2000);
+    setGenerateError(null);
+    setStep(3);
+    const res = await generateDraft(templateId, topic);
+    setGenerating(false);
+    if (!res.ok || !res.data) {
+      setGenerateError(res.error ?? '초안 생성에 실패했습니다.');
+      return;
+    }
+    const text = res.data.sections
+      .map((s) => `## ${s.title}\n${s.content}`)
+      .join('\n\n');
+    setDraft(text);
   };
 
   const resetWizard = () => {
     setStep(1);
     setTopic("");
     setDraft("");
+    setRecommendations([]);
+    setRecommendError(null);
+    setSelectedTemplateId(null);
+    setGenerateError(null);
   };
 
   return (
@@ -76,9 +109,18 @@ export default function AIAssistantPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Input placeholder="예: CRISPR-Cas9 유전자 편집, Western Blot 분석..." value={topic} onChange={(e) => setTopic(e.target.value)} className="h-12" />
-            <Button onClick={handleRecommend} disabled={!topic.trim()} className="gradient-primary text-primary-foreground gap-2">
+            <Button onClick={handleRecommend} disabled={!topic.trim() || recommending} className="gradient-primary text-primary-foreground gap-2">
               <Sparkles className="h-4 w-4" /> 템플릿 추천받기
             </Button>
+            {recommending && (
+              <div className="flex items-center gap-2 text-muted-foreground py-4">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>템플릿을 추천받는 중...</span>
+              </div>
+            )}
+            {recommendError && (
+              <p className="text-sm text-destructive py-2">{recommendError}</p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -97,14 +139,26 @@ export default function AIAssistantPage() {
             추천 템플릿 (Top 3)
             <HelpTooltip text="입력한 주제와 가장 유사한 프로토콜 템플릿을 AI가 선별했습니다. 클릭하면 해당 템플릿 기반으로 초안이 생성됩니다." />
           </h3>
-          {templateSuggestions.map((t) => (
-            <Card key={t.id} className="shadow-card hover:shadow-elevated transition-all cursor-pointer group" onClick={handleGenerate}>
+          {recommending && (
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>템플릿을 추천받는 중...</span>
+            </div>
+          )}
+          {recommendError && (
+            <p className="text-sm text-destructive py-2">{recommendError}</p>
+          )}
+          {recommendations.map((t) => (
+            <Card key={t.templateId} className="shadow-card hover:shadow-elevated transition-all cursor-pointer group"
+              onClick={() => handleGenerate(t.templateId)}>
               <CardContent className="p-4 flex items-start justify-between">
                 <div>
-                  <h4 className="font-medium group-hover:text-primary transition-colors">{t.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-1">{t.desc}</p>
+                  <h4 className="font-medium group-hover:text-primary transition-colors">{t.name}</h4>
+                  <p className="text-xs text-muted-foreground mt-1">{t.reason}</p>
                 </div>
-                <Badge className="gradient-primary text-primary-foreground text-[10px]">일치 {t.match}</Badge>
+                <Badge className="gradient-primary text-primary-foreground text-[10px]">
+                  일치 {Math.round(t.score * 100)}%
+                </Badge>
               </CardContent>
             </Card>
           ))}
@@ -123,17 +177,27 @@ export default function AIAssistantPage() {
             </Card>
           ) : (
             <>
-              <Card className="shadow-card">
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-secondary" /> 생성된 초안
-                    <HelpTooltip text="AI가 생성한 연구노트 초안입니다. 내용을 직접 수정한 뒤, 새 노트로 생성하거나 기존 노트에 삽입할 수 있습니다." />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0" />
-                </CardContent>
-              </Card>
+              {generateError && !generating && (
+                <div className="space-y-3">
+                  <p className="text-sm text-destructive">{generateError}</p>
+                  <Button variant="outline" onClick={() => { setStep(2); setGenerateError(null); }}>
+                    템플릿 다시 선택
+                  </Button>
+                </div>
+              )}
+              {!generateError && (
+                <Card className="shadow-card">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-secondary" /> 생성된 초안
+                      <HelpTooltip text="AI가 생성한 연구노트 초안입니다. 내용을 직접 수정한 뒤, 새 노트로 생성하거나 기존 노트에 삽입할 수 있습니다." />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0" />
+                  </CardContent>
+                </Card>
+              )}
               <div className="flex gap-3">
                 <Button className="gradient-primary text-primary-foreground gap-2" onClick={() => toast({ title: "새 노트 생성", description: "초안이 새 연구노트로 생성되었습니다." })}>
                   <FileText className="h-4 w-4" /> 새 노트로 생성
@@ -159,16 +223,16 @@ export default function AIAssistantPage() {
         <CardContent>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm">연구노트 인덱싱</span>
-              <Badge variant="secondary" className="bg-success/10 text-success text-[10px]">완료 (24/24)</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">프로토콜 인덱싱</span>
-              <Badge variant="secondary" className="bg-success/10 text-success text-[10px]">완료 (15/15)</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">외부 논문 색인</span>
-              <Badge variant="secondary" className="bg-warning/10 text-warning text-[10px]">진행 중 (1,204/5,000)</Badge>
+              <span className="text-sm">전체 인덱싱</span>
+              {indexError ? (
+                <Badge variant="secondary" className="text-[10px] text-destructive">조회 실패</Badge>
+              ) : !indexStatus ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : (
+                <Badge variant="secondary" className="text-[10px]">
+                  {indexStatus.indexedDocuments}/{indexStatus.totalDocuments}
+                </Badge>
+              )}
             </div>
           </div>
         </CardContent>
