@@ -8,7 +8,7 @@
 
 ## Context
 
-Four frontend pages exist with substantial UI implementations. Two are already fully connected to real APIs (SearchPage, ExportsPage). Two need real API integration:
+Four frontend pages exist with substantial UI implementations. SearchPage is fully connected to real APIs. ExportsPage has real API calls but `signatures.ts` still contains mock catch-block fallbacks (out of scope for this spec). Two pages need real API integration:
 
 - **AIAssistantPage** — UI complete, uses hardcoded mock data instead of `ai.ts` functions
 - **AdminPage** — UI complete, uses `mockUsers/mockRoles/mockTeams` arrays, no admin API client exists
@@ -27,13 +27,14 @@ Each step is independently verifiable before the next begins.
 
 **File:** `src/api/ai.ts`
 
-Remove hardcoded fallback data from all three `catch` blocks. Replace with proper error returns:
+Remove hardcoded fallback data from **all four** `catch` blocks. Replace with proper error returns that include the `data` field (required by `ApiResponse<T>` — follow the pattern in `signatures.ts`):
 
-- `recommendTemplate`: `return { ok: false, error: '템플릿 추천 요청에 실패했습니다.' }`
-- `generateDraft`: `return { ok: false, error: '초안 생성 요청에 실패했습니다.' }`
-- `getIndexStatus`: `return { ok: false, error: '인덱싱 상태 조회에 실패했습니다.' }`
+- `recommendTemplate`: `return { ok: false, data: [] as TemplateRecommendation[], error: '템플릿 추천 요청에 실패했습니다.' }`
+- `generateDraft`: `return { ok: false, data: null as unknown as DraftResult, error: '초안 생성 요청에 실패했습니다.' }`
+- `getIndexStatus`: `return { ok: false, data: null as unknown as IndexStatus, error: '인덱싱 상태 조회에 실패했습니다.' }`
+- `askQuestion`: `return { ok: false, data: null as unknown as AskResult, error: 'AI 질문 요청에 실패했습니다.' }`
 
-**Rationale:** Backend is assumed ready. Mock fallbacks hide real failures.
+**Rationale:** Backend is assumed ready. Mock fallbacks hide real failures. All four functions have the same issue.
 
 ---
 
@@ -52,13 +53,17 @@ Remove hardcoded fallback data from all three `catch` blocks. Replace with prope
 **Step 3 (Draft Generation):**
 - Remove `setTimeout` mock
 - On template card click: call `generateDraft(templateId, topic)`
-- On success: render draft content (join `sections` array into markdown-like text for the Textarea)
+- On success: join `sections` array (format: `## {title}\n{content}`) into a single string for the Textarea
 - On failure: show error, allow going back to step 2
 
 **Vector Indexing Status Card:**
-- Replace static badge values with `useQuery` calling `getIndexStatus()`
-- Display `indexedDocuments / totalDocuments` per category
-- On failure: show "조회 실패" in place of badges
+- Replace static badge values with `useQuery`:
+  ```ts
+  queryKey: ['ai', 'indexStatus']
+  queryFn: getIndexStatus
+  ```
+- `IndexStatus` has a single aggregate (`indexedDocuments / totalDocuments`). Display as one row: "전체 인덱싱 ({indexedDocuments}/{totalDocuments})". Remove the three separate category rows — the current static UI shows per-category breakdown but the API does not provide it.
+- On failure: show "조회 실패" in place of the badge
 
 ### UI Structure
 
@@ -73,7 +78,7 @@ Remove hardcoded fallback data from all three `catch` blocks. Replace with prope
 ### Interfaces
 
 ```ts
-interface AdminUser {
+export interface AdminUser {
   id: string;
   name: string;
   email: string;
@@ -82,20 +87,21 @@ interface AdminUser {
   status: string;
 }
 
-interface AdminTeam {
+export interface AdminTeam {
   id: string;
   name: string;
-  memberCount: number;
+  memberCount: number;  // Note: mock used `members`, API uses `memberCount`
   lead: string;
 }
 
-interface AdminRole {
+export interface AdminRole {
+  id?: string;  // optional: backend may key roles by name
   name: string;
   permissions: string[];
   userCount: number;
 }
 
-interface CreateUserPayload {
+export interface CreateUserPayload {
   name: string;
   email: string;
   role: string;
@@ -124,10 +130,11 @@ All return `ApiResponse<T>` using `apiClient` from `./client`.
 
 - Remove `mockUsers`, `mockTeams`, `mockRoles` arrays
 - Add `useQuery` calls per tab:
-  - Users tab: `listUsers()` with loading spinner + error state
-  - Teams tab: `listTeams()` with loading spinner + error state
-  - Roles tab: `listRoles()` with loading spinner + error state
-- "사용자 추가" button: open a `Dialog` with a form (name, email, role, team fields) → on submit call `createUser(payload)` → invalidate users query on success
+  - Users tab: `queryKey: ['admin', 'users']`, `queryFn: listUsers` — loading spinner + error state
+  - Teams tab: `queryKey: ['admin', 'teams']`, `queryFn: listTeams` — loading spinner + error state
+  - Roles tab: `queryKey: ['admin', 'roles']`, `queryFn: listRoles` — loading spinner + error state
+- Team card: update `t.members` reference to `t.memberCount` to match the `AdminTeam` interface
+- "사용자 추가" button: open a `Dialog` with form fields (name, email, role, team) → on submit call `createUser(payload)` via `useMutation` → on success: show `toast({ title: '사용자 추가 완료' })`, close Dialog, invalidate `['admin', 'users']` query
 - Settings tab: unchanged (TODO state preserved)
 
 ### Error Handling
@@ -142,3 +149,4 @@ Each tab shows an inline error card if the query fails, with a retry button (`re
 - ExportsPage (already complete)
 - Backend implementation (handled by other terminals)
 - Settings tab activation (backend not ready)
+- `askQuestion` UI wiring (function exists in `ai.ts` but not used in `AIAssistantPage` currently)
