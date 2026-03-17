@@ -75,7 +75,12 @@
       "Bash(grep -rn DATABASE_URL /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/inventory-service/ --include=*.yml --include=*.yaml --include=*.env*)",
       "Bash(grep -r \"callAuditLog\\\\|AuditService\\\\|SIGNATURE_AUDIT\" /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/eln-service/src --include=*.ts)",
       "Bash(npm test:*)",
-      "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=search\" npx prisma migrate dev --name init)"
+      "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=search\" npx prisma migrate dev --name init)",
+      "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=search\" npx prisma validate)",
+      "Bash(git -C C:/vscode/lab/lab-companion-feature-phase1-backend-infra diff --name-only HEAD~5..HEAD)",
+      "Bash(git -C C:/vscode/lab/lab-companion-feature-phase1-backend-infra status --short)",
+      "Bash(git:*)",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }
