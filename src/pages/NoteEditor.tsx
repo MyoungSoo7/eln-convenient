@@ -16,7 +16,8 @@ import { toast } from "@/hooks/use-toast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { getToken } from "@/lib/authToken";
 import {
-  createNote, updateNote, listAttachments, addAttachment, deleteAttachmentRecord,
+  createNote, updateNote, getNote,
+  listAttachments, addAttachment, deleteAttachmentRecord,
   getLinks, createNoteLink, deleteNoteLink, listRevisions,
   type AttachmentRecord, type NoteLink, type RevisionRecord,
 } from "@/api/notes";
@@ -117,12 +118,17 @@ export default function NoteEditor() {
 
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
 
-  // 기존 노트 데이터 로드
+  // 기존 노트 데이터 로드 (제목·내용·상태·첨부파일·링크 병렬)
   useEffect(() => {
     if (isNew) return;
-
-    // 첨부파일 + 링크 병렬 로드
     Promise.all([
+      getNote(id!).then((res) => {
+        if (res.ok) {
+          setTitle(res.data.title || "");
+          setContent(res.data.content || "");
+          setNoteStatus(res.data.status || "draft");
+        }
+      }),
       listAttachments(id!).then((res) => { if (res.ok) setAttachments(res.data); }),
       getLinks(id!).then((res) => { if (res.ok) setLinks(res.data); }),
     ]);
@@ -255,17 +261,17 @@ export default function NoteEditor() {
     setUploading(false);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFileUpload(file);
-    e.target.value = ""; // reset so same file can be re-selected
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) await handleFileUpload(file);
+    e.target.value = "";
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFileUpload(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    for (const file of files) await handleFileUpload(file);
   };
 
   const handleDeleteAttachment = async (att: AttachmentRecord) => {
@@ -485,10 +491,11 @@ export default function NoteEditor() {
                       <p className="text-sm font-medium mt-3">
                         {uploading ? "업로드 중..." : "파일을 드래그하거나 클릭하여 업로드"}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">PDF, 이미지, 데이터 파일 등 (최대 50MB)</p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, 이미지, 데이터 파일 등 여러 파일 동시 첨부 가능 (최대 50MB)</p>
                       <input
                         ref={fileInputRef}
                         type="file"
+                        multiple
                         className="hidden"
                         onChange={handleFileSelect}
                         accept="*/*"
