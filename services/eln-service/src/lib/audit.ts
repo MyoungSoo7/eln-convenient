@@ -37,7 +37,7 @@ export async function callAuditLog(event: AuditEvent): Promise<void> {
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
-          'x-internal-secret': INTERNAL_SECRET,
+          ...(INTERNAL_SECRET && { 'x-internal-secret': INTERNAL_SECRET }),
         },
         timeout: TIMEOUT_MS,
       },
