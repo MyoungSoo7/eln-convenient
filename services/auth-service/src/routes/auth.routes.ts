@@ -8,6 +8,9 @@ const router = Router();
 router.post('/login', ctrl.login);
 router.post('/register', ctrl.register);
 
+// ─── 내부 서비스 전용 ────────────────────────────
+router.post('/internal/verify-password', ctrl.verifyPassword);
+
 // ─── SSO 훅 (Keycloak → auth-service, 시크릿으로 보호) ───
 router.post('/sso-hook', ctrl.ssoHook);
 

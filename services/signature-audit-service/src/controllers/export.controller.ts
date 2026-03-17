@@ -3,6 +3,26 @@ import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import { exportQueue } from '../lib/queue';
 
+async function recordAuditLog(
+  action: string,
+  actorId: string,
+  entityId: string,
+  details: object,
+  ipAddress?: string,
+): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      id: uuidv4(),
+      entityType: 'export',
+      entityId,
+      action,
+      actorId,
+      details,
+      ipAddress: ipAddress ?? null,
+    },
+  });
+}
+
 /** POST /api/export/pdf/:noteId */
 export async function exportPdf(req: Request, res: Response): Promise<void> {
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
@@ -25,6 +45,8 @@ export async function exportPdf(req: Request, res: Response): Promise<void> {
       format: 'pdf',
       requestedBy,
     });
+
+    await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, req.ip);
 
     res.status(202).json({
       ok: true,
@@ -94,6 +116,8 @@ export async function exportZip(req: Request, res: Response): Promise<void> {
       format: 'zip',
       requestedBy,
     });
+
+    await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, req.ip);
 
     res.status(202).json({
       ok: true,

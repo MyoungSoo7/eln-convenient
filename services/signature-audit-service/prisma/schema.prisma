@@ -46,6 +46,10 @@ model ExportJob {
   errorMsg    String?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
+
+  @@index([requestedBy])
+  @@index([status])
+  @@index([createdAt])
 }
 
 enum SignatureStatus {

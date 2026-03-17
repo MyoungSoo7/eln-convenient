@@ -8,27 +8,55 @@ datasource db {
 }
 
 model InventoryItem {
-  id        String   @id @default(uuid())
-  name      String
-  type      String
-  status    String   @default("available")
-  category  String?
-  location  String?
-  barcode   String?  @unique
-  quantity  Float?
-  unit      String?
-  metadata  Json     @default("{}")
-  tags      String[]
-  createdBy String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String             @id @default(uuid())
+  name               String
+  type               String
+  status             String             @default("available")
+  category           String?
+  location           String?
+  barcode            String?            @unique
+  quantity           Float?
+  unit               String?
+  minQuantity        Float?             // 최소 재고 알림 임계값
+  expiryDate         DateTime?          // 유효기간
+  expiryWarningDays  Int                @default(30) // 만료 N일 전 경고
+  metadata           Json               @default("{}")
+  tags               String[]
+  createdBy          String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  history            InventoryHistory[]
 
   @@index([type])
   @@index([status])
   @@index([category])
+  @@index([barcode])
+  @@index([expiryDate])
+  @@index([createdBy])
+}
+
+model InventoryHistory {
+  id               String        @id @default(uuid())
+  itemId           String
+  item             InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  changeType       String        // "in" | "out" | "adjust" | "status_change"
+  quantityBefore   Float?
+  quantityAfter    Float?
+  quantityDelta    Float?        // 변화량 (양수=입고, 음수=출고)
+  statusBefore     String?
+  statusAfter      String?
+  reason           String?       // 변경 사유
+  performedBy      String
+  createdAt        DateTime      @default(now())
+
+  @@index([itemId])
+  @@index([performedBy])
+  @@index([createdAt])
 }
 
 model Category {
-  id   String @id @default(uuid())
-  name String @unique
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }

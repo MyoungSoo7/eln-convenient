@@ -171,6 +171,8 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
       - MINIO_BUCKET=labnote-files
       - ELN_SERVICE_URL=http://eln-service:8002
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -179,6 +181,8 @@ services:
       minio:
         condition: service_healthy
       eln-service:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]

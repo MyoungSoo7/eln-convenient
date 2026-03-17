@@ -4,6 +4,7 @@ import Handlebars from 'handlebars';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as archiver from 'archiver';
+import { v4 as uuidv4 } from 'uuid';
 import { Writable } from 'stream';
 import { ExportJobPayload, redisConnection } from '../lib/queue';
 import { uploadBuffer, getPresignedUrl, BUCKET } from '../lib/minio';
@@ -173,6 +174,18 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     data: { status: 'completed', fileUrl, completedAt: new Date() },
   });
 
+  // 완료 감사로그
+  await prisma.auditLog.create({
+    data: {
+      id: uuidv4(),
+      entityType: 'export',
+      entityId: jobId,
+      action: 'export_completed',
+      actorId: requestedBy,
+      details: { jobId, format, noteId, fileUrl },
+    },
+  });
+
   await job.updateProgress(100);
   console.log(`[export-worker] 잡 완료: ${jobId} → ${fileUrl.slice(0, 60)}...`);
 }
@@ -190,9 +203,21 @@ export const exportWorker = new Worker<ExportJobPayload>(
 exportWorker.on('failed', (job, err) => {
   console.error(`[export-worker] 잡 실패: ${job?.id}`, err.message);
   if (job?.data?.jobId) {
+    const { jobId, format, noteId, requestedBy } = job.data;
     prisma.exportJob.update({
-      where: { id: job.data.jobId },
+      where: { id: jobId },
       data: { status: 'failed', errorMsg: err.message.slice(0, 500) },
+    }).catch(() => {});
+
+    prisma.auditLog.create({
+      data: {
+        id: uuidv4(),
+        entityType: 'export',
+        entityId: jobId,
+        action: 'export_failed',
+        actorId: requestedBy ?? 'system',
+        details: { jobId, format, noteId, error: err.message.slice(0, 500) },
+      },
     }).catch(() => {});
   }
 });

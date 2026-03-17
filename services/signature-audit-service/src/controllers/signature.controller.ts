@@ -4,6 +4,23 @@ import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
 
 const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+/** auth-service에 비밀번호 검증 요청 */
+async function verifyUserPassword(userId: string, password: string): Promise<boolean> {
+  const res = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-secret': INTERNAL_SECRET,
+    },
+    body: JSON.stringify({ userId, password }),
+  });
+  if (!res.ok) return false;
+  const body = await res.json() as any;
+  return body.verified === true;
+}
 
 /** SHA-256 해시 계산 */
 function sha256(data: string): string {
@@ -44,9 +61,18 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
 export async function signNote(req: Request, res: Response): Promise<void> {
   const signerId = (req.headers['x-user-id'] as string) || 'anonymous';
   const { noteId } = req.params;
-  const { comment } = req.body;
+  const { comment, password } = req.body;
 
   try {
+    // 비밀번호 검증 (제공된 경우 필수 확인)
+    if (password) {
+      const verified = await verifyUserPassword(signerId, password);
+      if (!verified) {
+        res.status(401).json({ ok: false, error: '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.' });
+        return;
+      }
+    }
+
     // 이미 서명된 노트 중복 체크
     const latestSig = await prisma.signature.findFirst({
       where: { noteId, status: 'valid' },

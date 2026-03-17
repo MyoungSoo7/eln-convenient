@@ -562,6 +562,45 @@ export async function deleteRole(req: Request, res: Response): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
+// 내부 서비스용 비밀번호 검증
+// ─────────────────────────────────────────────
+
+/**
+ * POST /api/auth/internal/verify-password
+ * 서비스 간 내부 호출 전용 — signature-service 등에서 서명 확인 시 사용
+ * 헤더: x-internal-secret (환경변수 INTERNAL_SECRET 검증)
+ */
+export async function verifyPassword(req: Request, res: Response): Promise<void> {
+  const internalSecret = process.env.INTERNAL_SECRET;
+  if (internalSecret) {
+    const incoming = req.headers['x-internal-secret'];
+    if (incoming !== internalSecret) {
+      res.status(401).json({ ok: false, error: '내부 요청 인증 실패' });
+      return;
+    }
+  }
+
+  const { userId, password } = req.body;
+  if (!userId || !password) {
+    res.status(400).json({ ok: false, error: 'userId와 password는 필수입니다.' });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      res.status(200).json({ ok: true, verified: false });
+      return;
+    }
+    const verified = await bcrypt.compare(password, user.passwordHash);
+    res.json({ ok: true, verified });
+  } catch (err) {
+    console.error('[verifyPassword]', err);
+    res.status(500).json({ ok: false, error: '비밀번호 검증 중 오류가 발생했습니다.' });
+  }
+}
+
+// ─────────────────────────────────────────────
 // SSO 훅 — Keycloak Event Webhook
 // ─────────────────────────────────────────────
 
