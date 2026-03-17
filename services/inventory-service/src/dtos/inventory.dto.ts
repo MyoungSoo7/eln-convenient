@@ -1,4 +1,11 @@
-export type ItemType = 'reagent' | 'sample' | 'equipment' | 'consumable' | 'antibody' | 'plasmid' | 'cell_line' | 'other';
+export type ItemType = 'reagent' | 'sample' | 'equipment' | 'consumable' | 'antibody' | 'plasmid' | 'cell_line' | 'output' | 'license' | 'infrastructure' | 'other';
+
+export const VALID_ITEM_TYPES: ItemType[] = [
+  'reagent', 'sample', 'equipment', 'consumable',
+  'antibody', 'plasmid', 'cell_line',
+  'output', 'license', 'infrastructure', 'other',
+];
+
 export type ItemStatus = 'available' | 'in_use' | 'depleted' | 'expired' | 'disposed' | 'maintenance';
 export type ChangeType = 'in' | 'out' | 'adjust' | 'status_change';
 export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'quantity' | 'expiryDate';

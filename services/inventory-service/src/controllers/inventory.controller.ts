@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
+import { VALID_ITEM_TYPES } from '../dtos/inventory.dto';
 
 // ─────────────────────────────────────────────
 // 아이템 CRUD
@@ -83,6 +84,13 @@ export async function createItem(req: Request, res: Response): Promise<void> {
   const { name, type } = req.body;
   if (!name || !type) {
     res.status(400).json({ ok: false, error: 'name과 type은 필수입니다.' });
+    return;
+  }
+  if (!VALID_ITEM_TYPES.includes(type)) {
+    res.status(400).json({
+      ok: false,
+      error: `유효하지 않은 type입니다. 가능한 값: ${VALID_ITEM_TYPES.join(', ')}`,
+    });
     return;
   }
 
