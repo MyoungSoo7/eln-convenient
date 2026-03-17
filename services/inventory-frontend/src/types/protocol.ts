@@ -39,8 +39,20 @@ export interface Template {
   tags: string[];
   isPublic: boolean;
   createdBy: string;
+  useCount: number;
+  copyCount: number;
+  copiedFromId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TemplateFilters {
+  search: string;
+  category: string;
+  publicOnly: boolean;
+  sortBy: string;
+  page: number;
+  limit: number;
 }
 
 export interface CreateProtocolDto {
