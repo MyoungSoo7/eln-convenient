@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import prisma from '../lib/prisma';
 import { ISearchResult, ISuggestion } from '../interfaces/search.interface';
 import {
   osClient, INDICES, IndexKey,
@@ -93,6 +95,14 @@ export async function search(req: Request, res: Response): Promise<void> {
       highlight: hit.highlight || {},
       createdAt: hit._source.createdAt || '',
     }));
+
+    // 검색어 히스토리 자동 저장 (비동기, 실패해도 검색 결과에 영향 없음)
+    const userId = req.headers['x-user-id'] as string;
+    if (userId) {
+      prisma.searchHistory.create({
+        data: { id: uuidv4(), userId, query: q },
+      }).catch(() => { /* 무시 */ });
+    }
 
     res.json({
       ok: true,

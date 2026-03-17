@@ -132,10 +132,10 @@ export default function AdminPage() {
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           )}
           {teamsQuery.isError && (
-            <p className="text-sm text-destructive p-4">
+            <div className="text-sm text-destructive p-4">
               {(teamsQuery.error as Error).message}
               <Button variant="ghost" size="sm" className="ml-2" onClick={() => teamsQuery.refetch()}>다시 시도</Button>
-            </p>
+            </div>
           )}
           {teamsQuery.data && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -161,12 +161,12 @@ export default function AdminPage() {
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           )}
           {rolesQuery.isError && (
-            <p className="text-sm text-destructive p-4">
+            <div className="text-sm text-destructive p-4">
               {(rolesQuery.error as Error).message}
               <Button variant="ghost" size="sm" className="ml-2" onClick={() => rolesQuery.refetch()}>다시 시도</Button>
-            </p>
+            </div>
           )}
-          {rolesQuery.data?.map((r) => (
+          {rolesQuery.data && rolesQuery.data.map((r) => (
             <Card key={r.id ?? r.name} className="shadow-card">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
