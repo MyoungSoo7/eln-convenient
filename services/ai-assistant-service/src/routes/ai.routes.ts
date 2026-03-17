@@ -1,15 +1,17 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/ai.controller';
-import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
+import { requireAuth, requirePermission, requireInternalSecret } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-router.use(requireAuth);
+// ── 사용자 AI 기능 (인증 필요) ───────────────────────────
+router.post('/recommend-template', requireAuth, requirePermission('note:read'),  ctrl.recommendTemplate);
+router.post('/draft',              requireAuth, requirePermission('note:write'), ctrl.generateDraft);
+router.post('/ask',                requireAuth, requirePermission('note:read'),  ctrl.askQuestion);
 
-router.post('/recommend-template',  requirePermission('note:read'),   ctrl.recommendTemplate);
-router.post('/draft',               requirePermission('note:write'),  ctrl.generateDraft);
-router.post('/index',               requirePermission('audit:read'),  ctrl.indexDocument);  // 서비스 내부 호출용
-router.post('/ask',                 requirePermission('note:read'),   ctrl.askQuestion);
-router.get('/index/status',         requirePermission('audit:read'),  ctrl.getIndexStatus);
+// ── 인덱스 관리 (내부 서비스 전용 — x-internal-secret 헤더 필요) ──
+router.post('/index',              requireInternalSecret, ctrl.indexDocument);
+router.delete('/index/:documentId',requireInternalSecret, ctrl.removeDocument);
+router.get('/index/status',        requireInternalSecret, ctrl.getIndexStatus);
 
 export default router;
