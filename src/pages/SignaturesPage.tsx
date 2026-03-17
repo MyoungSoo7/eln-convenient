@@ -133,7 +133,7 @@ export default function SignaturesPage() {
                 {notes.map((n) => (
                   <TableRow key={n.id}>
                     <TableCell className="font-medium">{n.title}</TableCell>
-                    <TableCell className="text-muted-foreground">{n.author}</TableCell>
+                    <TableCell className="text-muted-foreground">{n.author || n.authorId || '-'}</TableCell>
                     <TableCell>
                       <Badge className={`text-[10px] ${statusColors[n.status]}`}>
                         {statusLabels[n.status] || n.status}

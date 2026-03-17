@@ -223,7 +223,7 @@ export default function NotesPage() {
                       ) : (
                         <Badge className={`text-[10px] ${statusColors[note.status]}`}>{statusLabels[note.status]}</Badge>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">{note.author}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{note.author || note.authorId || '-'}</p>
                       <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
                     </div>
                   </div>

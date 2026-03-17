@@ -4,11 +4,12 @@ export interface Note {
   id: string;
   title: string;
   status: 'draft' | 'in_progress' | 'signed' | 'locked';
-  author: string;
+  author?: string;    // mock 데이터용
+  authorId?: string;  // 백엔드 API 응답용
   createdAt: string;
   updatedAt: string;
   tags: string[];
-  project: string;
+  project?: string;
   content?: string;
   revisions?: Revision[];
   linkedItems?: LinkedItem[];

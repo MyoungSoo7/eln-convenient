@@ -227,21 +227,17 @@ export default function NoteEditor() {
     }
     setSigning(true);
     const signRes = await signNote(id!, signPassword);
+    setSigning(false);
     if (!signRes.ok) {
-      setSigning(false);
       toast({ title: "서명 실패", description: signRes.error || "전자서명에 실패했습니다.", variant: "destructive" });
       return;
     }
-    const res = await changeNoteStatus(id!, "signed");
-    setSigning(false);
-    if (res.ok) {
-      setNoteStatus("signed");
-      setSignDialogOpen(false);
-      setSignPassword("");
-      toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
-    } else {
-      toast({ title: "상태 변경 실패", description: res.error || "서명 완료 처리에 실패했습니다.", variant: "destructive" });
-    }
+    // signature-audit-service가 내부적으로 ELN 노트 상태를 "signed"로 전환하므로
+    // 프론트엔드에서 별도로 changeNoteStatus를 호출하지 않음
+    setNoteStatus("signed");
+    setSignDialogOpen(false);
+    setSignPassword("");
+    toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
   };
 
   const handleStartProgress = async () => {
