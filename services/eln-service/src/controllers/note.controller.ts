@@ -156,6 +156,17 @@ export async function createNote(req: Request, res: Response): Promise<void> {
       },
     });
 
+    // (4) 템플릿 노트 생성 횟수 증가 — templateId가 있을 때 useCount +1
+    if (templateId) {
+      await prisma.template.update({
+        where: { id: templateId },
+        data: { useCount: { increment: 1 } },
+      }).catch((e: Error) => {
+        // 템플릿이 삭제되었거나 존재하지 않아도 노트 생성은 성공으로 처리
+        console.warn('[createNote] 템플릿 useCount 증가 실패:', e.message);
+      });
+    }
+
     res.status(201).json({ ok: true, data: note });
   } catch (err) {
     console.error('[createNote]', err);

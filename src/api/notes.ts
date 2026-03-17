@@ -245,18 +245,88 @@ export async function deleteNoteLink(noteId: string, linkId: string): Promise<Ap
 }
 
 // ── 템플릿 API ──
-export async function listTemplates(): Promise<ApiResponse<Protocol[]>> {
+export interface TemplateRecord {
+  id: string;
+  title: string;
+  description?: string;
+  content?: string;
+  category: string;
+  sections?: unknown[];
+  tags: string[];
+  createdBy?: string;
+  isPublic?: boolean;
+  useCount: number;
+  copyCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export async function listTemplates(params?: { category?: string; page?: number; limit?: number }): Promise<ApiResponse<TemplateRecord[]>> {
   try {
-    return await apiClient.get<Protocol[]>('/templates');
+    const q: Record<string, string> = {};
+    if (params?.category) q.category = params.category;
+    if (params?.page != null) q.page = String(params.page);
+    if (params?.limit != null) q.limit = String(params.limit);
+    const res = await apiClient.get<{ data: TemplateRecord[] }>('/templates', Object.keys(q).length ? q : undefined);
+    const data = (res as { data?: TemplateRecord[] }).data;
+    return { ok: true, data: Array.isArray(data) ? data : [] };
   } catch {
-    return { ok: true, data: mockProtocols };
+    return { ok: true, data: mockProtocols.map((p) => ({ id: p.id, title: p.title, category: p.category, tags: p.tags, useCount: p.usageCount ?? 0 })) };
   }
 }
 
-export async function getTemplate(id: string): Promise<ApiResponse<Protocol>> {
+export async function getTemplate(id: string): Promise<ApiResponse<TemplateRecord>> {
   try {
-    return await apiClient.get<Protocol>(`/templates/${id}`);
+    const res = await apiClient.get<TemplateRecord>(`/templates/${id}`);
+    return res;
   } catch {
-    return { ok: true, data: mockProtocols.find((p) => p.id === id) || mockProtocols[0] };
+    const p = mockProtocols.find((x) => x.id === id) || mockProtocols[0];
+    return { ok: true, data: { id: p.id, title: p.title, category: p.category, tags: p.tags, useCount: p.usageCount ?? 0 } };
+  }
+}
+
+export async function createTemplate(data: {
+  title: string;
+  description?: string;
+  content?: string;
+  category?: string;
+  sections?: unknown[];
+  tags?: string[];
+  isPublic?: boolean;
+}): Promise<ApiResponse<TemplateRecord>> {
+  try {
+    const res = await apiClient.post<TemplateRecord>('/templates', data);
+    return res;
+  } catch {
+    return {
+      ok: true,
+      data: {
+        id: `tmpl-${Date.now()}`,
+        title: data.title,
+        description: data.description ?? '',
+        category: data.category ?? '일반',
+        tags: data.tags ?? [],
+        useCount: 0,
+      },
+    };
+  }
+}
+
+export async function copyTemplate(templateId: string): Promise<ApiResponse<TemplateRecord>> {
+  try {
+    const res = await apiClient.post<TemplateRecord>(`/templates/${templateId}/copy`, {});
+    return res;
+  } catch {
+    const p = mockProtocols.find((x) => x.id === templateId) || mockProtocols[0];
+    return {
+      ok: true,
+      data: {
+        id: `tmpl-copy-${Date.now()}`,
+        title: `${p.title} (복사본)`,
+        category: p.category,
+        tags: p.tags,
+        useCount: 0,
+      },
+    };
   }
 }

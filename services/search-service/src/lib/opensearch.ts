@@ -29,7 +29,7 @@ export function resolveIndices(type?: string): string[] {
   if (!type) return Object.values(INDICES);
   return type
     .split(',')
-    .map((t) => {
+    .map((t): string | null => {
       const key = TYPE_ALIASES[t.trim()];
       return key ? INDICES[key] : null;
     })

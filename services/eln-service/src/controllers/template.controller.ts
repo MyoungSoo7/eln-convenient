@@ -4,7 +4,7 @@ import prisma from '../lib/prisma';
 
 /** GET /api/templates */
 export async function listTemplates(req: Request, res: Response): Promise<void> {
-  const { category, search, publicOnly } = req.query;
+  const { category, search, publicOnly, sortBy, page = '1', limit = '20' } = req.query;
   const where: Record<string, unknown> = {};
   if (category)   where.category = category;
   if (publicOnly === 'true') where.isPublic = true;
@@ -12,15 +12,32 @@ export async function listTemplates(req: Request, res: Response): Promise<void> 
     where.OR = [
       { title:       { contains: search as string, mode: 'insensitive' } },
       { description: { contains: search as string, mode: 'insensitive' } },
+      { tags:        { has: search as string } },
     ];
   }
 
+  // 정렬: useCount(인기순) | createdAt(최신순, 기본)
+  const validSortFields: Record<string, object> = {
+    useCount:  { useCount: 'desc' },
+    copyCount: { copyCount: 'desc' },
+    createdAt: { createdAt: 'desc' },
+    title:     { title: 'asc' },
+  };
+  const orderBy = validSortFields[sortBy as string] ?? { createdAt: 'desc' };
+
+  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
   try {
-    const templates = await prisma.template.findMany({
-      where,
-      orderBy: { createdAt: 'asc' },
-    });
-    res.json({ ok: true, data: templates, total: templates.length });
+    const [templates, total] = await Promise.all([
+      prisma.template.findMany({
+        where,
+        orderBy,
+        skip,
+        take: parseInt(limit as string),
+      }),
+      prisma.template.count({ where }),
+    ]);
+    res.json({ ok: true, data: templates, total, page: parseInt(page as string), limit: parseInt(limit as string) });
   } catch (err) {
     console.error('[listTemplates]', err);
     res.status(500).json({ ok: false, error: '템플릿 목록 조회 중 오류가 발생했습니다.' });
@@ -141,11 +158,61 @@ export async function recommendTemplates(req: Request, res: Response): Promise<v
         ...(category && { category: category as string }),
       },
       take: 5,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { useCount: 'desc' }, // 가장 많이 사용된 템플릿 우선
     });
     res.json({ ok: true, data: templates });
   } catch (err) {
     console.error('[recommendTemplates]', err);
     res.status(500).json({ ok: false, error: '추천 템플릿 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+// ─────────────────────────────────────────────
+// (3) 템플릿 복사
+// ─────────────────────────────────────────────
+
+/** POST /api/templates/:id/copy
+ *  - 원본 템플릿을 복사해 새 템플릿 생성
+ *  - 원본의 copyCount += 1
+ *  - 복사본은 비공개(isPublic=false), copiedFromId에 원본 ID 기록
+ */
+export async function copyTemplate(req: Request, res: Response): Promise<void> {
+  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
+
+  try {
+    const original = await prisma.template.findUnique({ where: { id: req.params.id } });
+    if (!original) {
+      res.status(404).json({ ok: false, error: '원본 템플릿을 찾을 수 없습니다.' });
+      return;
+    }
+
+    // 복사본 생성 + 원본 copyCount 증가를 트랜잭션으로 처리
+    const [copied] = await prisma.$transaction([
+      prisma.template.create({
+        data: {
+          id: uuidv4(),
+          title:        `${original.title} (복사본)`,
+          description:  original.description,
+          content:      original.content,
+          category:     original.category,
+          sections:     original.sections as object,
+          tags:         original.tags,
+          createdBy:    userId,
+          isPublic:     false,      // 복사본은 기본 비공개
+          useCount:     0,          // 복사본은 사용 횟수 초기화
+          copyCount:    0,
+          copiedFromId: original.id,
+        },
+      }),
+      prisma.template.update({
+        where: { id: original.id },
+        data:  { copyCount: { increment: 1 } },
+      }),
+    ]);
+
+    res.status(201).json({ ok: true, data: copied, originalId: original.id });
+  } catch (err) {
+    console.error('[copyTemplate]', err);
+    res.status(500).json({ ok: false, error: '템플릿 복사 중 오류가 발생했습니다.' });
   }
 }

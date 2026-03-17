@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,10 +54,13 @@ function formatDate(d: Date): string {
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 }
 
+type StatusFilter = "all" | "pending" | "approved";
+
 export default function SchedulerPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const [resources, setResources] = useState<Resource[]>([]);
   const [bookings, setBookings] = useState<BackendBooking[]>([]);
@@ -73,18 +76,24 @@ export default function SchedulerPage() {
   const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
 
-  // 초기 데이터 로드
+  // 자원 + 예약 목록 로드 (상태 필터: 전체/대기/승인)
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const [resRes, bookRes] = await Promise.all([
+      listResources(),
+      listBookings({
+        ...(statusFilter !== "all" ? { status: statusFilter } : {}),
+        limit: 200,
+      }),
+    ]);
+    if (resRes.ok) setResources(resRes.data ?? []);
+    if (bookRes.ok) setBookings(bookRes.data ?? []);
+    setLoading(false);
+  }, [statusFilter]);
+
   useEffect(() => {
     loadData();
-  }, []);
-
-  async function loadData() {
-    setLoading(true);
-    const [resRes, bookRes] = await Promise.all([listResources(), listBookings()]);
-    if (resRes.ok) setResources(resRes.data);
-    if (bookRes.ok) setBookings(bookRes.data);
-    setLoading(false);
-  }
+  }, [loadData]);
 
   const resetForm = () => {
     setFormResourceId("");
@@ -115,14 +124,10 @@ export default function SchedulerPage() {
     const res = await createBooking({ resourceId: formResourceId, title: formTitle, startTime, endTime });
     setSubmitting(false);
 
-    if (res.ok) {
-      const resource = resources.find((r) => r.id === formResourceId);
-      const newBooking: BackendBooking = {
-        ...res.data,
-        resource: resource ? { id: resource.id, name: resource.name, type: resource.type } : undefined,
-      };
+    if (res.ok && res.data) {
+      const newBooking = res.data as BackendBooking;
       setBookings((prev) => [newBooking, ...prev]);
-      toast({ title: "예약 생성 완료", description: `${resource?.name || ""} 예약이 등록되었습니다. (대기 중)` });
+      toast({ title: "예약 생성 완료", description: `${newBooking.resource?.name || formResourceId} 예약이 등록되었습니다. (대기 중)` });
       setNewBookingOpen(false);
       resetForm();
     } else {
@@ -271,6 +276,7 @@ export default function SchedulerPage() {
               {weekDates.map((d, i) => {
                 const dateStr = formatDate(d);
                 const booking = bookings.find((b) => {
+                  if (!["pending", "approved"].includes(b.status)) return false;
                   const bDate = toLocalDate(b.startTime);
                   const bStart = toLocalHHMM(b.startTime);
                   const bEnd = toLocalHHMM(b.endTime);
@@ -294,23 +300,32 @@ export default function SchedulerPage() {
         </CardContent>
       </Card>
 
-      {/* 예약 목록 */}
+      {/* 예약 목록 (승인/대기 상태 필터) */}
       <Card className="shadow-card">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            예약 목록
-            <HelpTooltip text="모든 예약의 상세 목록입니다. 상태(대기/승인/거절/취소)를 한눈에 확인할 수 있습니다." />
-            {bookings.length > 0 && (
-              <span className="text-xs text-muted-foreground font-normal ml-1">({bookings.length}건)</span>
-            )}
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              예약 목록
+              <HelpTooltip text="모든 예약의 상세 목록입니다. 전체·대기·승인 상태별로 필터링할 수 있습니다." />
+              {bookings.length > 0 && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">({bookings.length}건)</span>
+              )}
+            </CardTitle>
+            <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-auto">
+              <TabsList className="h-9">
+                <TabsTrigger value="all" className="text-xs px-3">전체</TabsTrigger>
+                <TabsTrigger value="pending" className="text-xs px-3">대기</TabsTrigger>
+                <TabsTrigger value="approved" className="text-xs px-3">승인</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
           ) : bookings.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              예약이 없습니다. 새 예약을 생성해보세요.
+              {statusFilter === "all" ? "예약이 없습니다. 새 예약을 생성해보세요." : `'${statusFilter === "pending" ? "대기" : "승인"}' 상태 예약이 없습니다.`}
             </p>
           ) : (
             <div className="space-y-3">

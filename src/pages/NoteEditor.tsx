@@ -16,11 +16,12 @@ import { toast } from "@/hooks/use-toast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { getToken } from "@/lib/authToken";
 import {
-  createNote, updateNote, getNote,
+  createNote, updateNote, getNote, changeNoteStatus,
   listAttachments, addAttachment, deleteAttachmentRecord,
   getLinks, createNoteLink, deleteNoteLink, listRevisions,
   type AttachmentRecord, type NoteLink, type RevisionRecord,
 } from "@/api/notes";
+import { signNote } from "@/api/signatures";
 import { uploadFile, getFileDownloadUrl } from "@/api/files";
 import { listItems } from "@/api/inventory";
 import { type InventoryItem } from "@/lib/mockData";
@@ -87,6 +88,8 @@ export default function NoteEditor() {
   const [title, setTitle] = useState(protocolState?.title || "");
   const [noteStatus, setNoteStatus] = useState("draft");
   const [signDialogOpen, setSignDialogOpen] = useState(false);
+  const [signPassword, setSignPassword] = useState("");
+  const [signing, setSigning] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // 첨부파일
@@ -197,12 +200,12 @@ export default function NoteEditor() {
         title,
         content,
         tags: protocolState?.tags || [],
-        ...(protocolState?.fromProtocol ? {} : {}),
+        templateId: protocolState?.protocolId,
       });
       setSaving(false);
       if (res.ok && res.data?.id) {
         toast({ title: "노트 생성 완료", description: "노트가 저장되었습니다." });
-        navigate('/notes');
+        navigate(`/notes/${res.data.id}`, { replace: true });
       } else {
         toast({ title: "저장 실패", description: res.error || "노트 생성에 실패했습니다.", variant: "destructive" });
       }
@@ -218,10 +221,37 @@ export default function NoteEditor() {
   };
 
   const handleSign = async () => {
-    // 서명: in_progress → signed (서명 서비스 호출은 생략, 상태만 변경)
-    setNoteStatus("signed");
-    setSignDialogOpen(false);
-    toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
+    if (!signPassword.trim()) {
+      toast({ title: "비밀번호를 입력해주세요.", variant: "destructive" });
+      return;
+    }
+    setSigning(true);
+    const signRes = await signNote(id!, signPassword);
+    if (!signRes.ok) {
+      setSigning(false);
+      toast({ title: "서명 실패", description: signRes.error || "전자서명에 실패했습니다.", variant: "destructive" });
+      return;
+    }
+    const res = await changeNoteStatus(id!, "signed");
+    setSigning(false);
+    if (res.ok) {
+      setNoteStatus("signed");
+      setSignDialogOpen(false);
+      setSignPassword("");
+      toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
+    } else {
+      toast({ title: "상태 변경 실패", description: res.error || "서명 완료 처리에 실패했습니다.", variant: "destructive" });
+    }
+  };
+
+  const handleStartProgress = async () => {
+    const res = await changeNoteStatus(id!, "in_progress");
+    if (res.ok) {
+      setNoteStatus("in_progress");
+      toast({ title: "상태 변경", description: "노트가 '진행 중' 상태로 변경되었습니다." });
+    } else {
+      toast({ title: "상태 변경 실패", description: res.error || "상태 변경에 실패했습니다.", variant: "destructive" });
+    }
   };
 
   // ── 첨부파일 ──────────────────────────────────
@@ -342,8 +372,13 @@ export default function NoteEditor() {
               <Save className="h-4 w-4" />
               {saving ? "저장 중..." : "저장"}
             </Button>
-            {!isNew && (
-              <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
+            {!isNew && noteStatus === "draft" && (
+              <Button variant="outline" size="sm" onClick={handleStartProgress} className="gap-1.5">
+                진행 시작
+              </Button>
+            )}
+            {!isNew && noteStatus === "in_progress" && (
+              <Dialog open={signDialogOpen} onOpenChange={(open) => { setSignDialogOpen(open); if (!open) setSignPassword(""); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">
                     <ShieldCheck className="h-4 w-4" /> 서명하기
@@ -361,13 +396,21 @@ export default function NoteEditor() {
                       서명 후 노트는 잠금 처리되며 수정이 불가합니다. 서명을 진행하시겠습니까?
                     </p>
                     <div className="space-y-2">
-                      <Label>비밀번호 확인</Label>
-                      <Input type="password" placeholder="비밀번호를 입력하세요" />
+                      <Label>비밀번호 확인 <span className="text-destructive">*</span></Label>
+                      <Input
+                        type="password"
+                        placeholder="비밀번호를 입력하세요"
+                        value={signPassword}
+                        onChange={(e) => setSignPassword(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSign()}
+                      />
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setSignDialogOpen(false)}>취소</Button>
-                    <Button onClick={handleSign} className="gradient-primary text-primary-foreground">서명 확인</Button>
+                    <Button variant="outline" onClick={() => { setSignDialogOpen(false); setSignPassword(""); }}>취소</Button>
+                    <Button onClick={handleSign} disabled={signing} className="gradient-primary text-primary-foreground">
+                      {signing ? "처리 중..." : "서명 확인"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

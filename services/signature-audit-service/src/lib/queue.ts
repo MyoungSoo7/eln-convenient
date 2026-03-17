@@ -23,7 +23,7 @@ export const exportQueue = new Queue('labnote-export', {
 export interface ExportJobPayload {
   jobId: string;    // ExportJob.id (DB PK)
   noteId: string;
-  format: 'pdf' | 'zip';
-  noteIds?: string[]; // zip 일 때 복수 노트
+  format: 'pdf' | 'zip' | 'report';
+  noteIds?: string[]; // zip / report 일 때 복수 노트
   requestedBy: string;
 }

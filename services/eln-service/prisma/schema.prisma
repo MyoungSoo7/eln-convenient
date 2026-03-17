@@ -81,6 +81,14 @@ model Template {
   tags        String[]
   createdBy   String
   isPublic    Boolean  @default(false)
+  useCount    Int      @default(0)  // 이 템플릿으로 노트/프로토콜 생성 횟수
+  copyCount   Int      @default(0)  // 이 템플릿이 복사된 횟수
+  copiedFromId String? // 복사 원본 템플릿 ID (null이면 원본)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([useCount])
+  @@index([copyCount])
+  @@index([category])
+  @@index([isPublic])
 }

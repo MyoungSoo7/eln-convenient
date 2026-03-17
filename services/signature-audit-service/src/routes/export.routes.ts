@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.get('/list',            requirePermission('export:pdf'), ctrl.listExportJobs);
 router.post('/pdf/:noteId',    requirePermission('export:pdf'), ctrl.exportPdf);
 router.post('/zip',            requirePermission('export:pdf'), ctrl.exportZip);
+router.post('/report',         requirePermission('export:pdf'), ctrl.exportReport);
 router.get('/status/:jobId',   requirePermission('export:pdf'), ctrl.getExportStatus);
 
 export default router;

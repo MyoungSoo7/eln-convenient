@@ -26,7 +26,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return json as T;
 }
 
-// ── 프로토콜 ────────────────────────────────────────────────
+// ── (1)(2) 프로토콜 CRUD ─────────────────────────────────────
 
 export interface ProtocolsResponse {
   ok: boolean;
@@ -44,10 +44,10 @@ export async function fetchProtocols(params: {
   limit?: number;
 }): Promise<ProtocolsResponse> {
   const qs = new URLSearchParams();
-  if (params.q) qs.set('q', params.q);
+  if (params.q)      qs.set('q', params.q);
   if (params.status) qs.set('status', params.status);
-  if (params.tag) qs.set('tag', params.tag);
-  qs.set('page', String(params.page ?? 1));
+  if (params.tag)    qs.set('tag', params.tag);
+  qs.set('page',  String(params.page  ?? 1));
   qs.set('limit', String(params.limit ?? 20));
   return request<ProtocolsResponse>(`/api/protocols?${qs}`);
 }
@@ -65,23 +65,48 @@ export async function deleteProtocol(id: string): Promise<void> {
   await request(`/api/protocols/${id}`, { method: 'DELETE' });
 }
 
-// ── 템플릿 ────────────────────────────────────────────────
+export async function fetchProtocolStats(): Promise<{
+  total: number;
+  draft: number;
+  in_progress: number;
+  signed: number;
+  locked: number;
+}> {
+  const [all, draft, inProg, signed, locked] = await Promise.all([
+    request<ProtocolsResponse>('/api/protocols?limit=1&page=1'),
+    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=draft'),
+    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=in_progress'),
+    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=signed'),
+    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=locked'),
+  ]);
+  return { total: all.total, draft: draft.total, in_progress: inProg.total, signed: signed.total, locked: locked.total };
+}
+
+// ── (1)(2)(3)(4) 템플릿 CRUD + 복사 ─────────────────────────
 
 export interface TemplatesResponse {
   ok: boolean;
   data: Template[];
-  total?: number;
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export async function fetchTemplates(params?: {
-  q?: string;
+  search?: string;
   category?: string;
   publicOnly?: boolean;
+  sortBy?: string;
+  page?: number;
+  limit?: number;
 }): Promise<TemplatesResponse> {
   const qs = new URLSearchParams();
-  if (params?.q) qs.set('q', params.q);
-  if (params?.category) qs.set('category', params.category);
+  if (params?.search)     qs.set('search', params.search);
+  if (params?.category)   qs.set('category', params.category);
   if (params?.publicOnly) qs.set('publicOnly', 'true');
+  if (params?.sortBy)     qs.set('sortBy', params.sortBy);
+  qs.set('page',  String(params?.page  ?? 1));
+  qs.set('limit', String(params?.limit ?? 20));
   return request<TemplatesResponse>(`/api/templates?${qs}`);
 }
 
@@ -94,23 +119,19 @@ export async function createTemplate(
   });
 }
 
-export async function fetchProtocolStats(): Promise<{
-  total: number;
-  draft: number;
-  in_progress: number;
-  signed: number;
-}> {
-  // 각 상태별 카운트를 동시에 조회
-  const [all, draft, inProgress, signed] = await Promise.all([
-    request<ProtocolsResponse>('/api/protocols?limit=1&page=1'),
-    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=draft'),
-    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=in_progress'),
-    request<ProtocolsResponse>('/api/protocols?limit=1&page=1&status=signed'),
-  ]);
-  return {
-    total: all.total,
-    draft: draft.total,
-    in_progress: inProgress.total,
-    signed: signed.total,
-  };
+export async function deleteTemplate(id: string): Promise<void> {
+  await request(`/api/templates/${id}`, { method: 'DELETE' });
+}
+
+// (3) 템플릿 복사 — POST /api/templates/:id/copy
+export async function copyTemplate(
+  id: string,
+): Promise<{ ok: boolean; data: Template; originalId: string }> {
+  return request(`/api/templates/${id}/copy`, { method: 'POST' });
+}
+
+// 검색 모달용 경량 조회 (공개 템플릿만)
+export async function fetchPublicTemplates(search?: string): Promise<Template[]> {
+  const res = await fetchTemplates({ search, publicOnly: false, limit: 50 });
+  return res.data;
 }

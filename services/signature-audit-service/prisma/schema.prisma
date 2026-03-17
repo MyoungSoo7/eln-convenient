@@ -60,6 +60,7 @@ enum SignatureStatus {
 enum ExportFormat {
   pdf
   zip
+  report
 }
 
 enum ExportStatus {

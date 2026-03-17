@@ -12,6 +12,7 @@ model Organization {
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   users     User[]
   teams     Team[]
   roles     Role[]
@@ -46,6 +47,7 @@ model Team {
   orgId     String
   name      String
   createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
   org       Organization @relation(fields: [orgId], references: [id])
   members   TeamMember[]
 }

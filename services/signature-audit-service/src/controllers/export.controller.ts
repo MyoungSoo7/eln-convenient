@@ -51,6 +51,14 @@ export async function exportPdf(req: Request, res: Response): Promise<void> {
     res.status(202).json({
       ok: true,
       data: {
+        job: {
+          id: job.id,
+          jobId: job.id,
+          noteId: job.noteId,
+          format: job.format,
+          status: job.status,
+          createdAt: job.createdAt.toISOString(),
+        },
         jobId: job.id,
         noteId: job.noteId,
         status: job.status,
@@ -71,10 +79,12 @@ export async function getExportStatus(req: Request, res: Response): Promise<void
     res.json({
       ok: true,
       data: {
+        id: job.id,
         jobId: job.id,
         noteId: job.noteId,
         format: job.format,
         status: job.status,
+        fileUrl: job.fileUrl ?? null,
         downloadUrl: job.fileUrl ?? null,
         errorMsg: job.errorMsg ?? null,
         createdAt: job.createdAt.toISOString(),
@@ -122,6 +132,15 @@ export async function exportZip(req: Request, res: Response): Promise<void> {
     res.status(202).json({
       ok: true,
       data: {
+        job: {
+          id: job.id,
+          jobId: job.id,
+          noteId: job.noteId,
+          noteIds,
+          format: job.format,
+          status: job.status,
+          createdAt: job.createdAt.toISOString(),
+        },
         jobId: job.id,
         noteIds,
         status: job.status,
@@ -131,6 +150,62 @@ export async function exportZip(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('[exportZip]', err);
     res.status(500).json({ ok: false, error: 'ZIP 내보내기 요청 중 오류가 발생했습니다.' });
+  }
+}
+
+/** POST /api/export/report — 프로젝트 보고서 종합 PDF (복수 노트 → 1개 PDF) */
+export async function exportReport(req: Request, res: Response): Promise<void> {
+  const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
+  const noteIds: string[] = req.body.noteIds ?? [];
+
+  if (noteIds.length === 0) {
+    res.status(400).json({ ok: false, error: 'noteIds 배열이 필요합니다.' });
+    return;
+  }
+
+  try {
+    const job = await prisma.exportJob.create({
+      data: {
+        id: uuidv4(),
+        noteId: 'report',
+        noteIds,
+        format: 'report',
+        status: 'pending',
+        requestedBy,
+      },
+    });
+
+    await exportQueue.add('report', {
+      jobId: job.id,
+      noteId: 'report',
+      noteIds,
+      format: 'report',
+      requestedBy,
+    });
+
+    await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, req.ip);
+
+    res.status(202).json({
+      ok: true,
+      data: {
+        job: {
+          id: job.id,
+          jobId: job.id,
+          noteId: job.noteId,
+          noteIds,
+          format: job.format,
+          status: job.status,
+          createdAt: job.createdAt.toISOString(),
+        },
+        jobId: job.id,
+        noteIds,
+        status: job.status,
+        message: '프로젝트 보고서 PDF 작업이 대기열에 추가되었습니다.',
+      },
+    });
+  } catch (err) {
+    console.error('[exportReport]', err);
+    res.status(500).json({ ok: false, error: '프로젝트 보고서 요청 중 오류가 발생했습니다.' });
   }
 }
 

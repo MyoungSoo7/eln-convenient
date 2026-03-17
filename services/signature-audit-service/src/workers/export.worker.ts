@@ -20,6 +20,12 @@ const templateSrc = fs.readFileSync(
 );
 const template = Handlebars.compile(templateSrc);
 
+const reportTemplateSrc = fs.readFileSync(
+  path.join(__dirname, '../templates/report.html'),
+  'utf-8'
+);
+const reportTemplate = Handlebars.compile(reportTemplateSrc);
+
 /** eln-service에서 노트 전체 정보 조회 */
 async function fetchNote(noteId: string): Promise<any> {
   const res = await fetch(`${ELN_URL}/api/notes/${noteId}`);
@@ -109,6 +115,53 @@ async function renderNoteToPdf(noteId: string): Promise<Buffer> {
   }
 }
 
+/** 프로젝트 보고서: 복수 노트 → 단일 PDF */
+async function renderReportToPdf(noteIds: string[]): Promise<Buffer> {
+  const notesData = await Promise.all(
+    noteIds.map(async (noteId) => {
+      const note = await fetchNote(noteId);
+      let sections = note.content ? parseSections(note.content) : [];
+      if (sections.length === 0) {
+        sections = [{ title: '내용', content: note.content || '(내용 없음)' }];
+      }
+      return {
+        note: {
+          ...note,
+          createdAt: formatDate(note.createdAt),
+          updatedAt: formatDate(note.updatedAt),
+          tags: note.tags ?? [],
+        },
+        sections,
+      };
+    })
+  );
+
+  const html = reportTemplate({
+    reportTitle: '프로젝트 보고서',
+    printedAt: formatDate(new Date().toISOString()),
+    notes: notesData,
+  });
+
+  const browser = await puppeteer.launch({
+    executablePath: CHROMIUM_PATH,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    headless: true,
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '20mm', bottom: '25mm', left: '15mm', right: '15mm' },
+    });
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await browser.close();
+  }
+}
+
 /** ZIP buffer 생성 (복수 PDF) */
 async function buildZip(pdfMap: Map<string, Buffer>): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -149,6 +202,17 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     const key = `exports/${jobId}.pdf`;
     await uploadBuffer(key, pdfBuffer, 'application/pdf');
     fileUrl = await getPresignedUrl(key, 86400 * 7); // 7일 유효
+
+  } else if (format === 'report') {
+    const targets = noteIds ?? [];
+    if (targets.length === 0) throw new Error('report requires noteIds');
+    await job.updateProgress(10);
+    const pdfBuffer = await renderReportToPdf(targets);
+    await job.updateProgress(85);
+
+    const key = `exports/${jobId}.pdf`;
+    await uploadBuffer(key, pdfBuffer, 'application/pdf');
+    fileUrl = await getPresignedUrl(key, 86400 * 7);
 
   } else {
     // ZIP — 복수 노트

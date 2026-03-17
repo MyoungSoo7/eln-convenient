@@ -49,9 +49,33 @@ export async function listResources(): Promise<ApiResponse<Resource[]>> {
   }
 }
 
-export async function listBookings(params?: { resourceId?: string; status?: string }): Promise<ApiResponse<BackendBooking[]>> {
+export interface ListBookingsParams {
+  resourceId?: string;
+  status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  from?: string;  // ISO date or datetime
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ListBookingsResponse {
+  data: BackendBooking[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function listBookings(params?: ListBookingsParams): Promise<ApiResponse<BackendBooking[]> & { total?: number; page?: number; limit?: number }> {
   try {
-    return await apiClient.get<BackendBooking[]>('/scheduler/bookings', params as Record<string, string>);
+    const query: Record<string, string> = {};
+    if (params?.resourceId) query.resourceId = params.resourceId;
+    if (params?.status) query.status = params.status;
+    if (params?.from) query.from = params.from;
+    if (params?.to) query.to = params.to;
+    if (params?.page != null) query.page = String(params.page);
+    if (params?.limit != null) query.limit = String(params.limit);
+    const res = await apiClient.get<BackendBooking[]>('/scheduler/bookings', Object.keys(query).length ? query : undefined);
+    return res as ApiResponse<BackendBooking[]> & { total?: number; page?: number; limit?: number };
   } catch {
     // mock fallback: 백엔드 형식으로 변환
     const today = new Date().toISOString().slice(0, 10);
@@ -106,10 +130,20 @@ export async function cancelBooking(id: string): Promise<ApiResponse<{ message: 
   }
 }
 
-export async function approveBooking(id: string): Promise<ApiResponse<{ status: string }>> {
+export async function approveBooking(id: string): Promise<ApiResponse<BackendBooking>> {
   try {
-    return await apiClient.put<{ status: string }>(`/scheduler/bookings/${id}/approve`, {});
+    const res = await apiClient.put<BackendBooking>(`/scheduler/bookings/${id}/approve`, {});
+    return res;
   } catch {
-    return { ok: true, data: { status: 'approved' } };
+    return { ok: true, data: {} as BackendBooking };
+  }
+}
+
+export async function rejectBooking(id: string, reason?: string): Promise<ApiResponse<BackendBooking>> {
+  try {
+    const res = await apiClient.put<BackendBooking>(`/scheduler/bookings/${id}/reject`, { reason });
+    return res;
+  } catch {
+    return { ok: true, data: {} as BackendBooking };
   }
 }
