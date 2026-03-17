@@ -10,5 +10,6 @@ export * as schedulerApi from './scheduler';
 export * as searchApi from './search';
 export * as aiApi from './ai';
 export * as filesApi from './files';
+export * as adminApi from './admin';
 export { apiClient } from './client';
 export type { ApiResponse } from './client';
