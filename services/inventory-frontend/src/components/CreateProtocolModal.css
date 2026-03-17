@@ -1,0 +1,468 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+/* ── 모달 컨테이너 ────────────────────────────── */
+.cp-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 860px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+/* ── 헤더 ─────────────────────────────────────── */
+.cp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.cp-mode-tabs {
+  display: flex;
+  gap: 0;
+}
+
+.cp-tab {
+  padding: 1rem 1.375rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.cp-tab.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+  font-weight: 600;
+}
+
+.cp-tab:hover:not(.active) {
+  color: #374151;
+}
+
+.cp-close {
+  background: none;
+  border: none;
+  font-size: 1.125rem;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.cp-close:hover { background: #f3f4f6; }
+
+/* ── 폼 (좌 + 우 2열) ────────────────────────── */
+.cp-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 좌측 (좌 + 우를 가로로) */
+.cp-form > .cp-left,
+.cp-form > .cp-right {
+  overflow-y: auto;
+}
+
+/* 프로토콜 모드: 좌우 2열 */
+.cp-form:has(.cp-right) {
+  flex-direction: row;
+}
+
+.cp-left {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-right: 1px solid #f3f4f6;
+  min-width: 0;
+}
+
+.cp-right {
+  width: 280px;
+  flex-shrink: 0;
+  padding: 1.25rem 1rem;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ── 필드 ─────────────────────────────────────── */
+.cp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-field-grow {
+  flex: 1;
+}
+
+.cp-field-center {
+  justify-content: flex-end;
+}
+
+.cp-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.875rem;
+}
+
+.cp-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.cp-label.required::after {
+  content: ' *';
+  color: #dc2626;
+}
+
+.cp-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #111827;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cp-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.cp-textarea {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #111827;
+  background: #fff;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.6;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+  flex: 1;
+  min-height: 200px;
+}
+
+.cp-textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* ── 토글 ─────────────────────────────────────── */
+.cp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  margin-top: 4px;
+}
+
+.cp-toggle input[type="checkbox"] {
+  display: none;
+}
+
+.cp-toggle-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: #d1d5db;
+  border-radius: 9999px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.cp-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.cp-toggle input:checked ~ .cp-toggle-track {
+  background: #6366f1;
+}
+
+.cp-toggle input:checked ~ .cp-toggle-track::after {
+  transform: translateX(16px);
+}
+
+.cp-toggle-label {
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+/* ── 태그 ─────────────────────────────────────── */
+.cp-tag-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cp-tag-row .cp-input {
+  flex: 1;
+}
+
+.cp-btn-tag {
+  padding: 0.5rem 0.875rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.cp-btn-tag:hover { background: #e5e7eb; }
+
+.cp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ede9fe;
+  color: #5b21b6;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.cp-tag button {
+  background: none;
+  border: none;
+  color: #7c3aed;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+}
+
+/* ── 오류 ─────────────────────────────────────── */
+.cp-error {
+  color: #dc2626;
+  font-size: 0.875rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.625rem 0.875rem;
+  margin: 0;
+}
+
+/* ── 우측 템플릿 패널 ────────────────────────── */
+.cp-tpl-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cp-tpl-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.cp-tpl-sub {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.cp-tpl-search {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.cp-tpl-search:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.cp-tpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cp-tpl-item {
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cp-tpl-item:hover {
+  border-color: #a5b4fc;
+  background: #faf8ff;
+}
+
+.cp-tpl-item.selected {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.cp-tpl-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.cp-tpl-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.cp-tpl-badge {
+  font-size: 0.7rem;
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cp-tpl-desc {
+  font-size: 0.75rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-tpl-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.cp-tpl-tag {
+  font-size: 0.7rem;
+  background: #f3f4f6;
+  color: #6b7280;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+
+.cp-tpl-loading,
+.cp-tpl-empty {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+  padding: 1.5rem 0;
+}
+
+/* ── 푸터 ─────────────────────────────────────── */
+.cp-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.cp-btn {
+  padding: 0.5625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, transform 0.1s;
+}
+.cp-btn:active { transform: translateY(1px); }
+
+.cp-btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+.cp-btn-secondary:hover { background: #e5e7eb; }
+
+.cp-btn-primary {
+  background: #6366f1;
+  color: #fff;
+}
+.cp-btn-primary:hover { background: #4f46e5; }
+.cp-btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
+
+/* ── 반응형 ───────────────────────────────────── */
+@media (max-width: 680px) {
+  .cp-form:has(.cp-right) {
+    flex-direction: column;
+  }
+  .cp-right {
+    width: 100%;
+    border-top: 1px solid #e5e7eb;
+    max-height: 240px;
+  }
+  .cp-left {
+    border-right: none;
+  }
+}
