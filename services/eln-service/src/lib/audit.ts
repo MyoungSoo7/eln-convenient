@@ -37,7 +37,7 @@ export async function callAuditLog(event: AuditEvent): Promise<void> {
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
-          ...(INTERNAL_SECRET && { 'x-internal-secret': INTERNAL_SECRET }),
+          'x-internal-secret': INTERNAL_SECRET, // 빈 문자열 포함 항상 전송 (수신측이 미설정 여부 판단)
         },
         timeout: TIMEOUT_MS,
       },
