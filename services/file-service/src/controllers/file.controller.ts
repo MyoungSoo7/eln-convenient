@@ -1,95 +1,221 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { IFileMeta } from '../interfaces/file.interface';
-import { uploadObject, getPresignedUrl, getObjectStream, deleteObject, headObject, BUCKET } from '../lib/minio';
+import {
+  uploadObject, getPresignedUrl, getPresignedUploadUrl,
+  getObjectStream, deleteObject, headObject,
+  findKeyByPrefix, BUCKET,
+} from '../lib/minio';
 
-/** POST /api/files — 파일 업로드 (MinIO) */
+// 허용 MIME 타입 목록 (보안 차단)
+const BLOCKED_MIME = new Set([
+  'application/x-msdownload',
+  'application/x-executable',
+  'application/x-sh',
+  'text/x-sh',
+  'application/x-bat',
+]);
+
+/**
+ * UUID로 MinIO key 조회 (upload 시 key = {uuid}.{ext})
+ * ?key= 파라미터가 있으면 바로 사용, 없으면 prefix 탐색
+ */
+async function resolveKey(id: string, queryKey?: string): Promise<string | null> {
+  if (queryKey) return queryKey;
+  return findKeyByPrefix(id);
+}
+
+// ─────────────────────────────────────────────
+// 업로드
+// ─────────────────────────────────────────────
+
+/** POST /api/files — multer 직접 업로드 */
 export async function uploadFile(req: Request, res: Response): Promise<void> {
-  const file = (req as any).file;
+  const file = (req as any).file as Express.Multer.File | undefined;
   if (!file) {
-    res.status(400).json({ error: '업로드된 파일이 없습니다.' });
+    res.status(400).json({ ok: false, error: '업로드된 파일이 없습니다.' });
+    return;
+  }
+
+  // MIME 타입 차단
+  if (BLOCKED_MIME.has(file.mimetype)) {
+    res.status(400).json({ ok: false, error: `허용되지 않는 파일 형식입니다: ${file.mimetype}` });
     return;
   }
 
   const fileId = uuidv4();
-  const ext = file.originalname.split('.').pop();
+  const ext = file.originalname.includes('.') ? file.originalname.split('.').pop() : '';
   const key = `${fileId}${ext ? '.' + ext : ''}`;
 
+  const linkedEntityType = req.body.linkedEntityType || null;
+  const linkedEntityId = req.body.linkedEntityId || null;
+  const uploadedBy = (req.headers['x-user-id'] as string) || 'anonymous';
+
+  // MinIO Metadata에 원본 파일명 / 업로더 / linkedEntity 저장
+  const minioMeta: Record<string, string> = {
+    originalname: encodeURIComponent(file.originalname),
+    uploadedby: uploadedBy,
+    ...(linkedEntityType && { linkedentitytype: linkedEntityType }),
+    ...(linkedEntityId && { linkedentityid: linkedEntityId }),
+  };
+
   try {
-    await uploadObject(key, file.buffer, file.mimetype);
+    await uploadObject(key, file.buffer, file.mimetype, minioMeta);
   } catch (err) {
     console.error('[file-service] MinIO 업로드 실패:', err);
-    res.status(502).json({ error: 'MinIO 파일 업로드에 실패했습니다.' });
+    res.status(502).json({ ok: false, error: 'MinIO 파일 업로드에 실패했습니다.' });
     return;
   }
 
   const meta: IFileMeta = {
     id: fileId,
+    key,
     originalName: file.originalname,
     mimeType: file.mimetype,
     sizeBytes: file.size,
     storagePath: `${BUCKET}/${key}`,
-    uploadedBy: req.headers['x-user-id'] as string || 'anonymous',
+    uploadedBy,
+    linkedEntityType,
+    linkedEntityId,
     createdAt: new Date().toISOString(),
   };
 
-  console.log(`[file-service] 파일 업로드 완료: ${meta.originalName} → ${key}`);
-  res.status(201).json(meta);
+  console.log(`[file-service] 업로드 완료: ${meta.originalName} → ${key}`);
+  res.status(201).json({ ok: true, data: meta });
 }
+
+/** GET /api/files/presigned-upload — 클라이언트 직접 업로드용 presigned PUT URL */
+export async function getPresignedUpload(req: Request, res: Response): Promise<void> {
+  const { filename, contentType } = req.query;
+  if (!filename || !contentType) {
+    res.status(400).json({ ok: false, error: 'filename과 contentType 쿼리 파라미터가 필요합니다.' });
+    return;
+  }
+
+  const mimeType = contentType as string;
+  if (BLOCKED_MIME.has(mimeType)) {
+    res.status(400).json({ ok: false, error: `허용되지 않는 파일 형식입니다: ${mimeType}` });
+    return;
+  }
+
+  const fileId = uuidv4();
+  const fn = filename as string;
+  const ext = fn.includes('.') ? fn.split('.').pop() : '';
+  const key = `${fileId}${ext ? '.' + ext : ''}`;
+
+  try {
+    const uploadUrl = await getPresignedUploadUrl(key, mimeType, 900);
+    const expiresAt = new Date(Date.now() + 900 * 1000).toISOString();
+    res.json({ ok: true, data: { fileId, key, uploadUrl, expiresAt } });
+  } catch (err) {
+    console.error('[file-service] presigned upload URL 생성 실패:', err);
+    res.status(502).json({ ok: false, error: 'presigned URL 생성에 실패했습니다.' });
+  }
+}
+
+// ─────────────────────────────────────────────
+// 다운로드
+// ─────────────────────────────────────────────
 
 /** GET /api/files/:id — presigned URL로 리디렉트 */
 export async function downloadFile(req: Request, res: Response): Promise<void> {
-  const key = (req.query.key as string) || req.params.id;
+  const key = await resolveKey(req.params.id, req.query.key as string);
+  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
+
   try {
     const url = await getPresignedUrl(key);
     res.redirect(url);
   } catch (err) {
     console.error('[file-service] presigned URL 생성 실패:', err);
-    res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+    res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
+  }
+}
+
+/** GET /api/files/:id/url — presigned 다운로드 URL 반환 (리디렉트 없이) */
+export async function getDownloadUrl(req: Request, res: Response): Promise<void> {
+  const key = await resolveKey(req.params.id, req.query.key as string);
+  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
+
+  try {
+    const expiresIn = Number.parseInt(req.query.expiresIn as string) || 3600;
+    const url = await getPresignedUrl(key, Math.min(expiresIn, 86400));
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    res.json({ ok: true, data: { key, url, expiresAt } });
+  } catch (err) {
+    console.error('[file-service] URL 생성 실패:', err);
+    res.status(502).json({ ok: false, error: 'presigned URL 생성에 실패했습니다.' });
   }
 }
 
 /** GET /api/files/:id/stream — 파일 스트리밍 */
 export async function streamFile(req: Request, res: Response): Promise<void> {
-  const key = (req.query.key as string) || req.params.id;
+  const key = await resolveKey(req.params.id, req.query.key as string);
+  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
+
   try {
     const obj = await getObjectStream(key);
     if (obj.ContentType) res.setHeader('Content-Type', obj.ContentType);
-    if (obj.ContentLength) res.setHeader('Content-Length', obj.ContentLength);
-    res.setHeader('Content-Disposition', `attachment; filename="${key}"`);
-    (obj.Body as any).pipe(res);
+    if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+
+    // 원본 파일명을 Metadata에서 복원
+    const originalName = obj.Metadata?.originalname
+      ? decodeURIComponent(obj.Metadata.originalname)
+      : key;
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(originalName)}`);
+
+    (obj.Body as NodeJS.ReadableStream).pipe(res);
   } catch (err) {
     console.error('[file-service] 스트리밍 실패:', err);
-    res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+    res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
+  }
+}
+
+// ─────────────────────────────────────────────
+// 메타 / 삭제
+// ─────────────────────────────────────────────
+
+/** GET /api/files/:id/meta — 파일 메타데이터 */
+export async function getFileMeta(req: Request, res: Response): Promise<void> {
+  const key = await resolveKey(req.params.id, req.query.key as string);
+  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
+
+  try {
+    const head = await headObject(key);
+    const originalName = head.Metadata?.originalname
+      ? decodeURIComponent(head.Metadata.originalname)
+      : key;
+
+    res.json({
+      ok: true,
+      data: {
+        id: req.params.id,
+        key,
+        originalName,
+        mimeType: head.ContentType,
+        sizeBytes: head.ContentLength,
+        storagePath: `${BUCKET}/${key}`,
+        uploadedBy: head.Metadata?.uploadedby || 'unknown',
+        linkedEntityType: head.Metadata?.linkedentitytype || null,
+        linkedEntityId: head.Metadata?.linkedentityid || null,
+        lastModified: head.LastModified?.toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('[file-service] 메타 조회 실패:', err);
+    res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
   }
 }
 
 /** DELETE /api/files/:id — 파일 삭제 */
 export async function deleteFile(req: Request, res: Response): Promise<void> {
-  const key = (req.query.key as string) || req.params.id;
+  const key = await resolveKey(req.params.id, req.query.key as string);
+  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
+
   try {
     await deleteObject(key);
-    res.json({ id: req.params.id, message: '파일이 삭제되었습니다.' });
+    res.json({ ok: true, id: req.params.id, key, message: '파일이 삭제되었습니다.' });
   } catch (err) {
     console.error('[file-service] MinIO 삭제 실패:', err);
-    res.status(502).json({ error: '파일 삭제에 실패했습니다.' });
-  }
-}
-
-/** GET /api/files/:id/meta — 파일 메타데이터 */
-export async function getFileMeta(req: Request, res: Response): Promise<void> {
-  const key = (req.query.key as string) || req.params.id;
-  try {
-    const head = await headObject(key);
-    res.json({
-      id: req.params.id,
-      mimeType: head.ContentType,
-      sizeBytes: head.ContentLength,
-      storagePath: `${BUCKET}/${key}`,
-      lastModified: head.LastModified?.toISOString(),
-    });
-  } catch (err) {
-    console.error('[file-service] 메타 조회 실패:', err);
-    res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+    res.status(502).json({ ok: false, error: '파일 삭제에 실패했습니다.' });
   }
 }
