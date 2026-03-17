@@ -1,36 +1,64 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Building2, Shield, Plus, Settings } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Building2, Shield, Plus, Settings, Loader2 } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
-
-const mockUsers = [
-  { id: "u1", name: "김연구", email: "kim@biolab.kr", role: "Researcher", team: "유전체연구팀", status: "active" },
-  { id: "u2", name: "박분석", email: "park@biolab.kr", role: "Researcher", team: "단백질분석팀", status: "active" },
-  { id: "u3", name: "이실험", email: "lee@biolab.kr", role: "Researcher", team: "유전체연구팀", status: "active" },
-  { id: "u4", name: "최약리", email: "choi@biolab.kr", role: "PI", team: "약리팀", status: "active" },
-  { id: "u5", name: "정관리", email: "jung@biolab.kr", role: "Admin", team: "관리팀", status: "active" },
-];
-
-const mockRoles = [
-  { name: "Admin", permissions: ["전체 관리", "사용자 관리", "설정 변경"], userCount: 1 },
-  { name: "PI", permissions: ["노트 서명", "팀 관리", "보고서 생성"], userCount: 1 },
-  { name: "Researcher", permissions: ["노트 작성/편집", "인벤토리 조회", "장비 예약"], userCount: 3 },
-  { name: "Viewer", permissions: ["읽기 전용"], userCount: 0 },
-];
-
-const mockTeams = [
-  { name: "유전체연구팀", members: 2, lead: "김연구" },
-  { name: "단백질분석팀", members: 1, lead: "박분석" },
-  { name: "약리팀", members: 1, lead: "최약리" },
-  { name: "관리팀", members: 1, lead: "정관리" },
-];
+import { toast } from "@/hooks/use-toast";
+import { listUsers, listTeams, listRoles, createUser } from "@/api/admin";
+import type { CreateUserPayload } from "@/api/admin";
 
 export default function AdminPage() {
+  const qc = useQueryClient();
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [form, setForm] = useState<CreateUserPayload>({ name: '', email: '', role: 'Researcher', team: '' });
+
+  const usersQuery = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const res = await listUsers();
+      if (!res.ok) throw new Error(res.error ?? '사용자 목록 조회 실패');
+      return res.data;
+    },
+  });
+
+  const teamsQuery = useQuery({
+    queryKey: ['admin', 'teams'],
+    queryFn: async () => {
+      const res = await listTeams();
+      if (!res.ok) throw new Error(res.error ?? '팀 목록 조회 실패');
+      return res.data;
+    },
+  });
+
+  const rolesQuery = useQuery({
+    queryKey: ['admin', 'roles'],
+    queryFn: async () => {
+      const res = await listRoles();
+      if (!res.ok) throw new Error(res.error ?? '역할 목록 조회 실패');
+      return res.data;
+    },
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: (payload: CreateUserPayload) => createUser(payload),
+    onSuccess: () => {
+      toast({ title: '사용자 추가 완료' });
+      setAddUserOpen(false);
+      setForm({ name: '', email: '', role: 'Researcher', team: '' });
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (err: Error) => {
+      toast({ title: '사용자 추가 실패', description: err.message, variant: 'destructive' });
+    },
+  });
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
@@ -56,56 +84,90 @@ export default function AdminPage() {
                 사용자 목록
                 <HelpTooltip text="조직에 등록된 모든 사용자를 관리합니다. 사용자 추가, 역할 변경, 팀 배정 등이 가능합니다." />
               </CardTitle>
-              <Button size="sm" className="gradient-primary text-primary-foreground gap-1"><Plus className="h-3.5 w-3.5" /> 사용자 추가</Button>
+              <Button size="sm" className="gradient-primary text-primary-foreground gap-1"
+                onClick={() => setAddUserOpen(true)}>
+                <Plus className="h-3.5 w-3.5" /> 사용자 추가
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>이름</TableHead>
-                    <TableHead>이메일</TableHead>
-                    <TableHead className="flex items-center gap-1">역할 <HelpTooltip text="Admin: 전체 관리, PI: 서명 및 팀 관리, Researcher: 실험 기록, Viewer: 읽기 전용" /></TableHead>
-                    <TableHead>팀</TableHead>
-                    <TableHead>상태</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockUsers.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                      <TableCell><Badge variant="secondary" className="text-[10px]">{u.role}</Badge></TableCell>
-                      <TableCell className="text-muted-foreground">{u.team}</TableCell>
-                      <TableCell><Badge className="text-[10px] bg-success/10 text-success">활성</Badge></TableCell>
+              {usersQuery.isLoading && (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              )}
+              {usersQuery.isError && (
+                <div className="p-4 text-sm text-destructive">
+                  {(usersQuery.error as Error).message}
+                  <Button variant="ghost" size="sm" className="ml-2" onClick={() => usersQuery.refetch()}>다시 시도</Button>
+                </div>
+              )}
+              {usersQuery.data && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>이름</TableHead>
+                      <TableHead>이메일</TableHead>
+                      <TableHead className="flex items-center gap-1">역할 <HelpTooltip text="Admin: 전체 관리, PI: 서명 및 팀 관리, Researcher: 실험 기록, Viewer: 읽기 전용" /></TableHead>
+                      <TableHead>팀</TableHead>
+                      <TableHead>상태</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {usersQuery.data.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                        <TableCell><Badge variant="secondary" className="text-[10px]">{u.role}</Badge></TableCell>
+                        <TableCell className="text-muted-foreground">{u.team}</TableCell>
+                        <TableCell><Badge className="text-[10px] bg-success/10 text-success">활성</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="teams" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockTeams.map((t) => (
-              <Card key={t.name} className="shadow-card">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10"><Building2 className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <h3 className="font-semibold">{t.name}</h3>
-                      <p className="text-xs text-muted-foreground">팀장: {t.lead} · {t.members}명</p>
+          {teamsQuery.isLoading && (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          )}
+          {teamsQuery.isError && (
+            <p className="text-sm text-destructive p-4">
+              {(teamsQuery.error as Error).message}
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => teamsQuery.refetch()}>다시 시도</Button>
+            </p>
+          )}
+          {teamsQuery.data && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {teamsQuery.data.map((t) => (
+                <Card key={t.id} className="shadow-card">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10"><Building2 className="h-5 w-5 text-primary" /></div>
+                      <div>
+                        <h3 className="font-semibold">{t.name}</h3>
+                        <p className="text-xs text-muted-foreground">팀장: {t.lead} · {t.memberCount}명</p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="roles" className="mt-4 space-y-4">
-          {mockRoles.map((r) => (
-            <Card key={r.name} className="shadow-card">
+          {rolesQuery.isLoading && (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          )}
+          {rolesQuery.isError && (
+            <p className="text-sm text-destructive p-4">
+              {(rolesQuery.error as Error).message}
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => rolesQuery.refetch()}>다시 시도</Button>
+            </p>
+          )}
+          {rolesQuery.data?.map((r) => (
+            <Card key={r.id ?? r.name} className="shadow-card">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
                   <div>
@@ -153,6 +215,50 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>사용자 추가</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">이름</label>
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">이메일</label>
+              <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">팀</label>
+              <Input value={form.team} onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">역할</label>
+              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="PI">PI</SelectItem>
+                  <SelectItem value="Researcher">Researcher</SelectItem>
+                  <SelectItem value="Viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddUserOpen(false)}>취소</Button>
+            <Button
+              className="gradient-primary text-primary-foreground"
+              disabled={!form.name || !form.email || createUserMutation.isPending}
+              onClick={() => createUserMutation.mutate(form)}
+            >
+              {createUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : '추가'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
