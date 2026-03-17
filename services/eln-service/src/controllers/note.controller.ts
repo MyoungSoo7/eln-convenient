@@ -1,6 +1,48 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import https from 'https';
+import http from 'http';
 import prisma from '../lib/prisma';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+/** auth-service에 비밀번호 검증 요청 */
+async function verifyAdminPassword(userId: string, password: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ userId, password });
+    const url = new URL(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`);
+    const lib = url.protocol === 'https:' ? https : http;
+    const req = lib.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...(INTERNAL_SECRET && { 'x-internal-secret': INTERNAL_SECRET }),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            resolve(json.verified === true);
+          } catch {
+            resolve(false);
+          }
+        });
+      },
+    );
+    req.on('error', () => resolve(false));
+    req.write(body);
+    req.end();
+  });
+}
 import {
   ALLOWED_STATUS_TRANSITIONS,
   type NoteStatus,
@@ -254,6 +296,13 @@ export async function adminUnlockNote(req: Request, res: Response): Promise<void
       return;
     }
 
+    const adminId = req.headers['x-user-id'] as string;
+    const verified = await verifyAdminPassword(adminId, adminPassword);
+    if (!verified) {
+      res.status(403).json({ ok: false, error: '관리자 비밀번호가 올바르지 않습니다.' });
+      return;
+    }
+
     const updated = await prisma.note.update({
       where: { id: req.params.id },
       data: { status: 'draft' },
@@ -312,6 +361,22 @@ export async function getRevisionById(req: Request, res: Response): Promise<void
 // ─────────────────────────────────────────────
 // 첨부파일
 // ─────────────────────────────────────────────
+
+/** GET /api/notes/:id/attachments */
+export async function getAttachments(req: Request, res: Response): Promise<void> {
+  try {
+    const note = await findNote(req.params.id);
+    if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
+    const attachments = await prisma.attachment.findMany({
+      where: { noteId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ ok: true, data: attachments });
+  } catch (err) {
+    console.error('[getAttachments]', err);
+    res.status(500).json({ ok: false, error: '첨부파일 목록 조회 중 오류가 발생했습니다.' });
+  }
+}
 
 /** POST /api/notes/:id/attachments */
 export async function addAttachment(req: Request, res: Response): Promise<void> {

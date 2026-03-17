@@ -24,11 +24,13 @@ router.get('/me', ctrl.getMe);
 // 조직 (읽기: 인증만, 쓰기/삭제: admin)
 router.get('/orgs', ctrl.getOrgs);
 router.post('/orgs', requireRole('admin'), ctrl.createOrg);
+router.put('/orgs/:id', requireRole('admin'), ctrl.updateOrg);
 router.delete('/orgs/:id', requireRole('admin'), ctrl.deleteOrg);
 
 // 팀 (읽기: 인증만, 쓰기/삭제: admin)
 router.get('/teams', ctrl.getTeams);
 router.post('/teams', requireRole('admin'), ctrl.createTeam);
+router.put('/teams/:id', requireRole('admin'), ctrl.updateTeam);
 router.delete('/teams/:id', requireRole('admin'), ctrl.deleteTeam);
 router.get('/teams/:id/members', ctrl.getTeamMembers);
 router.post('/teams/:id/members', requireRole('admin'), ctrl.addTeamMember);

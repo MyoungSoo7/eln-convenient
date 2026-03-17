@@ -337,6 +337,35 @@ export async function createOrg(req: Request, res: Response): Promise<void> {
   }
 }
 
+/** PUT /api/auth/orgs/:id (admin) */
+export async function updateOrg(req: Request, res: Response): Promise<void> {
+  const { name, slug } = req.body;
+  try {
+    const org = await prisma.organization.update({
+      where: { id: req.params.id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(slug !== undefined && { slug }),
+      },
+    });
+    res.json({
+      ok: true,
+      data: { id: org.id, name: org.name, slug: org.slug, updatedAt: org.updatedAt.toISOString() },
+    });
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
+      res.status(404).json({ ok: false, error: '조직을 찾을 수 없습니다.' });
+      return;
+    }
+    if (err?.code === 'P2002') {
+      res.status(409).json({ ok: false, error: '이미 사용 중인 slug입니다.' });
+      return;
+    }
+    console.error('[updateOrg]', err);
+    res.status(500).json({ ok: false, error: '조직 수정 중 오류가 발생했습니다.' });
+  }
+}
+
 /** DELETE /api/auth/orgs/:id (admin) */
 export async function deleteOrg(req: Request, res: Response): Promise<void> {
   try {
@@ -398,6 +427,32 @@ export async function createTeam(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('[createTeam]', err);
     res.status(500).json({ ok: false, error: '팀 생성 중 오류가 발생했습니다.' });
+  }
+}
+
+/** PUT /api/auth/teams/:id (admin) */
+export async function updateTeam(req: Request, res: Response): Promise<void> {
+  const { name } = req.body;
+  if (!name) {
+    res.status(400).json({ ok: false, error: 'name은 필수입니다.' });
+    return;
+  }
+  try {
+    const team = await prisma.team.update({
+      where: { id: req.params.id },
+      data: { name },
+    });
+    res.json({
+      ok: true,
+      data: { id: team.id, orgId: team.orgId, name: team.name, updatedAt: team.updatedAt.toISOString() },
+    });
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
+      res.status(404).json({ ok: false, error: '팀을 찾을 수 없습니다.' });
+      return;
+    }
+    console.error('[updateTeam]', err);
+    res.status(500).json({ ok: false, error: '팀 수정 중 오류가 발생했습니다.' });
   }
 }
 

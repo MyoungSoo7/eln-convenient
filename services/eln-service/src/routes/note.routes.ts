@@ -25,6 +25,7 @@ router.get('/notes/:id/revisions',               requirePermission('note:read'),
 router.get('/notes/:id/revisions/:rev',          requirePermission('note:read'),    ctrl.getRevisionById);
 
 // ─── 첨부파일 ────────────────────────────────────────────────
+router.get('/notes/:id/attachments',             requirePermission('file:read'),    ctrl.getAttachments);
 router.post('/notes/:id/attachments',            requirePermission('file:upload'),  ctrl.addAttachment);
 router.delete('/notes/:id/attachments/:attachmentId', requirePermission('file:delete'), ctrl.deleteAttachment);
 

@@ -21,7 +21,10 @@ export function requireRole(...roles: string[]) {
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const raw = req.headers['x-user-permissions'] as string | undefined;
-    const permissions: string[] = raw ? JSON.parse(raw) : [];
+    let permissions: string[] = [];
+    if (raw) {
+      try { permissions = JSON.parse(raw); } catch { permissions = []; }
+    }
     if (permissions.includes('*') || permissions.includes(permission)) {
       return next();
     }

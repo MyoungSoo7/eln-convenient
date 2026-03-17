@@ -3,7 +3,7 @@ import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
 import Redis from 'ioredis';
 
 // 공개 경로 (인증 불필요)
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook'];
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-jwt-secret');
 
