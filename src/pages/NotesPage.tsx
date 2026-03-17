@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock } from "lucide-react";
-import { mockNotes, type Note } from "@/lib/mockData";
+import { type Note } from "@/lib/mockData";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import {
@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { listNotes, changeNoteStatus, adminUnlockNote } from "@/api/notes";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -42,48 +43,75 @@ const statusTransitions: Record<string, string[]> = {
   locked: [],
 };
 
-// 관리자 전용 잠금 해제 대상 상태
-const adminUnlockTarget = "draft";
-
 export default function NotesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
-  const [notes, setNotes] = useState<Note[]>(mockNotes);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
   const [unlockTarget, setUnlockTarget] = useState<Note | null>(null);
   const [adminPassword, setAdminPassword] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
   const [isAdmin] = useState(true); // TODO: 실제 인증 연동 시 권한 체크로 교체
 
-  const handleStatusChange = (noteId: string, newStatus: string) => {
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === noteId
-          ? { ...n, status: newStatus as Note["status"], updatedAt: new Date().toISOString().slice(0, 10) }
-          : n
-      )
-    );
-    toast.success(`상태가 "${statusLabels[newStatus]}"(으)로 변경되었습니다.`);
+  // 노트 목록 API 로드
+  useEffect(() => {
+    setLoading(true);
+    listNotes(filter !== "all" ? { status: filter } : undefined)
+      .then((res) => {
+        if (res.ok) setNotes(res.data);
+      })
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  const handleStatusChange = async (noteId: string, newStatus: string) => {
+    const res = await changeNoteStatus(noteId, newStatus as Note["status"]);
+    if (res.ok) {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === noteId
+            ? { ...n, status: newStatus as Note["status"], updatedAt: new Date().toISOString().slice(0, 10) }
+            : n
+        )
+      );
+      toast.success(`상태가 "${statusLabels[newStatus]}"(으)로 변경되었습니다.`);
+    } else {
+      toast.error(res.error || "상태 변경에 실패했습니다.");
+    }
   };
 
-  const handleAdminUnlock = () => {
+  const handleAdminUnlock = async () => {
     if (!unlockTarget) return;
     if (!adminPassword.trim()) {
       toast.error("관리자 비밀번호를 입력해주세요.");
       return;
     }
-    // TODO: 실제 관리자 비밀번호 검증 API 호출
-    handleStatusChange(unlockTarget.id, adminUnlockTarget);
-    toast.success(`"${unlockTarget.title}" 노트의 잠금이 해제되었습니다.`, {
-      description: "관리자 권한으로 잠금 해제됨 — 감사로그에 기록됩니다.",
-      icon: <Unlock className="h-4 w-4" />,
-    });
-    setUnlockTarget(null);
-    setAdminPassword("");
+    setUnlocking(true);
+    const res = await adminUnlockNote(unlockTarget.id, adminPassword, "관리자 잠금 해제");
+    setUnlocking(false);
+    if (res.ok) {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === unlockTarget.id
+            ? { ...n, status: "draft", updatedAt: new Date().toISOString().slice(0, 10) }
+            : n
+        )
+      );
+      toast.success(`"${unlockTarget.title}" 노트의 잠금이 해제되었습니다.`, {
+        description: "관리자 권한으로 잠금 해제됨 — 감사로그에 기록됩니다.",
+        icon: <Unlock className="h-4 w-4" />,
+      });
+      setUnlockTarget(null);
+      setAdminPassword("");
+    } else {
+      toast.error(res.error || "잠금 해제에 실패했습니다.");
+    }
   };
 
   const filtered = notes.filter((n) => {
-    const matchSearch = n.title.toLowerCase().includes(search.toLowerCase()) || n.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    const matchFilter = filter === "all" || n.status === filter;
-    return matchSearch && matchFilter;
+    const matchSearch =
+      n.title.toLowerCase().includes(search.toLowerCase()) ||
+      n.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+    return matchSearch;
   });
 
   return (
@@ -106,89 +134,111 @@ export default function NotesPage() {
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="노트 제목, 태그 검색..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input
+            placeholder="노트 제목, 태그 검색..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
         </div>
         <div className="flex gap-1.5 items-center">
           <HelpTooltip text="상태 필터: 초안(작성 중), 진행 중(실험 수행), 서명 완료(검증됨), 잠김(변경 불가). 관리자는 잠긴 노트를 해제할 수 있습니다." side="bottom" />
           {["all", "draft", "in_progress", "signed", "locked"].map((f) => (
-            <Button key={f} variant={filter === f ? "default" : "outline"} size="sm" onClick={() => setFilter(f)} className="text-xs">
+            <Button
+              key={f}
+              variant={filter === f ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter(f)}
+              className="text-xs"
+            >
               {f === "all" ? "전체" : statusLabels[f]}
             </Button>
           ))}
         </div>
       </div>
 
-      <div className="space-y-3">
-        {filtered.map((note) => {
-          const canTransition = statusTransitions[note.status]?.length > 0;
-          const canAdminUnlock = isAdmin && note.status === "locked";
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">로딩 중...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          {search ? "검색 결과가 없습니다." : "노트가 없습니다. 새 노트를 작성해보세요."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((note) => {
+            const canTransition = statusTransitions[note.status]?.length > 0;
+            const canAdminUnlock = isAdmin && note.status === "locked";
 
-          return (
-            <Card key={note.id} className="shadow-card hover:shadow-elevated transition-all group">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <Link to={`/notes/${note.id}`} className="min-w-0 flex-1">
-                    <h3 className="font-semibold group-hover:text-primary transition-colors">{note.title}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">{note.project}</p>
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      {note.tags.map((t) => (
-                        <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                      ))}
-                    </div>
-                  </Link>
-                  <div className="text-right shrink-0 ml-4 flex flex-col items-end gap-1">
-                    {canTransition || canAdminUnlock ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${statusColors[note.status]}`}>
-                            {note.status === "locked" && <Lock className="h-3 w-3" />}
-                            {statusLabels[note.status]}
-                            <ChevronDown className="h-3 w-3" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[140px]">
-                          {canTransition && statusTransitions[note.status].map((s) => (
-                            <DropdownMenuItem
-                              key={s}
-                              onClick={() => handleStatusChange(note.id, s)}
-                              className="text-xs"
-                            >
-                              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${statusColors[s].split(" ")[0]}`} />
-                              {statusLabels[s]}
-                            </DropdownMenuItem>
-                          ))}
-                          {canAdminUnlock && (
-                            <>
-                              {canTransition && <DropdownMenuSeparator />}
-                              <DropdownMenuLabel className="text-[10px] text-muted-foreground font-normal flex items-center gap-1">
-                                <ShieldAlert className="h-3 w-3" /> 관리자 전용
-                              </DropdownMenuLabel>
+            return (
+              <Card key={note.id} className="shadow-card hover:shadow-elevated transition-all group">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <Link to={`/notes/${note.id}`} className="min-w-0 flex-1">
+                      <h3 className="font-semibold group-hover:text-primary transition-colors">{note.title}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{note.project}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {note.tags.map((t) => (
+                          <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                        ))}
+                      </div>
+                    </Link>
+                    <div className="text-right shrink-0 ml-4 flex flex-col items-end gap-1">
+                      {canTransition || canAdminUnlock ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${statusColors[note.status]}`}>
+                              {note.status === "locked" && <Lock className="h-3 w-3" />}
+                              {statusLabels[note.status]}
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[140px]">
+                            {canTransition && statusTransitions[note.status].map((s) => (
                               <DropdownMenuItem
-                                onClick={() => setUnlockTarget(note)}
-                                className="text-xs text-destructive focus:text-destructive"
+                                key={s}
+                                onClick={() => handleStatusChange(note.id, s)}
+                                className="text-xs"
                               >
-                                <Unlock className="h-3 w-3 mr-2" />
-                                잠금 해제
+                                <span className={`inline-block w-2 h-2 rounded-full mr-2 ${statusColors[s].split(" ")[0]}`} />
+                                {statusLabels[s]}
                               </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <Badge className={`text-[10px] ${statusColors[note.status]}`}>{statusLabels[note.status]}</Badge>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">{note.author}</p>
-                    <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
+                            ))}
+                            {canAdminUnlock && (
+                              <>
+                                {canTransition && <DropdownMenuSeparator />}
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground font-normal flex items-center gap-1">
+                                  <ShieldAlert className="h-3 w-3" /> 관리자 전용
+                                </DropdownMenuLabel>
+                                <DropdownMenuItem
+                                  onClick={() => setUnlockTarget(note)}
+                                  className="text-xs text-destructive focus:text-destructive"
+                                >
+                                  <Unlock className="h-3 w-3 mr-2" />
+                                  잠금 해제
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <Badge className={`text-[10px] ${statusColors[note.status]}`}>{statusLabels[note.status]}</Badge>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">{note.author}</p>
+                      <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* 관리자 잠금 해제 확인 모달 */}
-      <Dialog open={!!unlockTarget} onOpenChange={(open) => { if (!open) { setUnlockTarget(null); setAdminPassword(""); } }}>
+      <Dialog
+        open={!!unlockTarget}
+        onOpenChange={(open) => { if (!open) { setUnlockTarget(null); setAdminPassword(""); } }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -219,8 +269,9 @@ export default function NotesPage() {
             <Button variant="outline" onClick={() => { setUnlockTarget(null); setAdminPassword(""); }}>
               취소
             </Button>
-            <Button variant="destructive" onClick={handleAdminUnlock} className="gap-2">
-              <Unlock className="h-4 w-4" /> 잠금 해제
+            <Button variant="destructive" onClick={handleAdminUnlock} disabled={unlocking} className="gap-2">
+              <Unlock className="h-4 w-4" />
+              {unlocking ? "해제 중..." : "잠금 해제"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,18 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, Link, useLocation } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Save, ShieldCheck, Paperclip, Link2, Clock, FileText, Upload, Users } from "lucide-react";
-import { mockNotes } from "@/lib/mockData";
+import {
+  ArrowLeft, Save, ShieldCheck, Paperclip, Link2, Clock, FileText,
+  Upload, Users, Trash2, X, Search as SearchIcon,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { getToken } from "@/lib/authToken";
+import {
+  createNote, updateNote, listAttachments, addAttachment, deleteAttachmentRecord,
+  getLinks, createNoteLink, deleteNoteLink, listRevisions,
+  type AttachmentRecord, type NoteLink, type RevisionRecord,
+} from "@/api/notes";
+import { uploadFile, getFileDownloadUrl } from "@/api/files";
+import { listItems } from "@/api/inventory";
+import { type InventoryItem } from "@/lib/mockData";
 
 const statusLabels: Record<string, string> = {
   draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
@@ -39,9 +49,22 @@ const sectionTemplate = `## 목적
 ## 고찰
 결과에 대한 분석 및 해석`;
 
+function formatBytes(bytes?: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const INVENTORY_TYPE_LABELS: Record<string, string> = {
+  dev_equipment: "장비", deliverable: "샘플", license: "라이선스", infra: "인프라",
+  reagent: "시약", sample: "샘플", equipment: "장비",
+};
+
 export default function NoteEditor() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const protocolState = location.state as {
     fromProtocol?: boolean;
     protocolId?: string;
@@ -52,7 +75,6 @@ export default function NoteEditor() {
   } | null;
 
   const isNew = id === "new";
-  const note = isNew ? null : mockNotes.find((n) => n.id === id);
 
   const buildProtocolContent = () => {
     if (!protocolState?.fromProtocol) return sectionTemplate;
@@ -60,24 +82,53 @@ export default function NoteEditor() {
     return `## 목적\n[${cat}] 실험 목적을 기재하세요.\n\n## 재료\n- 시약/샘플 목록\n\n## 방법\n1. 실험 절차\n\n## 결과\n실험 결과 기재\n\n## 고찰\n결과에 대한 분석 및 해석\n\n---\n> 📋 프로토콜 "${protocolState.title}" 기반으로 생성됨`;
   };
 
-  const [content, setContent] = useState(note?.content || buildProtocolContent());
-  const [title, setTitle] = useState(note?.title || protocolState?.title || "");
-  const [noteStatus, setNoteStatus] = useState(note?.status || "draft");
+  const [content, setContent] = useState(buildProtocolContent());
+  const [title, setTitle] = useState(protocolState?.title || "");
+  const [noteStatus, setNoteStatus] = useState("draft");
   const [signDialogOpen, setSignDialogOpen] = useState(false);
-  const isLocked = noteStatus === "signed" || noteStatus === "locked";
+  const [saving, setSaving] = useState(false);
 
-  // ── 실시간 협업 WebSocket ──
+  // 첨부파일
+  const [attachments, setAttachments] = useState<AttachmentRecord[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 시약/장비 연결
+  const [links, setLinks] = useState<NoteLink[]>([]);
+  const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+
+  // 버전 이력
+  const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
+  const [revisionsLoaded, setRevisionsLoaded] = useState(false);
+
+  // 실시간 협업 WebSocket
   const wsRef = useRef<WebSocket | null>(null);
   const lastLocalEditRef = useRef<number>(0);
   const sendTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  // colorIdx 0–7 → Tailwind bg 클래스 (collab-service COLOR_COUNT=8 과 동기화)
   const COLLAB_COLORS = [
     'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-500',
     'bg-violet-500', 'bg-pink-500', 'bg-teal-500', 'bg-orange-500',
   ] as const;
-
   const [connectedUsers, setConnectedUsers] = useState<Array<{ id: string; name: string; colorIdx: number }>>([]);
 
+  const isLocked = noteStatus === "signed" || noteStatus === "locked";
+
+  // 기존 노트 데이터 로드
+  useEffect(() => {
+    if (isNew) return;
+
+    // 첨부파일 + 링크 병렬 로드
+    Promise.all([
+      listAttachments(id!).then((res) => { if (res.ok) setAttachments(res.data); }),
+      getLinks(id!).then((res) => { if (res.ok) setLinks(res.data); }),
+    ]);
+  }, [id, isNew]);
+
+  // WebSocket 협업
   useEffect(() => {
     if (isNew) return;
     const token = getToken() ?? '';
@@ -104,7 +155,6 @@ export default function NoteEditor() {
         } else if (msg.type === 'user-left') {
           setConnectedUsers((prev) => prev.filter((u) => u.id !== msg.userId));
         } else if (msg.type === 'content-update') {
-          // 로컬 편집 후 1초 이내에는 원격 업데이트 무시 (타이핑 중 덮어쓰기 방지)
           if (Date.now() - lastLocalEditRef.current > 1000) {
             setContent(msg.content as string);
           }
@@ -113,10 +163,7 @@ export default function NoteEditor() {
     };
 
     ws.onerror = () => {};
-    ws.onclose = () => {
-      wsRef.current = null;
-      setConnectedUsers([]);
-    };
+    ws.onclose = () => { wsRef.current = null; setConnectedUsers([]); };
 
     return () => { ws.close(); };
   }, [id, isNew]);
@@ -132,15 +179,148 @@ export default function NoteEditor() {
     }, 400);
   }, []);
 
-  const handleSign = () => {
+  // ── 저장 ──────────────────────────────────────
+  const handleSave = async () => {
+    if (!title.trim()) {
+      toast({ title: "제목을 입력해주세요.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    if (isNew) {
+      const res = await createNote({
+        title,
+        content,
+        tags: protocolState?.tags || [],
+        ...(protocolState?.fromProtocol ? {} : {}),
+      });
+      setSaving(false);
+      if (res.ok && res.data?.id) {
+        toast({ title: "노트 생성 완료", description: "노트가 저장되었습니다." });
+        navigate(`/notes/${res.data.id}`);
+      } else {
+        toast({ title: "저장 실패", description: res.error || "노트 생성에 실패했습니다.", variant: "destructive" });
+      }
+    } else {
+      const res = await updateNote(id!, { title, content, changeSummary: "직접 편집" });
+      setSaving(false);
+      if (res.ok) {
+        toast({ title: "저장 완료", description: "노트가 저장되었습니다." });
+      } else {
+        toast({ title: "저장 실패", description: res.error || "저장에 실패했습니다.", variant: "destructive" });
+      }
+    }
+  };
+
+  const handleSign = async () => {
+    // 서명: in_progress → signed (서명 서비스 호출은 생략, 상태만 변경)
     setNoteStatus("signed");
     setSignDialogOpen(false);
     toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
   };
 
-  const handleSave = () => {
-    toast({ title: "저장 완료", description: "노트가 저장되었습니다." });
+  // ── 첨부파일 ──────────────────────────────────
+  const handleFileUpload = async (file: File) => {
+    if (isNew) {
+      toast({ title: "먼저 노트를 저장하세요.", variant: "destructive" });
+      return;
+    }
+    if (isLocked) {
+      toast({ title: "서명/잠금된 노트에는 파일을 추가할 수 없습니다.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+
+    // 1. file-service에 업로드
+    const uploadRes = await uploadFile(file, { type: 'note', id: id! });
+    if (!uploadRes.ok) {
+      toast({ title: "업로드 실패", description: uploadRes.error || "파일 업로드에 실패했습니다.", variant: "destructive" });
+      setUploading(false);
+      return;
+    }
+
+    // 2. 노트에 첨부파일 등록
+    const attRes = await addAttachment(id!, {
+      fileId: uploadRes.data.id,
+      fileName: uploadRes.data.originalName || file.name,
+      mimeType: uploadRes.data.mimeType,
+      sizeBytes: uploadRes.data.sizeBytes,
+    });
+
+    if (attRes.ok) {
+      setAttachments((prev) => [...prev, attRes.data]);
+      toast({ title: "업로드 완료", description: `${file.name} 이(가) 첨부되었습니다.` });
+    } else {
+      toast({ title: "첨부 등록 실패", description: attRes.error, variant: "destructive" });
+    }
+    setUploading(false);
   };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+    e.target.value = ""; // reset so same file can be re-selected
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const handleDeleteAttachment = async (att: AttachmentRecord) => {
+    const res = await deleteAttachmentRecord(id!, att.id);
+    if (res.ok) {
+      setAttachments((prev) => prev.filter((a) => a.id !== att.id));
+      toast({ title: "첨부파일 삭제 완료" });
+    }
+  };
+
+  // ── 인벤토리 연결 ──────────────────────────────
+  const openInventoryDialog = async () => {
+    if (isNew) { toast({ title: "먼저 노트를 저장하세요.", variant: "destructive" }); return; }
+    setInventoryDialogOpen(true);
+    setInventoryLoading(true);
+    const res = await listItems();
+    setInventoryItems(res.ok ? res.data : []);
+    setInventoryLoading(false);
+  };
+
+  const handleAddLink = async (item: InventoryItem) => {
+    const res = await createNoteLink(id!, {
+      targetType: 'inventory',
+      targetId: item.id,
+      label: item.name,
+    });
+    if (res.ok) {
+      setLinks((prev) => [...prev, res.data]);
+      toast({ title: "연결 완료", description: `${item.name} 이(가) 연결되었습니다.` });
+    }
+    setInventoryDialogOpen(false);
+    setInventorySearch("");
+  };
+
+  const handleDeleteLink = async (link: NoteLink) => {
+    const res = await deleteNoteLink(id!, link.id);
+    if (res.ok) {
+      setLinks((prev) => prev.filter((l) => l.id !== link.id));
+      toast({ title: "연결 해제 완료" });
+    }
+  };
+
+  // ── 버전 이력 (탭 클릭 시 로드) ──────────────
+  const handleRevisionsTabActivate = () => {
+    if (isNew || revisionsLoaded) return;
+    setRevisionsLoaded(true);
+    listRevisions(id!).then((res) => {
+      if (res.ok) setRevisions([...res.data].reverse()); // 최신 순
+    });
+  };
+
+  const filteredInventory = inventoryItems.filter((item) =>
+    item.name.toLowerCase().includes(inventorySearch.toLowerCase()) ||
+    item.type.toLowerCase().includes(inventorySearch.toLowerCase())
+  );
 
   return (
     <div className="p-6 space-y-4 animate-fade-in">
@@ -152,47 +332,46 @@ export default function NoteEditor() {
         <div className="flex-1" />
         {!isLocked && (
           <>
-            <Button variant="outline" size="sm" onClick={handleSave} className="gap-1.5">
-              <Save className="h-4 w-4" /> 저장
+            <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+              <Save className="h-4 w-4" />
+              {saving ? "저장 중..." : "저장"}
             </Button>
-            <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">
-                  <ShieldCheck className="h-4 w-4" /> 서명하기
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    전자서명 확인
-                    <HelpTooltip text="서명을 진행하면 노트 내용이 해시화되어 시점인증이 완료됩니다. 서명 후에는 내용 수정이 불가능합니다." />
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <p className="text-sm text-muted-foreground">
-                    서명 후 노트는 잠금 처리되며 수정이 불가합니다. 서명을 진행하시겠습니까?
-                  </p>
-                  <div className="space-y-2">
-                    <Label>서명자</Label>
-                    <Input value="김연구" disabled />
+            {!isNew && (
+              <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">
+                    <ShieldCheck className="h-4 w-4" /> 서명하기
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      전자서명 확인
+                      <HelpTooltip text="서명을 진행하면 노트 내용이 해시화되어 시점인증이 완료됩니다. 서명 후에는 내용 수정이 불가능합니다." />
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <p className="text-sm text-muted-foreground">
+                      서명 후 노트는 잠금 처리되며 수정이 불가합니다. 서명을 진행하시겠습니까?
+                    </p>
+                    <div className="space-y-2">
+                      <Label>비밀번호 확인</Label>
+                      <Input type="password" placeholder="비밀번호를 입력하세요" />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>비밀번호 확인</Label>
-                    <Input type="password" placeholder="비밀번호를 입력하세요" />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setSignDialogOpen(false)}>취소</Button>
-                  <Button onClick={handleSign} className="gradient-primary text-primary-foreground">서명 확인</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setSignDialogOpen(false)}>취소</Button>
+                    <Button onClick={handleSign} className="gradient-primary text-primary-foreground">서명 확인</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </>
         )}
         <Badge className={`${statusColors[noteStatus]}`}>{statusLabels[noteStatus]}</Badge>
       </div>
 
-      {/* 실시간 협업 참여자 표시 */}
+      {/* 실시간 협업 참여자 */}
       {!isNew && connectedUsers.length > 0 && (
         <div className="flex items-center gap-2 px-1 py-1 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 w-fit text-xs">
           <span className="flex items-center gap-1.5 text-green-700 dark:text-green-400 font-medium">
@@ -217,9 +396,15 @@ export default function NoteEditor() {
         </div>
       )}
 
+      {/* 제목 */}
       {isNew ? (
         <div className="space-y-2">
-          <Input placeholder="노트 제목을 입력하세요" value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2" />
+          <Input
+            placeholder="노트 제목을 입력하세요"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2"
+          />
           {protocolState?.fromProtocol && (
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-[10px] gap-1">
@@ -232,26 +417,35 @@ export default function NoteEditor() {
           )}
         </div>
       ) : (
-        <h1 className="text-xl font-bold">{note?.title}</h1>
-      )}
-
-      {note && (
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span>{note.author}</span>
-          <span>생성: {note.createdAt}</span>
-          <span>수정: {note.updatedAt}</span>
-          <span>{note.project}</span>
-        </div>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={isLocked}
+          className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2"
+        />
       )}
 
       <Tabs defaultValue="editor" className="mt-4">
         <TabsList>
           <TabsTrigger value="editor" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> 편집기</TabsTrigger>
-          <TabsTrigger value="attachments" className="gap-1.5"><Paperclip className="h-3.5 w-3.5" /> 첨부파일</TabsTrigger>
-          <TabsTrigger value="links" className="gap-1.5"><Link2 className="h-3.5 w-3.5" /> 연결 항목</TabsTrigger>
-          <TabsTrigger value="revisions" className="gap-1.5"><Clock className="h-3.5 w-3.5" /> 버전 이력</TabsTrigger>
+          <TabsTrigger value="attachments" className="gap-1.5">
+            <Paperclip className="h-3.5 w-3.5" /> 첨부파일
+            {attachments.length > 0 && (
+              <span className="ml-1 text-[10px] bg-primary/10 text-primary rounded-full px-1.5">{attachments.length}</span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="links" className="gap-1.5">
+            <Link2 className="h-3.5 w-3.5" /> 연결 항목
+            {links.length > 0 && (
+              <span className="ml-1 text-[10px] bg-primary/10 text-primary rounded-full px-1.5">{links.length}</span>
+          )}
+          </TabsTrigger>
+          <TabsTrigger value="revisions" className="gap-1.5" onClick={handleRevisionsTabActivate}>
+            <Clock className="h-3.5 w-3.5" /> 버전 이력
+          </TabsTrigger>
         </TabsList>
 
+        {/* ── 편집기 탭 ── */}
         <TabsContent value="editor" className="mt-4">
           <Card className="shadow-card">
             <CardContent className="p-0">
@@ -266,19 +460,88 @@ export default function NoteEditor() {
           </Card>
         </TabsContent>
 
+        {/* ── 첨부파일 탭 ── */}
         <TabsContent value="attachments" className="mt-4">
           <Card className="shadow-card">
-            <CardContent className="p-8">
-              <div className="border-2 border-dashed rounded-xl p-12 text-center hover:border-primary/30 transition-colors">
-                <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                <p className="text-sm font-medium mt-3">파일을 드래그하거나 클릭하여 업로드</p>
-                <p className="text-xs text-muted-foreground mt-1">PDF, 이미지, 데이터 파일 등 (최대 50MB)</p>
-                {isLocked && <p className="text-xs text-destructive mt-2">서명된 노트에는 파일을 추가할 수 없습니다</p>}
-              </div>
+            <CardContent className="p-6 space-y-4">
+              {isNew ? (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  노트를 먼저 저장하면 파일을 첨부할 수 있습니다.
+                </p>
+              ) : (
+                <>
+                  {/* 업로드 드롭존 */}
+                  {!isLocked && (
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+                        isDragging ? "border-primary bg-primary/5" : "hover:border-primary/30"
+                      } ${uploading ? "pointer-events-none opacity-50" : ""}`}
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                    >
+                      <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                      <p className="text-sm font-medium mt-3">
+                        {uploading ? "업로드 중..." : "파일을 드래그하거나 클릭하여 업로드"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, 이미지, 데이터 파일 등 (최대 50MB)</p>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                        accept="*/*"
+                      />
+                    </div>
+                  )}
+
+                  {/* 첨부파일 목록 */}
+                  {attachments.length > 0 && (
+                    <div className="space-y-2">
+                      {attachments.map((att) => (
+                        <div key={att.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 group">
+                          <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <a
+                              href={getFileDownloadUrl(att.fileId)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm font-medium hover:text-primary truncate block"
+                            >
+                              {att.fileName}
+                            </a>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                              {att.mimeType && <span>{att.mimeType.split('/')[1]?.toUpperCase()}</span>}
+                              {att.sizeBytes && <span>{formatBytes(att.sizeBytes)}</span>}
+                              {att.createdAt && <span>{new Date(att.createdAt).toLocaleDateString('ko-KR')}</span>}
+                            </div>
+                          </div>
+                          {!isLocked && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteAttachment(att)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {attachments.length === 0 && !uploading && (
+                    <p className="text-sm text-muted-foreground text-center py-2">첨부된 파일이 없습니다.</p>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── 연결 항목 탭 ── */}
         <TabsContent value="links" className="mt-4">
           <Card className="shadow-card">
             <CardHeader>
@@ -288,52 +551,74 @@ export default function NoteEditor() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {note?.linkedItems?.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <Badge variant="secondary" className="text-[10px]">
-                    {item.type === 'reagent' ? '시약' : item.type === 'sample' ? '샘플' : '장비'}
-                  </Badge>
-                  <span className="text-sm">{item.name}</span>
-                </div>
-              )) || (
-                <p className="text-sm text-muted-foreground text-center py-6">연결된 항목이 없습니다</p>
-              )}
-              {!isLocked && (
-                <Button variant="outline" size="sm" className="w-full mt-2 gap-1.5">
-                  <Link2 className="h-3.5 w-3.5" /> 시약/샘플/장비 연결
-                </Button>
+              {isNew ? (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  노트를 먼저 저장하면 시약/장비를 연결할 수 있습니다.
+                </p>
+              ) : (
+                <>
+                  {links.length > 0 ? (
+                    links.map((link) => (
+                      <div key={link.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 group">
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                          {INVENTORY_TYPE_LABELS[link.targetType] || link.targetType}
+                        </Badge>
+                        <span className="text-sm flex-1">{link.label || link.targetId}</span>
+                        {!isLocked && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteLink(link)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-6">연결된 항목이 없습니다</p>
+                  )}
+                  {!isLocked && (
+                    <Button variant="outline" size="sm" className="w-full mt-2 gap-1.5" onClick={openInventoryDialog}>
+                      <Link2 className="h-3.5 w-3.5" /> 시약/샘플/장비 연결
+                    </Button>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── 버전 이력 탭 ── */}
         <TabsContent value="revisions" className="mt-4">
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 버전 이력
-                <HelpTooltip text="노트의 모든 수정 이력을 시간순으로 표시합니다. 이전 버전과 비교(diff)하여 변경 내용을 확인할 수 있습니다." />
+                <HelpTooltip text="노트의 모든 수정 이력을 시간순으로 표시합니다." />
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {note?.revisions?.length ? (
+              {isNew ? (
+                <p className="text-sm text-muted-foreground text-center py-6">저장 후 버전 이력을 확인할 수 있습니다.</p>
+              ) : revisions.length > 0 ? (
                 <div className="relative">
                   <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
                   <div className="space-y-4">
-                    {note.revisions.map((rev, i) => (
+                    {revisions.map((rev, i) => (
                       <div key={rev.id} className="relative flex items-start gap-4 pl-10">
                         <div className={`absolute left-3 top-1.5 h-3 w-3 rounded-full border-2 ${i === 0 ? 'bg-primary border-primary' : 'bg-card border-border'}`} />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">v{rev.version}</span>
-                            <span className="text-xs text-muted-foreground">{rev.timestamp}</span>
+                            <span className="text-sm font-medium">v{rev.revision}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(rev.createdAt).toLocaleString('ko-KR')}
+                            </span>
                           </div>
-                          <p className="text-sm text-muted-foreground mt-0.5">{rev.summary}</p>
-                          <p className="text-xs text-muted-foreground">{rev.author}</p>
+                          <p className="text-sm text-muted-foreground mt-0.5">{rev.changeSummary || "수정"}</p>
+                          <p className="text-xs text-muted-foreground">{rev.changedBy}</p>
                         </div>
-                        {i > 0 && (
-                          <Button variant="ghost" size="sm" className="text-xs text-primary">비교</Button>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -345,6 +630,60 @@ export default function NoteEditor() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* 인벤토리 연결 다이얼로그 */}
+      <Dialog open={inventoryDialogOpen} onOpenChange={(open) => { setInventoryDialogOpen(open); if (!open) setInventorySearch(""); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" /> 시약/샘플/장비 연결
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="이름 또는 타입으로 검색..."
+                value={inventorySearch}
+                onChange={(e) => setInventorySearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-1.5">
+              {inventoryLoading ? (
+                <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
+              ) : filteredInventory.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">항목이 없습니다.</p>
+              ) : (
+                filteredInventory.map((item) => (
+                  <button
+                    key={item.id}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg text-left hover:bg-muted transition-colors"
+                    onClick={() => handleAddLink(item)}
+                  >
+                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                      {INVENTORY_TYPE_LABELS[item.type] || item.type}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.location}</p>
+                    </div>
+                    <Badge
+                      variant={item.status === "available" ? "default" : "secondary"}
+                      className="text-[10px] shrink-0"
+                    >
+                      {item.status === "available" ? "이용 가능" : item.status}
+                    </Badge>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInventoryDialogOpen(false)}>닫기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
