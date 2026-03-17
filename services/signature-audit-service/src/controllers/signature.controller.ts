@@ -285,7 +285,8 @@ export async function getComplianceStats(_req: Request, res: Response): Promise<
 /** GET /api/signatures/compliance/list */
 export async function getComplianceList(req: Request, res: Response): Promise<void> {
   const { status, page = '1', limit = '20' } = req.query;
-  const limitNum = Math.min(parseInt(limit as string), 100);
+  const parsedLimit = parseInt(limit as string, 10);
+  const limitNum = isNaN(parsedLimit) ? 20 : Math.min(parsedLimit, 100);
 
   try {
     const params: Record<string, string> = {
@@ -327,7 +328,7 @@ export async function getComplianceList(req: Request, res: Response): Promise<vo
               id: latest.id,
               signerId: latest.signerId,
               signatureHash: latest.signatureHash,
-              timestamp: latest.timestamp.toISOString(),
+              timestamp: latest.timestamp instanceof Date ? latest.timestamp.toISOString() : String(latest.timestamp),
             }
           : null,
         editable: ['draft', 'in_progress'].includes(note.status),
@@ -356,7 +357,9 @@ export async function getNoteEditable(req: Request, res: Response): Promise<void
     }
 
     const editable = ['draft', 'in_progress'].includes(note.status);
-    const reason = editable ? 'editable' : note.status as 'locked' | 'signed';
+    const reason: 'editable' | 'locked' | 'signed' = editable
+      ? 'editable'
+      : note.status === 'locked' ? 'locked' : 'signed';
 
     res.json({
       ok: true,
