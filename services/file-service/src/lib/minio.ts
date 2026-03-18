@@ -12,6 +12,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
+import type { GetObjectCommandOutput, HeadObjectCommandOutput } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'localhost';
@@ -36,7 +37,9 @@ export async function ensureBuckets(): Promise<void> {
   for (const bucket of [BUCKET, EXPORTS_BUCKET]) {
     try {
       await s3.send(new HeadBucketCommand({ Bucket: bucket }));
-    } catch {
+    } catch (err: unknown) {
+      const errName = (err as { name?: string }).name;
+      if (errName !== 'NotFound' && errName !== 'NoSuchBucket') throw err;
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
       console.log(`[file-service] 버킷 생성: ${bucket}`);
     }
@@ -93,7 +96,7 @@ export async function getPresignedUploadUrl(
 }
 
 /** 파일 스트림 다운로드 */
-export async function getObjectStream(key: string) {
+export async function getObjectStream(key: string): Promise<GetObjectCommandOutput> {
   const response = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
   return response;
 }
@@ -104,7 +107,7 @@ export async function deleteObject(key: string): Promise<void> {
 }
 
 /** 파일 메타 조회 */
-export async function headObject(key: string) {
+export async function headObject(key: string): Promise<HeadObjectCommandOutput> {
   return s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
 }
 
@@ -115,7 +118,8 @@ export async function createMultipartUpload(bucket: string, key: string, content
     Key: key,
     ContentType: contentType,
   }));
-  return res.UploadId!;
+  if (!res.UploadId) throw new Error('[minio] CreateMultipartUpload: UploadId missing in response');
+  return res.UploadId;
 }
 
 /** Multipart 파트 업로드 */
@@ -127,7 +131,8 @@ export async function uploadPart(
     Bucket: bucket, Key: key, UploadId: uploadId,
     PartNumber: partNumber, Body: body,
   }));
-  return res.ETag!;
+  if (!res.ETag) throw new Error('[minio] UploadPart: ETag missing in response');
+  return res.ETag;
 }
 
 /** Multipart Upload 완료 */
