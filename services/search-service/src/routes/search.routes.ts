@@ -25,7 +25,7 @@ router.get('/favorites',        requireAuth, favoritesCtrl.getFavorites);
 // ── 인덱스 관리 (내부 서비스 전용 — x-internal-secret 헤더 필요) ──
 router.post('/index',               requireInternalSecret, ctrl.indexDoc);
 router.post('/index/bulk',          requireInternalSecret, ctrl.bulkIndexDocs);
-router.delete('/index/:type/:id',   requireInternalSecret, ctrl.removeDoc);
+router.delete('/index/:id', requireInternalSecret, ctrl.removeDoc);
 router.get('/stats',                requireInternalSecret, ctrl.statsHandler);
 
 export default router;
