@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import fileRoutes from './routes/file.routes';
+import exportRoutes from './routes/export.routes';
 import { swaggerDocument } from './swagger';
 import { ensureBucket } from './lib/minio';
 
@@ -17,6 +18,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/files', fileRoutes);
+app.use('/api/exports', exportRoutes);
 
 app.listen(PORT, async () => {
   console.log(`[file-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);
