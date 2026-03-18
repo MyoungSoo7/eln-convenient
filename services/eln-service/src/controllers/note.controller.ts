@@ -509,13 +509,12 @@ export async function getRevisionById(req: Request, res: Response): Promise<void
 /** GET /api/notes/:id/attachments */
 export async function getAttachments(req: Request, res: Response): Promise<void> {
   try {
-    const note = await findNote(req.params.id);
-    if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
-    const attachments = await prisma.attachment.findMany({
-      where: { noteId: req.params.id },
-      orderBy: { createdAt: 'asc' },
+    const note = await prisma.note.findUnique({
+      where: { id: req.params.id },
+      include: { attachments: { orderBy: { createdAt: 'asc' } } },
     });
-    res.json({ ok: true, data: attachments });
+    if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
+    res.json({ ok: true, data: note.attachments });
   } catch (err) {
     console.error('[getAttachments]', err);
     res.status(500).json({ ok: false, error: '첨부파일 목록 조회 중 오류가 발생했습니다.' });
@@ -525,9 +524,6 @@ export async function getAttachments(req: Request, res: Response): Promise<void>
 /** POST /api/notes/:id/attachments */
 export async function addAttachment(req: Request, res: Response): Promise<void> {
   try {
-    const note = await findNote(req.params.id);
-    if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
-
     const attachment = await prisma.attachment.create({
       data: {
         id: uuidv4(),
@@ -540,7 +536,12 @@ export async function addAttachment(req: Request, res: Response): Promise<void> 
       },
     });
     res.status(201).json({ ok: true, data: attachment });
-  } catch (err) {
+  } catch (err: any) {
+    // P2003: noteId FK 위반 → 노트가 존재하지 않음 (Attachment.noteId만 FK; fileId는 plain String)
+    if (err?.code === 'P2003') {
+      res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' });
+      return;
+    }
     console.error('[addAttachment]', err);
     res.status(500).json({ ok: false, error: '첨부파일 등록 중 오류가 발생했습니다.' });
   }
@@ -623,13 +624,15 @@ export async function deleteNoteLink(req: Request, res: Response): Promise<void>
 export async function getTags(req: Request, res: Response): Promise<void> {
   const type = (req.query.type as NoteType) || 'note';
   try {
-    const notes = await prisma.note.findMany({
-      where: { type },
-      select: { tags: true },
-    });
-    const tagSet = new Set<string>();
-    notes.forEach((n) => n.tags.forEach((t) => tagSet.add(t)));
-    res.json({ ok: true, data: Array.from(tagSet).sort() });
+    // UNNEST+DISTINCT로 DB 레벨에서 중복 제거 및 정렬.
+    // 의도적 동작 변경: deletedAt IS NULL 필터 추가 → 소프트 삭제된 노트의 태그 제외.
+    const rows = await prisma.$queryRaw<{ tag: string }[]>`
+      SELECT DISTINCT UNNEST(tags) AS tag
+      FROM "Note"
+      WHERE type = ${type}::text AND "deletedAt" IS NULL
+      ORDER BY tag
+    `;
+    res.json({ ok: true, data: rows.map((r) => r.tag) });
   } catch (err) {
     console.error('[getTags]', err);
     res.status(500).json({ ok: false, error: '태그 목록 조회 중 오류가 발생했습니다.' });

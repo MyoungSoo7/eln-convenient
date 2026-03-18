@@ -27,6 +27,9 @@ const mockNoteRevisionDb = {
 
 const mockAuditLog = jest.fn().mockResolvedValue(undefined);
 
+const mockAttachmentDb = { create: jest.fn() };
+const mockQueryRaw = jest.fn();
+
 // ── 모듈 모킹 ──────────────────────────────────────────────────────────────
 jest.mock('../lib/prisma', () => ({
   __esModule: true,
@@ -35,8 +38,9 @@ jest.mock('../lib/prisma', () => ({
     noteStatusHistory: mockNoteStatusHistoryDb,
     noteRevision: mockNoteRevisionDb,
     noteLink: { create: jest.fn() },
-    attachment: { create: jest.fn() },
+    attachment: mockAttachmentDb,
     template: { update: jest.fn() },
+    $queryRaw: mockQueryRaw,
   },
 }));
 
@@ -53,6 +57,7 @@ import type { Request, Response } from 'express';
 import {
   deleteNote, changeNoteStatus, adminUnlockNote,
   getNoteStats, getNotesBatch,
+  getAttachments, addAttachment, getTags,
 } from '../controllers/note.controller';
 
 // ── 헬퍼 ───────────────────────────────────────────────────────────────────
@@ -331,5 +336,100 @@ describe('getNotesBatch', () => {
     await getNotesBatch(req, res);
     expect(status).toHaveBeenCalledWith(400);
     expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 최대 500개까지 허용됩니다.' });
+  });
+});
+
+// ── getAttachments ─────────────────────────────────────────────────
+describe('getAttachments', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('노트가 없으면 404를 반환한다', async () => {
+    mockNoteDb.findUnique.mockResolvedValue(null);
+    const req = makeReq({ params: { id: 'note-1' } });
+    const { res, status, json } = makeRes();
+    await getAttachments(req, res);
+    expect(status).toHaveBeenCalledWith(404);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+  });
+
+  it('include로 첨부파일을 단일 쿼리로 반환한다', async () => {
+    const attachments = [{ id: 'att-1', fileName: 'a.pdf' }];
+    mockNoteDb.findUnique.mockResolvedValue({ id: 'note-1', attachments });
+    const req = makeReq({ params: { id: 'note-1' } });
+    const { res, json } = makeRes();
+    await getAttachments(req, res);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: attachments });
+    expect(mockNoteDb.findUnique).toHaveBeenCalledTimes(1);
+    expect(mockNoteDb.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ include: expect.objectContaining({ attachments: expect.anything() }) }),
+    );
+  });
+});
+
+// ── addAttachment ──────────────────────────────────────────────────
+describe('addAttachment', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('첨부파일을 201로 생성한다', async () => {
+    const created = { id: 'att-1', noteId: 'note-1', fileName: 'a.pdf' };
+    mockAttachmentDb.create.mockResolvedValue(created);
+    const req = makeReq({
+      params: { id: 'note-1' },
+      body: { fileId: 'f1', fileName: 'a.pdf' },
+      headers: { 'x-user-id': 'u1', 'x-user-role': 'researcher' },
+    });
+    const { res, status, json } = makeRes();
+    await addAttachment(req, res);
+    expect(status).toHaveBeenCalledWith(201);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: created });
+    expect(mockNoteDb.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('noteId FK 위반(P2003)이면 404를 반환한다', async () => {
+    const fkErr = Object.assign(new Error('FK violation'), { code: 'P2003' });
+    mockAttachmentDb.create.mockRejectedValue(fkErr);
+    const req = makeReq({
+      params: { id: 'ghost-note' },
+      body: { fileId: 'f1', fileName: 'a.pdf' },
+      headers: { 'x-user-id': 'u1', 'x-user-role': 'researcher' },
+    });
+    const { res, status, json } = makeRes();
+    await addAttachment(req, res);
+    expect(status).toHaveBeenCalledWith(404);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+    expect(mockNoteDb.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+// ── getTags ───────────────────────────────────────────────────────
+describe('getTags', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('$queryRaw UNNEST로 중복 없는 태그 목록을 반환한다', async () => {
+    mockQueryRaw.mockResolvedValue([{ tag: 'alpha' }, { tag: 'beta' }]);
+    const req = makeReq({ query: { type: 'note' } });
+    const { res, json } = makeRes();
+    await getTags(req, res);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: ['alpha', 'beta'] });
+    expect(mockNoteDb.findMany).not.toHaveBeenCalled();
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('DB에서 온 순서 그대로 반환한다 (ORDER BY는 SQL에서 처리됨)', async () => {
+    mockQueryRaw.mockResolvedValue([{ tag: 'zeta' }, { tag: 'alpha' }]);
+    const req = makeReq({ query: { type: 'note' } });
+    const { res, json } = makeRes();
+    await getTags(req, res);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: ['zeta', 'alpha'] });
+  });
+
+  it('type 쿼리 파라미터를 $queryRaw에 전달한다', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+    const req = makeReq({ query: { type: 'protocol' } });
+    const { res } = makeRes();
+    await getTags(req, res);
+    // $queryRaw tagged template literal: second argument is the type variable
+    const callArgs = mockQueryRaw.mock.calls[0];
+    expect(callArgs[1]).toBe('protocol');
   });
 });
