@@ -149,10 +149,9 @@ function AddEditDialog({
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error("이름을 입력해주세요."); return; }
     setSubmitting(true);
-    const payload: Parameters<typeof createItem>[0] = {
+    const basePayload = {
       name: form.name.trim(),
       type: form.type,
-      status: form.status,
       tags: form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       ...(form.category && { category: form.category }),
       ...(form.location && { location: form.location }),
@@ -164,17 +163,20 @@ function AddEditDialog({
       expiryWarningDays: form.expiryWarningDays ? Number(form.expiryWarningDays) : 30,
     };
 
-    const res = isEdit
-      ? await updateItem(editItem!.id, { ...payload, status: form.status })
-      : await createItem(payload);
-    setSubmitting(false);
+    try {
+      const res = isEdit
+        ? await updateItem(editItem!.id, { ...basePayload, status: form.status })
+        : await createItem(basePayload);
 
-    if (res.ok) {
-      toast.success(isEdit ? "아이템이 수정되었습니다." : "아이템이 추가되었습니다.");
-      onOpenChange(false);
-      onSaved();
-    } else {
-      toast.error((res as { ok: false; error: string }).error || "저장에 실패했습니다.");
+      if (res.ok) {
+        toast.success(isEdit ? "아이템이 수정되었습니다." : "아이템이 추가되었습니다.");
+        onOpenChange(false);
+        onSaved();
+      } else {
+        toast.error((res as { ok: false; error: string }).error || "저장에 실패했습니다.");
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -315,14 +317,17 @@ function AdjustQuantityDialog({
     if (!item) return;
     if (!qty || qtyNum <= 0) { toast.error("수량은 0보다 커야 합니다."); return; }
     setSubmitting(true);
-    const res = await adjustQuantity(item.id, { changeType, quantity: qtyNum, reason: reason || undefined });
-    setSubmitting(false);
-    if (res.ok) {
-      toast.success("수량이 조정되었습니다.");
-      onClose();
-      onSaved();
-    } else {
-      toast.error((res as { ok: false; error: string }).error || "수량 조정에 실패했습니다.");
+    try {
+      const res = await adjustQuantity(item.id, { changeType, quantity: qtyNum, reason: reason || undefined });
+      if (res.ok) {
+        toast.success("수량이 조정되었습니다.");
+        onClose();
+        onSaved();
+      } else {
+        toast.error((res as { ok: false; error: string }).error || "수량 조정에 실패했습니다.");
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
