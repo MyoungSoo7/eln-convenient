@@ -142,9 +142,12 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - SEARCH_SERVICE_URL=http://search-service:8006
     depends_on:
       postgres:
         condition: service_healthy
+      search-service:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/health || exit 1"]
       interval: 10s
@@ -195,9 +198,13 @@ services:
     environment:
       - PORT=8004
       - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=inventory
+      - SEARCH_SERVICE_URL=http://search-service:8006
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
+      search-service:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8004/health || exit 1"]
       interval: 10s

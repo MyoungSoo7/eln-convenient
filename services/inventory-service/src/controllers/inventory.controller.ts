@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import { VALID_ITEM_TYPES } from '../dtos/inventory.dto';
+import { searchClient } from '../lib/searchClient';
 
 // ─────────────────────────────────────────────
 // 아이템 CRUD
@@ -131,6 +132,19 @@ export async function createItem(req: Request, res: Response): Promise<void> {
       });
     }
 
+    searchClient.index({
+      id: item.id,
+      doc: {
+        domainType: 'INVENTORY',
+        title: item.name,
+        tags: item.tags,
+        ownerId: item.createdBy,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      },
+    });
     res.status(201).json({ ok: true, data: item });
   } catch (err: any) {
     if (err?.code === 'P2002') {
@@ -180,6 +194,19 @@ export async function updateItem(req: Request, res: Response): Promise<void> {
       });
     }
 
+    searchClient.index({
+      id: item.id,
+      doc: {
+        domainType: 'INVENTORY',
+        title: item.name,
+        tags: item.tags,
+        ownerId: item.createdBy,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      },
+    });
     res.json({ ok: true, data: item });
   } catch (err: any) {
     if (err?.code === 'P2002') {
@@ -199,6 +226,7 @@ export async function updateItem(req: Request, res: Response): Promise<void> {
 export async function deleteItem(req: Request, res: Response): Promise<void> {
   try {
     await prisma.inventoryItem.delete({ where: { id: req.params.id } });
+    searchClient.delete(req.params.id);
     res.json({ ok: true, message: '아이템이 삭제되었습니다.', id: req.params.id });
   } catch (err: any) {
     if (err?.code === 'P2025') {
