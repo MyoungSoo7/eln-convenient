@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { jobQueue } from '../lib/jobWorker';
+import { getPresignedUrlFromBucket } from '../lib/minio';
 
 // ─── POST /api/exports/pdf ───────────────────────────────────────
 export async function createPdfExport(req: Request, res: Response): Promise<void> {
@@ -67,7 +68,14 @@ export async function createZipExport(req: Request, res: Response): Promise<void
 export async function listExports(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;
   const { status, page = '1', limit = '20' } = req.query;
-  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+  const VALID_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
+  if (status && !VALID_STATUSES.includes(status as string)) {
+    res.status(400).json({ ok: false, error: `status는 ${VALID_STATUSES.join(', ')} 중 하나입니다.` });
+    return;
+  }
+  const pageNum = Math.max(1, parseInt(page as string) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+  const skip = (pageNum - 1) * limitNum;
   try {
     const where = {
       requestedBy,
@@ -78,11 +86,11 @@ export async function listExports(req: Request, res: Response): Promise<void> {
         where,
         orderBy: { createdAt: 'desc' },
         skip,
-        take: parseInt(limit as string),
+        take: limitNum,
       }),
       prisma.exportJob.count({ where }),
     ]);
-    res.json({ ok: true, data: jobs.map(toDto), total, page: parseInt(page as string) });
+    res.json({ ok: true, data: jobs.map(toDto), total, page: pageNum });
   } catch (err) {
     console.error('[export] 목록 조회 실패:', err);
     res.status(500).json({ ok: false, error: 'Export job 목록 조회에 실패했습니다.' });
@@ -117,7 +125,6 @@ export async function downloadExport(req: Request, res: Response): Promise<void>
       res.status(409).json({ ok: false, error: `Export가 완료되지 않았습니다. 현재 상태: ${job.status}` });
       return;
     }
-    const { getPresignedUrlFromBucket } = await import('../lib/minio');
     const url = await getPresignedUrlFromBucket(job.resultFile.bucket, job.resultFile.objectKey, 300);
     res.redirect(url);
   } catch (err) {
@@ -165,5 +172,6 @@ function toDto(job: {
     completedAt: job.completedAt?.toISOString() ?? null,
     expiresAt: job.expiresAt?.toISOString() ?? null,
     createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
   };
 }
