@@ -221,6 +221,7 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
           refType: file.refType,
           refId: file.refId,
           createdAt: file.createdAt.toISOString(),
+          lastModified: null,
         },
       });
       return;
@@ -243,12 +244,18 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
         uploadedBy: head.Metadata?.uploadedby || 'unknown',
         refType: head.Metadata?.linkedentitytype || null,
         refId: head.Metadata?.linkedentityid || null,
-        lastModified: head.LastModified?.toISOString(),
+        createdAt: null,
+        lastModified: head.LastModified?.toISOString() ?? null,
       },
     });
-  } catch (err) {
-    console.error('[file-service] 메타 조회 실패:', err);
-    res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
+  } catch (err: unknown) {
+    const errName = (err as { name?: string }).name;
+    if (errName === 'NoSuchKey' || errName === 'NotFound') {
+      res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
+    } else {
+      console.error('[file-service] 메타 조회 실패:', err);
+      res.status(502).json({ ok: false, error: '스토리지 조회에 실패했습니다.' });
+    }
   }
 }
 
@@ -256,19 +263,21 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
 export async function deleteFile(req: Request, res: Response): Promise<void> {
   try {
     // DB에서 파일 조회
-    const file = await prisma.file.findFirst({
+    const updated = await prisma.file.updateMany({
       where: { id: req.params.id, isDeleted: false },
+      data: { isDeleted: true, deletedAt: new Date() },
     });
-    if (file) {
-      // DB soft delete
-      await prisma.file.update({
+    if (updated.count > 0) {
+      // DB soft delete succeeded — fetch objectKey for async MinIO deletion
+      const deleted = await prisma.file.findUnique({
         where: { id: req.params.id },
-        data: { isDeleted: true, deletedAt: new Date() },
+        select: { objectKey: true },
       });
-      // MinIO 비동기 삭제 (fire-and-forget)
-      deleteObject(file.objectKey).catch((err) =>
-        console.error('[file-service] MinIO soft-delete 비동기 삭제 실패:', err)
-      );
+      if (deleted) {
+        deleteObject(deleted.objectKey).catch((err) =>
+          console.error('[file-service] MinIO soft-delete 비동기 삭제 실패:', err)
+        );
+      }
       res.json({ ok: true, id: req.params.id, message: '파일이 삭제되었습니다.' });
       return;
     }
