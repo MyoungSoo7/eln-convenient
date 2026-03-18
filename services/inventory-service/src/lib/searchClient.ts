@@ -69,6 +69,6 @@ export const searchClient = {
   },
   delete(id: string): void {
     deleteDoc(id)
-      .catch((err) => console.warn('[searchClient] delete 실败:', err));
+      .catch((err) => console.warn('[searchClient] delete 실패:', err));
   },
 };

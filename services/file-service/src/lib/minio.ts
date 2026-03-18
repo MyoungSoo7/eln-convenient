@@ -7,6 +7,10 @@ import {
   DeleteObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -15,6 +19,7 @@ const MINIO_PORT = Number.parseInt(process.env.MINIO_PORT || '9000');
 const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'minioadmin';
 const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'minioadmin123';
 export const BUCKET = process.env.MINIO_BUCKET || 'labnote-files';
+export const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || 'labnote-exports';
 
 export const s3 = new S3Client({
   endpoint: `http://${MINIO_ENDPOINT}:${MINIO_PORT}`,
@@ -23,18 +28,23 @@ export const s3 = new S3Client({
     accessKeyId: MINIO_ACCESS_KEY,
     secretAccessKey: MINIO_SECRET_KEY,
   },
-  forcePathStyle: true, // MinIO는 path-style 필수
+  forcePathStyle: true,
 });
 
-/** 버킷이 없으면 자동 생성 */
-export async function ensureBucket(): Promise<void> {
-  try {
-    await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
-  } catch {
-    await s3.send(new CreateBucketCommand({ Bucket: BUCKET }));
-    console.log(`[file-service] 버킷 생성: ${BUCKET}`);
+/** 두 버킷 모두 존재 확인 / 생성 */
+export async function ensureBuckets(): Promise<void> {
+  for (const bucket of [BUCKET, EXPORTS_BUCKET]) {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+    } catch {
+      await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+      console.log(`[file-service] 버킷 생성: ${bucket}`);
+    }
   }
 }
+
+// 하위 호환 alias
+export const ensureBucket = ensureBuckets;
 
 /** 파일 업로드 (originalName을 Metadata로 저장) */
 export async function uploadObject(
@@ -52,10 +62,7 @@ export async function uploadObject(
   }));
 }
 
-/**
- * UUID prefix로 실제 MinIO key 탐색
- * upload 시 key = {uuid}.{ext} 형태이므로 prefix로 검색
- */
+/** UUID prefix로 실제 MinIO key 탐색 */
 export async function findKeyByPrefix(prefix: string): Promise<string | null> {
   const result = await s3.send(new ListObjectsV2Command({
     Bucket: BUCKET,
@@ -71,11 +78,11 @@ export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<st
   return getSignedUrl(s3, command, { expiresIn });
 }
 
-/** presigned 업로드 URL 생성 (클라이언트 → MinIO 직접 업로드용) */
+/** presigned 업로드 URL 생성 */
 export async function getPresignedUploadUrl(
   key: string,
   contentType: string,
-  expiresIn = 900  // 15분
+  expiresIn = 900
 ): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: BUCKET,
@@ -96,7 +103,81 @@ export async function deleteObject(key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }
 
-/** 파일 메타 조회 (HeadObject — Metadata 포함) */
+/** 파일 메타 조회 */
 export async function headObject(key: string) {
   return s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+}
+
+/** Multipart Upload 시작 */
+export async function createMultipartUpload(bucket: string, key: string, contentType: string): Promise<string> {
+  const res = await s3.send(new CreateMultipartUploadCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  }));
+  return res.UploadId!;
+}
+
+/** Multipart 파트 업로드 */
+export async function uploadPart(
+  bucket: string, key: string, uploadId: string,
+  partNumber: number, body: Buffer
+): Promise<string> {
+  const res = await s3.send(new UploadPartCommand({
+    Bucket: bucket, Key: key, UploadId: uploadId,
+    PartNumber: partNumber, Body: body,
+  }));
+  return res.ETag!;
+}
+
+/** Multipart Upload 완료 */
+export async function completeMultipartUpload(
+  bucket: string, key: string, uploadId: string,
+  parts: { PartNumber: number; ETag: string }[]
+): Promise<void> {
+  await s3.send(new CompleteMultipartUploadCommand({
+    Bucket: bucket, Key: key, UploadId: uploadId,
+    MultipartUpload: { Parts: parts },
+  }));
+}
+
+/** Multipart Upload 중단 (실패 시 cleanup) */
+export async function abortMultipartUpload(
+  bucket: string, key: string, uploadId: string
+): Promise<void> {
+  try {
+    await s3.send(new AbortMultipartUploadCommand({
+      Bucket: bucket, Key: key, UploadId: uploadId,
+    }));
+  } catch (err) {
+    console.error('[minio] abortMultipartUpload 실패 (무시):', err);
+  }
+}
+
+/** 임의 버킷에 오브젝트 업로드 */
+export async function uploadObjectToBucket(
+  bucket: string, key: string, body: Buffer, contentType: string,
+  metadata?: Record<string, string>
+): Promise<void> {
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket, Key: key, Body: body,
+    ContentType: contentType, Metadata: metadata,
+  }));
+}
+
+/** 임의 버킷 presigned URL */
+export async function getPresignedUrlFromBucket(
+  bucket: string, key: string, expiresIn = 300
+): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  return getSignedUrl(s3, command, { expiresIn });
+}
+
+/** 임의 버킷 오브젝트 삭제 */
+export async function deleteObjectFromBucket(bucket: string, key: string): Promise<void> {
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  } catch (err) {
+    console.error('[minio] deleteObjectFromBucket 실패 (무시):', err);
+  }
 }
