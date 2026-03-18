@@ -51,12 +51,25 @@ export const openApiDocument = {
           '403': { description: '잠긴 노트 수정 불가' },
         },
       },
-      delete: { summary: '노트 삭제 (소프트 삭제)', tags: ['노트'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: '삭제 완료' } } },
+      delete: {
+        summary: '노트 삭제 (소프트 삭제)',
+        description: '`deletedAt` 타임스탬프를 설정합니다 (물리 삭제 아님). draft/in_progress 상태만 삭제 가능. locked·signed 상태는 403 반환.',
+        tags: ['노트'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: '소프트 삭제 완료 (deletedAt 설정)' },
+          '403': { description: 'locked 또는 signed 노트 삭제 불가 / 권한 없음' },
+        },
+      },
     },
     '/api/notes/{id}/status': {
       patch: {
         summary: '노트 상태 변경',
-        description: '허용 전환: draft↔in_progress, in_progress→locked. 잠긴/서명된 노트는 이 엔드포인트로 상태 변경 불가.',
+        description: [
+          '허용 전환 (일반 사용자): draft↔in_progress, in_progress→locked.',
+          '허용 전환 (서명 서비스 내부): in_progress→signed.',
+          '잠긴(locked)/서명된(signed) 노트는 이 엔드포인트로 상태 변경 불가.',
+        ].join(' '),
         tags: ['노트', '상태관리'],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
@@ -67,7 +80,11 @@ export const openApiDocument = {
                 type: 'object',
                 required: ['status'],
                 properties: {
-                  status: { type: 'string', enum: ['draft', 'in_progress', 'locked'], description: '변경할 상태' },
+                  status: {
+                    type: 'string',
+                    enum: ['draft', 'in_progress', 'signed', 'locked'],
+                    description: '변경할 상태. signed는 서명 서비스 전용.',
+                  },
                 },
               },
             },

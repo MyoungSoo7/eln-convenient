@@ -303,7 +303,12 @@ export async function deleteNote(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    await prisma.note.delete({ where: { id: req.params.id } });
+    if (existing.status === 'locked') {
+      res.status(403).json({ ok: false, error: '잠긴 노트는 삭제할 수 없습니다. 관리자가 먼저 잠금을 해제해야 합니다.' });
+      return;
+    }
+
+    await prisma.note.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
     searchClient.delete(req.params.id);
     await callAuditLog({
       entityType: 'note',
@@ -352,6 +357,23 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
     });
 
     const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
+
+    await prisma.noteStatusHistory.create({
+      data: {
+        id: uuidv4(),
+        noteId: req.params.id,
+        fromStatus: note.status as NoteStatus,
+        toStatus: newStatus,
+        changedBy: actorId,
+        isAdminAction: false,
+      },
+    }).catch((histErr: unknown) => {
+      console.error('[HISTORY_WARN] note_status_history 기록 실패 (상태변경은 완료)', {
+        noteId: req.params.id,
+        err: histErr instanceof Error ? histErr.message : histErr,
+      });
+    });
+
     await callAuditLog({
       entityType: 'note',
       entityId: req.params.id,
@@ -404,6 +426,23 @@ export async function adminUnlockNote(req: Request, res: Response): Promise<void
     const updated = await prisma.note.update({
       where: { id: req.params.id },
       data: { status: 'draft' },
+    });
+
+    await prisma.noteStatusHistory.create({
+      data: {
+        id: uuidv4(),
+        noteId: req.params.id,
+        fromStatus: 'locked',
+        toStatus: 'draft',
+        changedBy: adminId,
+        reason: reason || '관리자 잠금 해제',
+        isAdminAction: true,
+      },
+    }).catch((histErr: unknown) => {
+      console.error('[HISTORY_WARN] note_status_history 기록 실패 (잠금해제는 완료)', {
+        noteId: req.params.id,
+        err: histErr instanceof Error ? histErr.message : histErr,
+      });
     });
 
     await callAuditLog({

@@ -38,13 +38,16 @@
 
 ### 허용 전환 매트릭스
 
-| 현재 상태 → 변경 가능 상태 | 일반 사용자 | 관리자 |
-|---------------------------|:-----------:|:------:|
-| draft → in_progress | ✅ | ✅ |
-| in_progress → draft | ✅ | ✅ |
-| in_progress → locked | ✅ | ✅ |
-| locked → draft | ❌ | ✅ (잠금 해제) |
-| signed → (모든 상태) | ❌ | ❌ |
+| 현재 상태 → 변경 가능 상태 | 일반 사용자 | 관리자 | 서명 서비스 |
+|---------------------------|:-----------:|:------:|:-----------:|
+| draft → in_progress | ✅ | ✅ | - |
+| in_progress → draft | ✅ | ✅ | - |
+| in_progress → locked | ✅ | ✅ | - |
+| in_progress → signed | ❌ | ❌ | ✅ (내부 호출 전용) |
+| locked → draft | ❌ | ✅ (잠금 해제) | - |
+| signed → (모든 상태) | ❌ | ❌ | ❌ |
+
+> `in_progress → signed` 전환은 서명 서비스가 `PATCH /api/notes/:id/status`를 내부적으로 호출하여 처리합니다. 일반 UI에서는 노출되지 않습니다.
 
 ## 4. 계층별 구현 상세
 
@@ -196,7 +199,7 @@ services/eln-service/src/
 |------|------|
 | 관리자 인증 | `x-user-role` 헤더 검증 (API Gateway에서 JWT 파싱 후 주입) |
 | 비밀번호 검증 | 별도 관리자 비밀번호 검증 (TODO: bcrypt 해시 비교) |
-| 잠긴 노트 보호 | `updateNote()` 에서 locked 상태 시 403 반환 |
+| 잠긴 노트 보호 | `updateNote()` 및 `deleteNote()`에서 locked 상태 시 403 반환 |
 | DB 레벨 보호 | 트리거 함수로 잘못된 상태 전환 차단 |
 | 감사 불변성 | `audit_logs` 테이블은 INSERT ONLY (UPDATE/DELETE 미허용 권장) |
 
@@ -212,6 +215,8 @@ services/eln-service/src/
 | `services/eln-service/src/routes/note.routes.ts` | 수정 | PATCH/POST 라우트 추가 |
 | `services/eln-service/src/openapi/eln.openapi.ts` | 전면 수정 | 신규 엔드포인트 OpenAPI 스펙 추가 |
 | `services/eln-service/schema.sql` | 신규 생성 | PostgreSQL 스키마 (전체 테이블 + 트리거) |
+| `services/eln-service/prisma/schema.prisma` | 수정 | `Note.deletedAt`, `NoteStatusHistory` 모델 추가 |
+| `services/eln-service/src/__tests__/note.controller.test.ts` | 신규 생성 | 컨트롤러 단위 테스트 (7개) |
 
 ---
 

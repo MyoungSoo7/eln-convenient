@@ -21,20 +21,34 @@ enum NoteStatus {
 }
 
 model Note {
-  id          String         @id @default(uuid())
-  type        NoteType       @default(note)
-  title       String
-  content     String         @default("")
-  sections    Json           @default("[]")
-  status      NoteStatus     @default(draft)
-  authorId    String
-  templateId  String?
-  tags        String[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  revisions   NoteRevision[]
-  links       NoteLink[]
-  attachments Attachment[]
+  id            String              @id @default(uuid())
+  type          NoteType            @default(note)
+  title         String
+  content       String              @default("")
+  sections      Json                @default("[]")
+  status        NoteStatus          @default(draft)
+  authorId      String
+  templateId    String?
+  tags          String[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?           // 소프트 삭제
+  revisions     NoteRevision[]
+  links         NoteLink[]
+  attachments   Attachment[]
+  statusHistory NoteStatusHistory[]
+}
+
+model NoteStatusHistory {
+  id            String     @id @default(uuid())
+  noteId        String
+  fromStatus    NoteStatus
+  toStatus      NoteStatus
+  changedBy     String
+  reason        String?
+  isAdminAction Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  note          Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
 }
 
 model NoteRevision {
