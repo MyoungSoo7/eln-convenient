@@ -27,3 +27,13 @@ model Favorite {
   @@unique([userId, docType, docId])
   @@index([userId])
 }
+
+model SearchKeywordFavorite {
+  id        String   @id @default(uuid())
+  userId    String
+  keyword   String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, keyword])
+  @@index([userId])
+}
