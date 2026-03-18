@@ -189,7 +189,7 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 export async function getUsers(_req: Request, res: Response): Promise<void> {
   try {
     const users = await prisma.user.findMany({
-      include: { role: true },
+      include: { role: true, teamMembers: { include: { team: true } } },
       orderBy: { createdAt: 'asc' },
     });
     res.json({
@@ -197,6 +197,8 @@ export async function getUsers(_req: Request, res: Response): Promise<void> {
       data: users.map((u: any) => ({
         id: u.id, orgId: u.orgId, email: u.email, name: u.name,
         roleId: u.roleId, role: u.role?.name, status: u.status,
+        team: u.teamMembers[0]?.team?.name ?? null,
+        teamId: u.teamMembers[0]?.team?.id ?? null,
         createdAt: u.createdAt.toISOString(),
       })),
     });
@@ -219,6 +221,18 @@ export async function createUser(req: Request, res: Response): Promise<void> {
       res.status(409).json({ ok: false, error: '이미 사용 중인 이메일입니다.' });
       return;
     }
+
+    // orgId 미제공 시 첫 번째 조직으로 자동 연결
+    let resolvedOrgId = orgId;
+    if (!resolvedOrgId) {
+      const defaultOrg = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } });
+      if (!defaultOrg) {
+        res.status(400).json({ ok: false, error: '등록 가능한 조직이 없습니다.' });
+        return;
+      }
+      resolvedOrgId = defaultOrg.id;
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -226,7 +240,7 @@ export async function createUser(req: Request, res: Response): Promise<void> {
         email,
         name,
         passwordHash,
-        orgId: orgId || null,
+        orgId: resolvedOrgId,
         roleId: roleId || null,
         status: 'active',
       },
@@ -541,10 +555,15 @@ export async function removeTeamMember(req: Request, res: Response): Promise<voi
 /** GET /api/auth/roles */
 export async function getRoles(_req: Request, res: Response): Promise<void> {
   try {
-    const roles = await prisma.role.findMany();
+    const roles = await prisma.role.findMany({
+      include: { _count: { select: { users: true } } },
+    });
     res.json({
       ok: true,
-      data: roles.map((r: any) => ({ id: r.id, orgId: r.orgId, name: r.name, permissions: r.permissions })),
+      data: roles.map((r: any) => ({
+        id: r.id, orgId: r.orgId, name: r.name, permissions: r.permissions,
+        userCount: r._count.users,
+      })),
     });
   } catch (err) {
     console.error('[getRoles]', err);

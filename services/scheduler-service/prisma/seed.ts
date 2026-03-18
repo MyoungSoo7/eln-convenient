@@ -13,25 +13,42 @@ async function main() {
     data: [
       {
         id: 'res-default-equipment',
-        name: '기본장비',
-        type: 'equipment',
+        name: '전자현미경',
+        type: 'EQUIPMENT',
         location: 'A동 101호',
-        description: '범용 실험 장비',
+        description: '고해상도 전자현미경 (TEM)',
         isActive: true,
       },
       {
         id: 'res-default-room',
-        name: '기본 회의실',
-        type: 'room',
+        name: '대회의실',
+        type: 'ROOM',
         location: 'B동 201호',
-        description: '기본 회의실 (최대 10인)',
-        capacity: 10,
+        description: '대회의실 (최대 20인)',
+        capacity: 20,
+        isActive: true,
+      },
+      {
+        id: 'res-equipment-002',
+        name: '원심분리기',
+        type: 'EQUIPMENT',
+        location: 'A동 103호',
+        description: '고속 원심분리기',
+        isActive: true,
+      },
+      {
+        id: 'res-room-002',
+        name: '소회의실',
+        type: 'ROOM',
+        location: 'B동 202호',
+        description: '소회의실 (최대 6인)',
+        capacity: 6,
         isActive: true,
       },
     ],
   });
 
-  console.log('[seed] 기본 자원 생성 완료: 기본장비, 기본 회의실');
+  console.log('[seed] 기본 자원 4개 생성 완료');
 }
 
 main()

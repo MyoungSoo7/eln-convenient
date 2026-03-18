@@ -15,9 +15,12 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
+  roleId?: string;
   role?: string;
+  teamId?: string;
   team?: string;
   status: string;
+  orgId?: string;
 }
 
 export interface AdminTeam {
@@ -46,6 +49,13 @@ export interface UpdateUserPayload {
   name?: string;
   roleId?: string;
   status?: string;
+}
+
+export interface AdminTeamMember {
+  userId: string;
+  name: string;
+  email: string;
+  role?: string;
 }
 
 // ─── 조직 ────────────────────────────────────────
@@ -150,6 +160,32 @@ export async function deleteUser(id: string): Promise<ApiResponse<void>> {
   }
 }
 
+// ─── 팀 멤버 ──────────────────────────────────────
+
+export async function listTeamMembers(teamId: string): Promise<ApiResponse<AdminTeamMember[]>> {
+  try {
+    return await apiClient.get<AdminTeamMember[]>(`/auth/teams/${teamId}/members`);
+  } catch {
+    return { ok: false, data: [], error: '팀원 목록 조회에 실패했습니다.' };
+  }
+}
+
+export async function addTeamMember(teamId: string, userId: string): Promise<ApiResponse<void>> {
+  try {
+    return await apiClient.post<void>(`/auth/teams/${teamId}/members`, { userId });
+  } catch {
+    return { ok: false, data: undefined as unknown as void, error: '팀원 추가에 실패했습니다.' };
+  }
+}
+
+export async function removeTeamMember(teamId: string, userId: string): Promise<ApiResponse<void>> {
+  try {
+    return await apiClient.delete<void>(`/auth/teams/${teamId}/members/${userId}`);
+  } catch {
+    return { ok: false, data: undefined as unknown as void, error: '팀원 제거에 실패했습니다.' };
+  }
+}
+
 // ─── 역할 ────────────────────────────────────────
 
 export async function listRoles(): Promise<ApiResponse<AdminRole[]>> {
@@ -157,5 +193,29 @@ export async function listRoles(): Promise<ApiResponse<AdminRole[]>> {
     return await apiClient.get<AdminRole[]>('/auth/roles');
   } catch {
     return { ok: false, data: [] as AdminRole[], error: '역할 목록 조회에 실패했습니다.' };
+  }
+}
+
+export async function createRole(payload: { orgId: string; name: string; permissions: string[] }): Promise<ApiResponse<AdminRole>> {
+  try {
+    return await apiClient.post<AdminRole>('/auth/roles', payload);
+  } catch {
+    return { ok: false, data: null as unknown as AdminRole, error: '역할 생성에 실패했습니다.' };
+  }
+}
+
+export async function updateRolePermissions(id: string, permissions: string[]): Promise<ApiResponse<AdminRole>> {
+  try {
+    return await apiClient.put<AdminRole>(`/auth/roles/${id}/permissions`, { permissions });
+  } catch {
+    return { ok: false, data: null as unknown as AdminRole, error: '권한 수정에 실패했습니다.' };
+  }
+}
+
+export async function deleteRole(id: string): Promise<ApiResponse<void>> {
+  try {
+    return await apiClient.delete<void>(`/auth/roles/${id}`);
+  } catch {
+    return { ok: false, data: undefined as unknown as void, error: '역할 삭제에 실패했습니다.' };
   }
 }

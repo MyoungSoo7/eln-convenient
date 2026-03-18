@@ -7,45 +7,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum ResourceType {
+  EQUIPMENT
+  ROOM
+}
+
+enum BookingStatus {
+  PENDING    // 승인 대기
+  APPROVED   // 승인 완료
+  REJECTED   // 반려
+  CANCELLED  // 취소
+  COMPLETED  // 사용 완료
+}
+
+// ─────────────────────────────────────────────────────────────
+// Resource (예약 대상 자원)
+// ─────────────────────────────────────────────────────────────
+
 model Resource {
-  id          String    @id @default(uuid())
+  id          String       @id @default(uuid())
   name        String
-  type        String    // "equipment" | "room"
+  type        ResourceType
   location    String?
   description String?
-  capacity    Int?      // 수용 인원 (room 전용)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
+  capacity    Int?         // 수용 인원 (ROOM 전용)
+  ownerId     String?      // 해당 자원의 승인 담당자 (null → admin이 승인)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+
   bookings    Booking[]
 
   @@index([type])
   @@index([isActive])
+  @@map("resources")
 }
 
+// ─────────────────────────────────────────────────────────────
+// Booking (예약)
+// ─────────────────────────────────────────────────────────────
+
 model Booking {
-  id              String        @id @default(uuid())
-  resourceId      String
-  userId          String
-  title           String
-  description     String?
-  startTime       DateTime
-  endTime         DateTime
-  status          BookingStatus @default(pending)
-  approvedBy      String?
-  rejectedReason  String?
-  createdAt       DateTime      @default(now())
-  resource        Resource      @relation(fields: [resourceId], references: [id])
+  id             String        @id @default(uuid())
+  resourceId     String
+  userId         String        // x-user-id 헤더에서 주입
+  title          String
+  description    String?
+  startAt        DateTime
+  endAt          DateTime
+  status         BookingStatus @default(PENDING)
+
+  // 승인 정보
+  approvedBy     String?
+  approvedAt     DateTime?
+
+  // 반려 정보
+  rejectedReason String?
+
+  // 타임스탬프 (알림 트리거 포인트)
+  cancelledAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+
+  resource       Resource      @relation(fields: [resourceId], references: [id])
 
   @@index([resourceId])
   @@index([userId])
   @@index([status])
-  @@index([startTime, endTime])
-  @@index([createdAt])
-}
-
-enum BookingStatus {
-  pending
-  approved
-  rejected
-  cancelled
+  @@index([startAt, endAt])
+  @@index([resourceId, status, startAt, endAt])  // 충돌 체크 복합 인덱스
+  @@map("bookings")
 }
