@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/note.controller';
-import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
+import { requireAuth, requirePermission, requireRole } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -18,7 +18,11 @@ router.delete('/notes/:id',                      requirePermission('note:delete'
 
 // ─── 상태 관리 ────────────────────────────────────────────────
 router.patch('/notes/:id/status',                requirePermission('note:write'),   ctrl.changeNoteStatus);
-router.post('/notes/:id/admin-unlock',           requirePermission('note:unlock'),  ctrl.adminUnlockNote);
+router.post('/notes/:id/admin-unlock',
+  requireRole('admin'),              // 레이어 1: 역할 게이트
+  requirePermission('note:unlock'),  // 레이어 2: 권한 게이트
+  ctrl.adminUnlockNote,
+);
 
 // ─── 버전 관리 (리비전) ─────────────────────────────────────
 router.get('/notes/:id/revisions',               requirePermission('note:read'),    ctrl.getRevisions);

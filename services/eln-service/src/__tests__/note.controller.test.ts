@@ -228,3 +228,29 @@ describe('deleteNote — 소프트 삭제', () => {
     );
   });
 });
+
+describe('adminUnlockNote — 역할 검사가 컨트롤러 밖으로 이동됨', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('x-user-role이 admin이 아니어도 컨트롤러는 비밀번호 검증 단계로 진입한다', async () => {
+    // 역할 검사가 컨트롤러에 남아있으면 이 테스트는 FAIL (403 즉시 반환)
+    // 역할 검사를 미들웨어로 이동하면 PASS (노트 조회 단계로 진입)
+    mockNoteDb.findUnique.mockResolvedValue({
+      id: 'note-001', status: 'locked', authorId: 'user-001',
+    });
+
+    const req = makeReq({
+      params: { id: 'note-001' },
+      body: { adminPassword: 'pw', reason: '테스트' },
+      headers: { 'x-user-id': 'user-001', 'x-user-role': 'researcher' }, // admin 아님
+    });
+    const { res } = makeRes();
+
+    await adminUnlockNote(req, res);
+
+    // 컨트롤러가 403을 즉시 반환하지 않고 prisma.note.findUnique를 호출했어야 함
+    expect(mockNoteDb.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'note-001' } }),
+    );
+  });
+});

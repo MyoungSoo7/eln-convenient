@@ -396,12 +396,6 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
 
 /** POST /api/notes/:id/admin-unlock */
 export async function adminUnlockNote(req: Request, res: Response): Promise<void> {
-  const userRole = req.headers['x-user-role'] as string;
-  if (userRole !== 'admin') {
-    res.status(403).json({ ok: false, error: '관리자 권한이 필요합니다.' });
-    return;
-  }
-
   try {
     const note = await findNote(req.params.id);
     if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
