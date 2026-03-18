@@ -51,9 +51,4 @@ router.patch('/protocols/:id/status',  requirePermission('note:write'),  ctrl.ch
 router.get('/protocols/:id/revisions', requirePermission('note:read'),   ctrl.getRevisions);
 router.get('/protocols/:id/revisions/:rev', requirePermission('note:read'), ctrl.getRevisionById);
 
-// ─── 템플릿 (note.routes 내 /api/templates) ──────────────────
-router.get('/templates',         requirePermission('template:read'),   ctrl.getTemplates);
-router.post('/templates',        requirePermission('template:write'),  ctrl.createTemplate);
-router.get('/templates/:id',     requirePermission('template:read'),   ctrl.getTemplateById);
-
 export default router;

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock } from "lucide-react";
+import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock, Trash2, FileText } from "lucide-react";
 import { type Note } from "@/lib/mockData";
-import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import {
   DropdownMenu,
@@ -23,8 +23,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { listNotes, changeNoteStatus, adminUnlockNote } from "@/api/notes";
+import { listNotes, changeNoteStatus, adminUnlockNote, deleteNote } from "@/api/notes";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -43,6 +53,10 @@ const statusTransitions: Record<string, string[]> = {
   locked: [],
 };
 
+// draft / in_progress 상태만 삭제 허용
+// signed: 법적 불변성, locked: 관리자 잠금 상태 — 삭제 불가
+const isDeletable = (status: string) => status === "draft" || status === "in_progress";
+
 export default function NotesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
@@ -53,12 +67,21 @@ export default function NotesPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [isAdmin] = useState(true); // TODO: 실제 인증 연동 시 권한 체크로 교체
+  const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const templateIdFilter = searchParams.get("templateId") ?? undefined;
 
   // 노트 목록 API 로드
   useEffect(() => {
     setLoading(true);
     setLoadError(null);
-    listNotes(filter !== "all" ? { status: filter } : undefined)
+    listNotes({
+      ...(filter !== "all" && { status: filter }),
+      ...(templateIdFilter && { templateId: templateIdFilter }),
+    })
       .then((res) => {
         if (res.ok) {
           setNotes(res.data);
@@ -68,7 +91,7 @@ export default function NotesPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [filter]);
+  }, [filter, templateIdFilter]);
 
   const handleStatusChange = async (noteId: string, newStatus: string) => {
     const res = await changeNoteStatus(noteId, newStatus as Note["status"]);
@@ -114,6 +137,20 @@ export default function NotesPage() {
     }
   };
 
+  const handleDeleteNote = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await deleteNote(deleteTarget.id);
+    setDeleting(false);
+    if (res.ok) {
+      setNotes((prev) => prev.filter((n) => n.id !== deleteTarget.id));
+      toast.success(`"${deleteTarget.title}" 노트가 삭제되었습니다.`);
+      setDeleteTarget(null);
+    } else {
+      toast.error(res.error || "노트 삭제에 실패했습니다.");
+    }
+  };
+
   const filtered = notes.filter((n) => {
     const matchSearch =
       n.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -137,6 +174,22 @@ export default function NotesPage() {
           </Button>
         </Link>
       </div>
+
+      {/* templateId 필터 중 안내 배너 */}
+      {templateIdFilter && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+          <FileText className="h-4 w-4 shrink-0" />
+          특정 프로토콜로 생성된 노트만 표시 중
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs ml-auto"
+            onClick={() => navigate("/notes")}
+          >
+            필터 해제
+          </Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
@@ -236,6 +289,17 @@ export default function NotesPage() {
                       )}
                       <p className="text-xs text-muted-foreground mt-1">{note.author || note.authorId || '-'}</p>
                       <p className="text-xs text-muted-foreground">{note.updatedAt}</p>
+                      {/* 삭제 버튼: draft / in_progress 만 표시 */}
+                      {isDeletable(note.status) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => { e.preventDefault(); setDeleteTarget(note); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -287,6 +351,32 @@ export default function NotesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 노트 삭제 확인 다이얼로그 */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>노트를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>"{deleteTarget?.title}"</strong> 노트를 삭제합니다.
+              삭제된 노트는 복구할 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteNote}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "삭제 중..." : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

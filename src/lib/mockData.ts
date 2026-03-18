@@ -11,6 +11,7 @@ export interface Note {
   tags: string[];
   project?: string;
   content?: string;
+  templateId?: string;
   revisions?: Revision[];
   linkedItems?: LinkedItem[];
 }

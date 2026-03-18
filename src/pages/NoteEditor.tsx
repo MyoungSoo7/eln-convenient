@@ -18,7 +18,7 @@ import { getToken } from "@/lib/authToken";
 import {
   createNote, updateNote, getNote, changeNoteStatus,
   listAttachments, addAttachment, deleteAttachmentRecord,
-  getLinks, createNoteLink, deleteNoteLink, listRevisions,
+  getLinks, createNoteLink, deleteNoteLink, listRevisions, getTemplate,
   type AttachmentRecord, type NoteLink, type RevisionRecord,
 } from "@/api/notes";
 import { signNote } from "@/api/signatures";
@@ -105,6 +105,9 @@ export default function NoteEditor() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
 
+  // 원본 프로토콜 제목
+  const [templateTitle, setTemplateTitle] = useState<string | null>(null);
+
   // 버전 이력
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
   const [revisionsLoaded, setRevisionsLoaded] = useState(false);
@@ -130,6 +133,11 @@ export default function NoteEditor() {
           setTitle(res.data.title || "");
           setContent(res.data.content || "");
           setNoteStatus(res.data.status || "draft");
+          if (res.data.templateId) {
+            getTemplate(res.data.templateId).then((tRes) => {
+              if (tRes.ok) setTemplateTitle(tRes.data.title);
+            });
+          }
         }
       }),
       listAttachments(id!).then((res) => { if (res.ok) setAttachments(res.data); }),
@@ -462,12 +470,24 @@ export default function NoteEditor() {
           )}
         </div>
       ) : (
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={isLocked}
-          className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2"
-        />
+        <>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={isLocked}
+            className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2"
+          />
+          {templateTitle && (
+            <div className="flex items-center gap-1.5">
+              <Link to="/protocols">
+                <Badge variant="secondary" className="text-[10px] gap-1 cursor-pointer hover:bg-secondary/80">
+                  <FileText className="h-3 w-3" />
+                  프로토콜: {templateTitle}
+                </Badge>
+              </Link>
+            </div>
+          )}
+        </>
       )}
 
       <Tabs defaultValue="editor" className="mt-4">

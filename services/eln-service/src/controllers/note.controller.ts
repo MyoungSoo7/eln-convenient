@@ -73,14 +73,15 @@ async function nextRevision(noteId: string) {
 
 /** GET /api/notes  또는  GET /api/protocols */
 export async function getNotes(req: Request, res: Response): Promise<void> {
-  const { status, tag, search, page = '1', limit = '20', type } = req.query;
+  const { status, tag, search, page = '1', limit = '20', type, templateId } = req.query;
   const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
   const where: Record<string, unknown> = {
     type: (type as NoteType) || 'note',
   };
   if (status) where.status = status;
-  if (tag)    where.tags = { has: tag as string };
+  if (tag)        where.tags = { has: tag as string };
+  if (templateId) where.templateId = templateId as string;
   if (search) {
     where.OR = [
       { title:   { contains: search as string, mode: 'insensitive' } },

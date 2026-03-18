@@ -48,13 +48,19 @@ export interface RevisionRecord {
 const ERR_CONN = '서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.';
 
 // ── 노트 API ──
-export async function listNotes(params?: { status?: string; tag?: string }): Promise<ApiResponse<Note[]>> {
+export async function listNotes(params?: { status?: string; tag?: string; templateId?: string }): Promise<ApiResponse<Note[]>> {
   try {
     const res = await apiClient.get<{ data?: Note[] } | Note[]>('/notes', params as Record<string, string>);
     if (!res.ok) return { ok: false, data: [], error: res.error };
     // 백엔드가 { ok, data: [...], total, page } 형태로 반환
     const raw = res.data as { data?: Note[] } | Note[];
-    const notes = Array.isArray(raw) ? raw : (Array.isArray((raw as { data?: Note[] }).data) ? (raw as { data?: Note[] }).data! : []);
+    let notes: Note[];
+    if (Array.isArray(raw)) {
+      notes = raw;
+    } else {
+      const inner = (raw as { data?: Note[] }).data;
+      notes = Array.isArray(inner) ? inner : [];
+    }
     return { ok: true, data: notes };
   } catch (err) {
     return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
@@ -265,5 +271,32 @@ export async function copyTemplate(templateId: string): Promise<ApiResponse<Temp
     return await apiClient.post<TemplateRecord>(`/templates/${templateId}/copy`, {});
   } catch (err) {
     return { ok: false, data: null as unknown as TemplateRecord, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+export async function updateTemplate(
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    content?: string;
+    category?: string;
+    sections?: unknown[];
+    tags?: string[];
+    isPublic?: boolean;
+  },
+): Promise<ApiResponse<TemplateRecord>> {
+  try {
+    return await apiClient.put<TemplateRecord>(`/templates/${id}`, data);
+  } catch (err) {
+    return { ok: false, data: null as unknown as TemplateRecord, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+export async function deleteTemplate(id: string): Promise<ApiResponse<{ message: string }>> {
+  try {
+    return await apiClient.delete<{ message: string }>(`/templates/${id}`);
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
   }
 }

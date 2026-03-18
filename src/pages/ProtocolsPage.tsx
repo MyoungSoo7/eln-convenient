@@ -2,13 +2,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, BookOpen, Copy, Plus, FileText, Loader2 } from "lucide-react";
+import { Search, BookOpen, Copy, Plus, FileText, Loader2, Pencil, Trash2, ArrowRight } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import NewProtocolDialog from "@/components/NewProtocolDialog";
-import { listTemplates, copyTemplate, type TemplateRecord } from "@/api/notes";
+import EditProtocolDialog from "@/components/EditProtocolDialog";
+import { listTemplates, copyTemplate, deleteTemplate, type TemplateRecord } from "@/api/notes";
 
 export default function ProtocolsPage() {
   const [search, setSearch] = useState("");
@@ -16,6 +27,9 @@ export default function ProtocolsPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<TemplateRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   const loadTemplates = useCallback(async () => {
@@ -52,6 +66,11 @@ export default function ProtocolsPage() {
     setProtocols((prev) => [template, ...prev]);
   };
 
+  const handleUpdated = (updated: TemplateRecord) => {
+    setProtocols((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setEditTarget(null);
+  };
+
   const handleCopy = async (p: TemplateRecord) => {
     setCopyingId(p.id);
     const res = await copyTemplate(p.id);
@@ -61,6 +80,20 @@ export default function ProtocolsPage() {
       toast.success("프로토콜이 복사되었습니다.", { description: `"${res.data.title}" 생성됨` });
     } else {
       toast.error(res.error ?? "템플릿 복사에 실패했습니다.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await deleteTemplate(deleteTarget.id);
+    setDeleting(false);
+    if (res.ok) {
+      setProtocols((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      toast.success(`"${deleteTarget.title}" 프로토콜이 삭제되었습니다.`);
+      setDeleteTarget(null);
+    } else {
+      toast.error(res.error ?? "프로토콜 삭제에 실패했습니다.");
     }
   };
 
@@ -115,12 +148,47 @@ export default function ProtocolsPage() {
                   <div className="flex items-center gap-2 mt-3 flex-wrap">
                     {(p.tags ?? []).map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
                   </div>
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">{p.useCount ?? 0}회 사용 <HelpTooltip text="이 프로토콜로 연구노트를 생성한 횟수입니다." /></span>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCreateNote(p); }}><FileText className="h-3 w-3" /> 노트 생성</Button>
+                  <div className="mt-4 pt-3 border-t space-y-2">
+                    {/* 사용 횟수 + 노트 보기 */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        {p.useCount ?? 0}회 사용
+                        <HelpTooltip text="이 프로토콜로 연구노트를 생성한 횟수입니다." />
+                      </span>
+                      {(p.useCount ?? 0) > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs gap-1 h-6 px-2 text-primary"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/notes?templateId=${p.id}`); }}
+                        >
+                          노트 보기 <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {/* 액션 버튼 */}
+                    <div className="flex items-center justify-end gap-1 flex-wrap">
+                      <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCreateNote(p); }}>
+                        <FileText className="h-3 w-3" /> 노트 생성
+                      </Button>
                       <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={(e) => { e.stopPropagation(); handleCopy(p); }} disabled={copyingId === p.id}>
                         {copyingId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />} 복사
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs p-1.5 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => { e.stopPropagation(); setEditTarget(p); }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs p-1.5 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
@@ -131,7 +199,44 @@ export default function ProtocolsPage() {
         </div>
       )}
 
+      {/* 새 프로토콜 생성 다이얼로그 */}
       <NewProtocolDialog open={dialogOpen} onOpenChange={setDialogOpen} onCreated={handleCreated} />
+
+      {/* 프로토콜 수정 다이얼로그 */}
+      {editTarget && (
+        <EditProtocolDialog
+          open={!!editTarget}
+          onOpenChange={(v) => { if (!v) setEditTarget(null); }}
+          template={editTarget}
+          onUpdated={handleUpdated}
+        />
+      )}
+
+      {/* 프로토콜 삭제 확인 다이얼로그 */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>프로토콜을 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>"{deleteTarget?.title}"</strong> 프로토콜을 삭제합니다.
+              삭제 후 복구할 수 없으며, 이 프로토콜로 만든 노트는 유지됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "삭제 중..." : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
