@@ -43,15 +43,37 @@ export interface Protocol {
 export interface InventoryItem {
   id: string;
   name: string;
-  type: 'dev_equipment' | 'deliverable' | 'license' | 'infra';
-  status: 'available' | 'in_use' | 'completed' | 'expired' | 'archived';
-  location: string;
-  quantity: number;
-  unit: string;
-  barcode: string;
+  type: 'reagent' | 'sample' | 'equipment' | 'consumable' |
+        'antibody' | 'plasmid' | 'cell_line' | 'output' |
+        'license' | 'infrastructure' | 'other';
+  status: 'available' | 'in_use' | 'depleted' | 'expired' | 'disposed' | 'maintenance';
+  category?: string;
+  location?: string;
+  barcode?: string;
+  quantity?: number;
+  unit?: string;
+  minQuantity?: number;
+  expiryDate?: string;        // ISO 8601
+  expiryWarningDays?: number; // 기본 30
   tags: string[];
-  project?: string;
-  lastUsed?: string;
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InventoryHistory {
+  id: string;
+  itemId: string;
+  changeType: 'in' | 'out' | 'adjust' | 'status_change';
+  quantityBefore?: number;
+  quantityAfter?: number;
+  quantityDelta?: number;
+  statusBefore?: string;
+  statusAfter?: string;
+  reason?: string;
+  performedBy: string;
+  createdAt: string;
 }
 
 export interface Booking {
@@ -124,16 +146,34 @@ export const mockProtocols: Protocol[] = [
 ];
 
 export const mockInventory: InventoryItem[] = [
-  { id: 'inv1', name: 'MacBook Pro 16" M3 Max', type: 'dev_equipment', status: 'in_use', location: '개발팀 3층 A존', quantity: 5, unit: '대', barcode: 'DEV-2026-001', tags: ['노트북', '개발장비'], project: '유전체 편집 프로젝트', lastUsed: '2026-02-27' },
-  { id: 'inv2', name: '요구사항 정의서 v2.1', type: 'deliverable', status: 'completed', location: 'Confluence/문서함', quantity: 1, unit: '건', barcode: 'DOC-2026-001', tags: ['산출물', '요구사항', 'SRS'], project: '유전체 편집 프로젝트' },
-  { id: 'inv3', name: 'Dell 27" 4K 모니터', type: 'dev_equipment', status: 'available', location: '개발팀 3층 B존', quantity: 12, unit: '대', barcode: 'DEV-2026-002', tags: ['모니터', '주변기기'] },
-  { id: 'inv4', name: 'API 설계서 (OpenAPI 3.0)', type: 'deliverable', status: 'in_use', location: 'Git Repository', quantity: 1, unit: '건', barcode: 'DOC-2026-002', tags: ['산출물', 'API', '설계서'], project: '신약 후보 스크리닝' },
-  { id: 'inv5', name: 'JetBrains All Products Pack', type: 'license', status: 'available', location: 'IT 관리시스템', quantity: 10, unit: '라이선스', barcode: 'LIC-2026-001', tags: ['IDE', '라이선스', 'IntelliJ'] },
-  { id: 'inv6', name: '테스트 결과 보고서', type: 'deliverable', status: 'completed', location: 'Jira/Confluence', quantity: 3, unit: '건', barcode: 'DOC-2026-003', tags: ['산출물', 'QA', '테스트'], project: '암 바이오마커 연구' },
-  { id: 'inv7', name: 'AWS 개발 서버 (EC2)', type: 'infra', status: 'in_use', location: 'ap-northeast-2', quantity: 4, unit: '인스턴스', barcode: 'INF-2026-001', tags: ['클라우드', 'AWS', '서버'], project: '유전체 편집 프로젝트' },
-  { id: 'inv8', name: 'Figma Enterprise 라이선스', type: 'license', status: 'available', location: 'IT 관리시스템', quantity: 5, unit: '라이선스', barcode: 'LIC-2026-002', tags: ['디자인', 'UI/UX'] },
-  { id: 'inv9', name: '데이터베이스 설계서 (ERD)', type: 'deliverable', status: 'in_use', location: 'Git Repository', quantity: 1, unit: '건', barcode: 'DOC-2026-004', tags: ['산출물', 'DB', 'ERD'], project: '신약 후보 스크리닝' },
-  { id: 'inv10', name: 'GPU 워크스테이션 (RTX 4090)', type: 'dev_equipment', status: 'in_use', location: '서버룸 B동', quantity: 2, unit: '대', barcode: 'DEV-2026-003', tags: ['GPU', 'AI/ML', '장비'], project: '면역학 연구', lastUsed: '2026-02-26' },
+  {
+    id: 'inv1', name: 'Cas9 단백질 (NEB)', type: 'reagent', status: 'available',
+    location: 'A동 냉장고 #2', quantity: 50, unit: 'μg', barcode: 'REA-2026-001',
+    minQuantity: 10, expiryDate: '2026-09-01', expiryWarningDays: 30,
+    tags: ['CRISPR', 'NEB'], category: '단백질',
+  },
+  {
+    id: 'inv2', name: 'HEK293 세포주', type: 'cell_line', status: 'available',
+    location: '액체질소 탱크 #1', quantity: 10, unit: '바이알', barcode: 'CEL-2026-001',
+    tags: ['세포주', 'HEK293'],
+  },
+  {
+    id: 'inv3', name: 'Neon Transfection System', type: 'equipment', status: 'in_use',
+    location: 'B동 실험실 301호', barcode: 'EQP-2026-001',
+    tags: ['트랜스펙션', '장비'],
+  },
+  {
+    id: 'inv4', name: 'Lipofectamine 3000', type: 'consumable', status: 'available',
+    location: 'A동 냉장고 #1', quantity: 3, unit: '병', barcode: 'CON-2026-001',
+    minQuantity: 1, expiryDate: '2026-06-15', expiryWarningDays: 30,
+    tags: ['트랜스펙션'],
+  },
+  {
+    id: 'inv5', name: 'Anti-p53 항체 (Santa Cruz)', type: 'antibody', status: 'available',
+    location: 'A동 냉동고 #3', quantity: 100, unit: 'μL', barcode: 'ANT-2026-001',
+    expiryDate: '2026-04-01', expiryWarningDays: 30,
+    tags: ['Western Blot', 'p53'],
+  },
 ];
 
 export const mockBookings: Booking[] = [
