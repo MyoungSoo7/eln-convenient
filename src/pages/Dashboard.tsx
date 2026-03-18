@@ -150,7 +150,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {mockInventory.filter(i => i.status === 'expired' || i.status === 'archived').map((item) => (
+            {mockInventory.filter(i => i.status === 'expired' || i.status === 'depleted').map((item) => (
               <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -159,7 +159,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {mockInventory.filter(i => i.status === 'expired' || i.status === 'archived').length === 0 && (
+            {mockInventory.filter(i => i.status === 'expired' || i.status === 'depleted').length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">만료/주의 항목 없음</p>
             )}
           </CardContent>

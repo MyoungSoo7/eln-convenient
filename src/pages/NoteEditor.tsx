@@ -59,8 +59,9 @@ function formatBytes(bytes?: number | null): string {
 }
 
 const INVENTORY_TYPE_LABELS: Record<string, string> = {
-  dev_equipment: "장비", deliverable: "샘플", license: "라이선스", infra: "인프라",
-  reagent: "시약", sample: "샘플", equipment: "장비",
+  reagent: "시약", sample: "샘플", equipment: "장비", consumable: "소모품",
+  antibody: "항체", plasmid: "플라스미드", cell_line: "세포주",
+  output: "산출물", license: "라이선스", infrastructure: "인프라", other: "기타",
 };
 
 export default function NoteEditor() {
