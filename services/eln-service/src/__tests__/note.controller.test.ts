@@ -13,6 +13,7 @@ const mockNoteDb = {
   update: jest.fn(),
   delete: jest.fn(),
   count: jest.fn(),
+  groupBy: jest.fn(),   // ← add
 };
 
 const mockNoteStatusHistoryDb = {
@@ -49,7 +50,10 @@ jest.mock('../lib/searchClient', () => ({
 
 // ── 컨트롤러 import (모킹 이후) ────────────────────────────────────────────
 import type { Request, Response } from 'express';
-import { deleteNote, changeNoteStatus, adminUnlockNote } from '../controllers/note.controller';
+import {
+  deleteNote, changeNoteStatus, adminUnlockNote,
+  getNoteStats, getNotesBatch,
+} from '../controllers/note.controller';
 
 // ── 헬퍼 ───────────────────────────────────────────────────────────────────
 
@@ -252,5 +256,80 @@ describe('adminUnlockNote — 역할 검사가 컨트롤러 밖으로 이동됨'
     expect(mockNoteDb.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'note-001' } }),
     );
+  });
+});
+
+// ── getNoteStats ─────────────────────────────────────────────────────
+describe('getNoteStats', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('상태별 카운트를 groupBy로 조합해 반환한다', async () => {
+    mockNoteDb.groupBy.mockResolvedValue([
+      { status: 'draft',       _count: { _all: 5 } },
+      { status: 'in_progress', _count: { _all: 3 } },
+      { status: 'signed',      _count: { _all: 8 } },
+      // 'locked'는 없음 → 기본값 0으로 채워져야 함
+    ]);
+    const req = makeReq({ query: { type: 'note' } });
+    const { res, json } = makeRes();
+    await getNoteStats(req, res);
+    expect(json).toHaveBeenCalledWith({
+      ok: true,
+      data: { draft: 5, in_progress: 3, locked: 0, signed: 8, total: 16 },
+    });
+  });
+
+  it('type이 잘못되면 400을 반환한다', async () => {
+    const req = makeReq({ query: { type: 'invalid' } });
+    const { res, status, json } = makeRes();
+    await getNoteStats(req, res);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({ ok: false, error: 'type은 note 또는 protocol이어야 합니다.' });
+  });
+});
+
+// ── getNotesBatch ─────────────────────────────────────────────────────
+describe('getNotesBatch', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('ID 배열로 노트 목록을 반환한다', async () => {
+    const notes = [{ id: 'a' }, { id: 'b' }];
+    mockNoteDb.findMany.mockResolvedValue(notes);
+    const req = makeReq({ body: { ids: ['a', 'b'] } });
+    const { res, json } = makeRes();
+    await getNotesBatch(req, res);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: notes });
+  });
+
+  it('ids가 빈 배열이면 DB 호출 없이 빈 배열을 반환한다', async () => {
+    const req = makeReq({ body: { ids: [] } });
+    const { res, json } = makeRes();
+    await getNotesBatch(req, res);
+    expect(json).toHaveBeenCalledWith({ ok: true, data: [] });
+    expect(mockNoteDb.findMany).not.toHaveBeenCalled();
+  });
+
+  it('ids가 없으면 400을 반환한다', async () => {
+    const req = makeReq({ body: {} });
+    const { res, status, json } = makeRes();
+    await getNotesBatch(req, res);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
+  });
+
+  it('ids 요소가 문자열이 아니면 400을 반환한다', async () => {
+    const req = makeReq({ body: { ids: [1, null, 'valid'] } });
+    const { res, status, json } = makeRes();
+    await getNotesBatch(req, res);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
+  });
+
+  it('ids가 500개 초과면 400을 반환한다', async () => {
+    const req = makeReq({ body: { ids: Array(501).fill('uuid') } });
+    const { res, status, json } = makeRes();
+    await getNotesBatch(req, res);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 최대 500개까지 허용됩니다.' });
   });
 });

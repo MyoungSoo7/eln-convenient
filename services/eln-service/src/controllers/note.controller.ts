@@ -686,3 +686,54 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
     res.status(500).json({ ok: false, error: '템플릿 생성 중 오류가 발생했습니다.' });
   }
 }
+
+/** GET /api/notes/stats */
+export async function getNoteStats(req: Request, res: Response): Promise<void> {
+  const type = (req.query.type as string) || 'note';
+  if (!['note', 'protocol'].includes(type)) {
+    res.status(400).json({ ok: false, error: 'type은 note 또는 protocol이어야 합니다.' });
+    return;
+  }
+  try {
+    const rows = await prisma.note.groupBy({
+      by: ['status'],
+      where: { type: type as NoteType, deletedAt: null },
+      _count: { _all: true },
+    });
+    const base = { draft: 0, in_progress: 0, locked: 0, signed: 0 };
+    for (const row of rows) {
+      base[row.status as keyof typeof base] = row._count._all;
+    }
+    const total = base.draft + base.in_progress + base.locked + base.signed;
+    res.json({ ok: true, data: { ...base, total } });
+  } catch (err) {
+    console.error('[getNoteStats]', err);
+    res.status(500).json({ ok: false, error: '통계 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+/** POST /api/notes/batch */
+export async function getNotesBatch(req: Request, res: Response): Promise<void> {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.every((id: unknown) => typeof id === 'string')) {
+    res.status(400).json({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
+    return;
+  }
+  if (ids.length === 0) {
+    res.json({ ok: true, data: [] });
+    return;
+  }
+  if (ids.length > 500) {
+    res.status(400).json({ ok: false, error: 'ids는 최대 500개까지 허용됩니다.' });
+    return;
+  }
+  try {
+    const notes = await prisma.note.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+    });
+    res.json({ ok: true, data: notes });
+  } catch (err) {
+    console.error('[getNotesBatch]', err);
+    res.status(500).json({ ok: false, error: '노트 일괄 조회 중 오류가 발생했습니다.' });
+  }
+}

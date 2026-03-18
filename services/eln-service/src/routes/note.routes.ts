@@ -12,6 +12,11 @@ router.get('/tags',                              requirePermission('note:read'),
 // ─── 연구노트 CRUD ──────────────────────────────────────────
 router.get('/notes',                             requirePermission('note:read'),    ctrl.getNotes);
 router.post('/notes',                            requirePermission('note:write'),   ctrl.createNote);
+// ─── N+1 최적화: GET /notes/stats는 반드시 /notes/:id 앞에 위치해야 한다.
+// Express는 등록 순서대로 매칭하므로 /notes/:id가 먼저 있으면 'stats'가 id=stats로 처리된다.
+// POST /notes/batch는 메서드가 달라 충돌이 없지만 관련 라우트로서 함께 배치한다.
+router.get('/notes/stats',  requirePermission('note:read'),  ctrl.getNoteStats);
+router.post('/notes/batch', requirePermission('note:read'),  ctrl.getNotesBatch);
 router.get('/notes/:id',                         requirePermission('note:read'),    ctrl.getNoteById);
 router.put('/notes/:id',                         requirePermission('note:write'),   ctrl.updateNote);
 router.delete('/notes/:id',                      requirePermission('note:delete'),  ctrl.deleteNote);
