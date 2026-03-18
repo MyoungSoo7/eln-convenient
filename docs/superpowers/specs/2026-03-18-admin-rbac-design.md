@@ -103,7 +103,6 @@ router.use(requireAuth);  // 이하 모든 라우트에 인증 적용
 // 읽기: 인증만 (router.use로 충족)
 router.get('/orgs',  ctrl.getOrgs);
 router.get('/teams', ctrl.getTeams);
-router.get('/teams/:id/members', ctrl.getTeamMembers);
 
 // 쓰기/삭제: admin 레이어 1
 router.post('/orgs',    requireRole('admin'), ctrl.createOrg);
@@ -113,6 +112,7 @@ router.delete('/orgs/:id', requireRole('admin'), ctrl.deleteOrg);
 router.post('/teams',    requireRole('admin'), ctrl.createTeam);
 router.put('/teams/:id', requireRole('admin'), ctrl.updateTeam);
 router.delete('/teams/:id', requireRole('admin'), ctrl.deleteTeam);
+router.get('/teams/:id/members', ctrl.getTeamMembers);             // 읽기: 인증만
 router.post('/teams/:id/members', requireRole('admin'), ctrl.addTeamMember);
 router.delete('/teams/:id/members/:userId', requireRole('admin'), ctrl.removeTeamMember);
 
@@ -130,6 +130,9 @@ router.delete('/roles/:id', requireRole('admin'), ctrl.deleteRole);
 #### eln-service 라우트 (변경 필요)
 
 ```typescript
+// note.routes.ts line 3 — import에 requireRole 추가
+import { requireAuth, requirePermission, requireRole } from '../middlewares/auth.middleware';
+
 // 현재: requirePermission('note:unlock')만 있음
 // 변경: requireRole('admin') 추가 (레이어 1)
 router.post('/notes/:id/admin-unlock',
