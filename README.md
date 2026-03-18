@@ -6,13 +6,13 @@
 온프레미스 Docker Compose 배포를 전제로 하며, 각 서비스는 독립 컨테이너로 운영한다.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                      Reverse Proxy                        │
-│                   (api-gateway:8000)                      │
-└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┘
+┌─────────────────────────────────────────────────────┐
+│                    Reverse Proxy                     │
+│                  (api-gateway:8000)                   │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──┘
    │      │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  file  collab
- :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009
+ auth   eln   sig/aud  inv   sched  search  ai    file
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008
 ```
 
 ---
@@ -28,6 +28,7 @@
 | **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드/라벨 |
 | **scheduler-service** | 8005 | 장비/회의실 예약, 승인 흐름 |
 | **search-service** | 8006 | 통합검색(노트/프로토콜/인벤토리), OpenSearch 연동 |
+| **ai-assistant-service** | 8007 | 템플릿 추천, 초안 생성, 벡터 인덱싱, RAG 질의 |
 | **file-service** | 8008 | 파일 업로드/다운로드, MinIO 스토리지 연동 |
 
 ---
@@ -40,6 +41,7 @@
 | **Redis 7** | 세션, 캐시, 잡큐 | pub/sub 이벤트 브로커로도 활용 가능 |
 | **MinIO** | 오브젝트 스토리지 (첨부파일) | S3 호환 |
 | **OpenSearch 2** | 전문검색 인덱스 | search-service 전용 |
+| **Qdrant** | 벡터DB | ai-assistant-service RAG용 |
 
 ---
 
@@ -118,7 +120,17 @@
 | GET | `/api/search` | 통합검색 (`?q=&type=note,protocol,inventory&page=&size=`) |
 | GET | `/api/search/suggest` | 자동완성 제안 |
 
-### 4.7 file-service
+### 4.7 ai-assistant-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/ai/recommend-template` | 주제 기반 템플릿 추천 (Top 3) |
+| POST | `/api/ai/draft` | 선택 템플릿으로 초안 생성 |
+| POST | `/api/ai/index` | 문서 벡터 인덱싱 요청 |
+| POST | `/api/ai/ask` | RAG 질의 (연구동향/실험 제안) |
+| GET | `/api/ai/index/status` | 인덱싱 상태 조회 |
+
+### 4.8 file-service
 
 | Method | Path | 설명 |
 |--------|------|------|
@@ -133,124 +145,216 @@
 
 ### 5.1 auth 스키마
 
-```sql
--- organizations
-CREATE TABLE auth.organizations (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        VARCHAR(200) NOT NULL,
-  slug        VARCHAR(100) UNIQUE NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+> Prisma 스키마 기준 (`services/auth-service/prisma/schema.prisma`)
 
--- teams
-CREATE TABLE auth.teams (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      UUID REFERENCES auth.organizations(id),
-  name        VARCHAR(200) NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+```prisma
+enum UserStatus {
+  active
+  inactive
+  suspended
+}
 
--- users
-CREATE TABLE auth.users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      UUID REFERENCES auth.organizations(id),
-  email       VARCHAR(255) UNIQUE NOT NULL,
-  name        VARCHAR(200) NOT NULL,
-  password_hash TEXT,            -- TODO: bcrypt
-  role_id     UUID REFERENCES auth.roles(id),
-  status      VARCHAR(20) DEFAULT 'active', -- active | inactive | suspended
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  teams     Team[]
+  roles     Role[]
+}
 
--- roles & permissions
-CREATE TABLE auth.roles (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      UUID REFERENCES auth.organizations(id),
-  name        VARCHAR(100) NOT NULL,       -- admin, researcher, reviewer, viewer
-  permissions JSONB DEFAULT '[]'           -- ["note:write","inventory:read",...]
-);
+model Role {
+  id          String       @id @default(uuid())
+  orgId       String
+  name        String       // admin | researcher | reviewer | viewer
+  permissions String[]     // ["note:write", "inventory:read", ...]
+  org         Organization @relation(fields: [orgId], references: [id])
+  users       User[]
+}
+
+model User {
+  id           String       @id @default(uuid())
+  orgId        String
+  email        String       @unique
+  name         String
+  passwordHash String
+  roleId       String?
+  status       UserStatus   @default(active)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  org          Organization @relation(fields: [orgId], references: [id])
+  role         Role?        @relation(fields: [roleId], references: [id])
+  teamMembers  TeamMember[]
+}
+
+model Team {
+  id        String       @id @default(uuid())
+  orgId     String
+  name      String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  org       Organization @relation(fields: [orgId], references: [id])
+  members   TeamMember[]
+}
+
+model TeamMember {
+  userId String
+  teamId String
+  user   User   @relation(fields: [userId], references: [id])
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  @@id([userId, teamId])
+}
 ```
 
 ### 5.2 eln 스키마
 
-```sql
--- notes (experiments/entries)
-CREATE TABLE eln.notes (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title       VARCHAR(500) NOT NULL,
-  content     TEXT,                         -- Markdown
-  status      VARCHAR(20) DEFAULT 'draft', -- draft | in_review | signed | locked
-  author_id   UUID NOT NULL,               -- FK → auth.users
-  template_id UUID,                        -- FK → eln.templates
-  tags        TEXT[] DEFAULT '{}',
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  updated_at  TIMESTAMPTZ DEFAULT now()
-);
+> Prisma 스키마 기준 (`services/eln-service/prisma/schema.prisma`)
 
--- note_revisions
-CREATE TABLE eln.note_revisions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  note_id     UUID REFERENCES eln.notes(id),
-  revision    INT NOT NULL,
-  content     TEXT,
-  changed_by  UUID NOT NULL,
-  change_summary VARCHAR(500),
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+```prisma
+enum NoteType {
+  note
+  protocol
+}
 
--- templates (protocols)
-CREATE TABLE eln.templates (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title       VARCHAR(500) NOT NULL,
-  description TEXT,
-  content     TEXT,                         -- 기본 구조 (Markdown)
-  category    VARCHAR(100),
-  tags        TEXT[] DEFAULT '{}',
-  created_by  UUID NOT NULL,
-  is_public   BOOLEAN DEFAULT false,
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+enum NoteStatus {
+  draft
+  in_progress
+  locked
+  signed
+}
 
--- note_links (노트 ↔ 인벤토리/장비 연결)
-CREATE TABLE eln.note_links (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  note_id     UUID REFERENCES eln.notes(id),
-  target_type VARCHAR(50) NOT NULL,        -- inventory_item | resource | note
-  target_id   UUID NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+model Note {
+  id            String              @id @default(uuid())
+  type          NoteType            @default(note)
+  title         String
+  content       String              @default("")
+  sections      Json                @default("[]")
+  status        NoteStatus          @default(draft)
+  authorId      String
+  templateId    String?
+  tags          String[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?           // 소프트 삭제
+  revisions     NoteRevision[]
+  links         NoteLink[]
+  attachments   Attachment[]
+  statusHistory NoteStatusHistory[]
+}
 
--- attachments (메타만, 파일은 file-service)
-CREATE TABLE eln.attachments (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  note_id     UUID REFERENCES eln.notes(id),
-  file_id     UUID NOT NULL,               -- FK → file-service
-  filename    VARCHAR(500),
-  mime_type   VARCHAR(100),
-  size_bytes  BIGINT,
-  created_at  TIMESTAMPTZ DEFAULT now()
-);
+model NoteStatusHistory {
+  id            String     @id @default(uuid())
+  noteId        String
+  fromStatus    NoteStatus
+  toStatus      NoteStatus
+  changedBy     String
+  reason        String?
+  isAdminAction Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  note          Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model NoteRevision {
+  id            String   @id @default(uuid())
+  noteId        String
+  revision      Int
+  content       String
+  sections      Json     @default("[]")
+  changedBy     String
+  changeSummary String   @default("")
+  createdAt     DateTime @default(now())
+  note          Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model NoteLink {
+  id         String   @id @default(uuid())
+  noteId     String
+  targetType String   // inventory_item | resource | note
+  targetId   String
+  label      String?
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  noteId     String
+  fileId     String   // FK → file-service
+  fileName   String
+  mimeType   String?
+  sizeBytes  Int?
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id           String   @id @default(uuid())
+  title        String
+  description  String   @default("")
+  content      String   @default("")
+  category     String   @default("일반")
+  sections     Json     @default("[]")
+  tags         String[]
+  createdBy    String
+  isPublic     Boolean  @default(false)
+  useCount     Int      @default(0)  // 이 템플릿으로 노트/프로토콜 생성 횟수
+  copyCount    Int      @default(0)  // 복사된 횟수
+  copiedFromId String?              // 복사 원본 ID (null이면 원본)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
 ```
 
 ### 5.3 inventory 스키마
 
-```sql
-CREATE TABLE inventory.items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        VARCHAR(500) NOT NULL,
-  type        VARCHAR(50) NOT NULL,        -- reagent | sample | equipment | consumable | antibody | plasmid | cell_line
-  status      VARCHAR(30) DEFAULT 'available', -- available | in_use | depleted | maintenance
-  category    VARCHAR(100),
-  location    VARCHAR(200),                -- 예: "Building A / Room 301 / Shelf 2"
-  barcode     VARCHAR(100),
-  quantity    DECIMAL,
-  unit        VARCHAR(50),
-  metadata    JSONB DEFAULT '{}',          -- 유연한 추가 필드
-  tags        TEXT[] DEFAULT '{}',
-  created_by  UUID NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  updated_at  TIMESTAMPTZ DEFAULT now()
-);
+> Prisma 스키마 기준 (`services/inventory-service/prisma/schema.prisma`)
+
+```prisma
+model InventoryItem {
+  id                String             @id @default(uuid())
+  name              String
+  type              String             // reagent | sample | equipment | consumable | antibody | plasmid | cell_line
+  status            String             @default("available") // available | in_use | depleted | maintenance
+  category          String?
+  location          String?
+  barcode           String?            @unique
+  quantity          Float?
+  unit              String?
+  minQuantity       Float?             // 최소 재고 알림 임계값
+  expiryDate        DateTime?          // 유효기간
+  expiryWarningDays Int                @default(30) // 만료 N일 전 경고
+  metadata          Json               @default("{}")
+  tags              String[]
+  createdBy         String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  history           InventoryHistory[]
+}
+
+model InventoryHistory {
+  id             String        @id @default(uuid())
+  itemId         String
+  item           InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  changeType     String        // "in" | "out" | "adjust" | "status_change"
+  quantityBefore Float?
+  quantityAfter  Float?
+  quantityDelta  Float?        // 변화량 (양수=입고, 음수=출고)
+  statusBefore   String?
+  statusAfter    String?
+  reason         String?       // 변경 사유
+  performedBy    String
+  createdAt      DateTime      @default(now())
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
 ```
 
 ### 5.4 scheduler 스키마
@@ -321,7 +425,7 @@ Redis Pub/Sub 또는 메시지 큐를 통한 이벤트 전파:
 
 | 이벤트 | 발행자 | 구독자 | 설명 |
 |--------|--------|--------|------|
-| `note.created` | eln-service | search-service | 검색 인덱스 갱신 |
+| `note.created` | eln-service | search-service, ai-assistant | 검색 인덱스 갱신, 벡터 인덱싱 |
 | `note.updated` | eln-service | search-service | 인덱스 갱신 |
 | `note.signed` | signature-audit | eln-service | 노트 status → locked |
 | `inventory.updated` | inventory-service | search-service | 인덱스 갱신 |
@@ -387,6 +491,7 @@ labnote-eln/
 │   ├── inventory-service/
 │   ├── scheduler-service/
 │   ├── search-service/
+│   ├── ai-assistant-service/
 │   └── file-service/
 │
 ├── docker-compose.yml
@@ -406,6 +511,7 @@ services:
   redis:       { image: redis:7-alpine, ports: ["6379:6379"] }
   minio:       { image: minio/minio, ports: ["9000:9000", "9001:9001"] }
   opensearch:  { image: opensearchproject/opensearch:2, ports: ["9200:9200"] }
+  qdrant:      { image: qdrant/qdrant, ports: ["6333:6333"] }
 
   # --- 서비스 ---
   api-gateway:           { build: ./services/api-gateway, ports: ["8000:8000"] }
@@ -415,6 +521,7 @@ services:
   inventory-service:     { build: ./services/inventory-service, ports: ["8004:8004"] }
   scheduler-service:     { build: ./services/scheduler-service, ports: ["8005:8005"] }
   search-service:        { build: ./services/search-service, ports: ["8006:8006"] }
+  ai-assistant-service:  { build: ./services/ai-assistant-service, ports: ["8007:8007"] }
   file-service:          { build: ./services/file-service, ports: ["8008:8008"] }
 
   # --- 프론트엔드 ---
@@ -447,6 +554,7 @@ docker compose up --build
 - [x] PDF 변환 엔진 연동 (Puppeteer) — BullMQ 큐 + Puppeteer-core + MinIO presigned URL + 프론트 폴링 UI 완료
 - [x] MinIO 실제 파일 업/다운로드 — `@aws-sdk/client-s3` presigned URL + 스트리밍
 - [x] OpenSearch 인덱싱 파이프라인 — 인덱스 자동 생성 + `POST /api/search/index` 수신 API
+- [x] Qdrant 벡터 임베딩 + RAG 파이프라인 — @qdrant/js-client-rest + OpenAI text-embedding-3-small + BullMQ 비동기 인덱싱 + RAG 질의 완료
 - [x] SSO/Keycloak 연동 — Keycloak 컨테이너 + realm 자동 임포트 + api-gateway 듀얼 모드(JWKS/로컬JWT) + 프론트 PKCE 리다이렉트 완료
 - [x] RBAC 미들웨어 실제 권한 검증 — JWT에 permissions 배열 포함, `requirePermission()` 전 서비스 라우트 적용 완료
 - [x] WebSocket 실시간 협업 편집 — collab-service(ws+Redis pub/sub) + NoteEditor 프레즌스 UI + 디바운스 콘텐츠 동기화 완료
