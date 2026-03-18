@@ -1,5 +1,8 @@
 // services/file-service/src/lib/jobWorker.ts
 import prisma from './prisma';
+import { deleteObjectFromBucket } from './minio';
+
+const MAX_RETRIES = 3;
 
 // ── 타입 ────────────────────────────────────────────────────────
 type JobProcessor = (jobId: string) => Promise<void>;
@@ -76,7 +79,7 @@ export async function failJob(jobId: string, errorMessage: string) {
 export async function failOrRetry(jobId: string, errorMessage: string) {
   const job = await prisma.exportJob.findUnique({ where: { id: jobId } });
   if (!job) return;
-  if (job.retryCount < 3) {
+  if (job.retryCount < MAX_RETRIES) {
     await prisma.exportJob.update({
       where: { id: jobId },
       data: {
@@ -88,7 +91,7 @@ export async function failOrRetry(jobId: string, errorMessage: string) {
     // 지수 백오프: 2^retryCount * 5s
     const delay = Math.pow(2, job.retryCount) * 5000;
     setTimeout(() => jobQueue.push(jobId), delay);
-    console.log(`[jobWorker] job ${jobId} 재시도 예약 (${delay}ms, ${job.retryCount + 1}/3)`);
+    console.log(`[jobWorker] job ${jobId} 재시도 예약 (${delay}ms, ${job.retryCount + 1}/${MAX_RETRIES})`);
   } else {
     await failJob(jobId, errorMessage);
     console.error(`[jobWorker] job ${jobId} 최대 재시도 초과, FAILED 확정`);
@@ -105,14 +108,17 @@ export function startExpiryCleanup() {
       });
       for (const job of expired) {
         if (job.resultFile) {
-          const { deleteObjectFromBucket } = await import('./minio');
           await deleteObjectFromBucket(job.resultFile.bucket, job.resultFile.objectKey);
-          await prisma.file.update({
-            where: { id: job.resultFile.id },
-            data: { isDeleted: true, deletedAt: new Date() },
-          });
+          await prisma.$transaction([
+            prisma.file.update({
+              where: { id: job.resultFile.id },
+              data: { isDeleted: true, deletedAt: new Date() },
+            }),
+            prisma.exportJob.delete({ where: { id: job.id } }),
+          ]);
+        } else {
+          await prisma.exportJob.delete({ where: { id: job.id } });
         }
-        await prisma.exportJob.delete({ where: { id: job.id } });
         console.log(`[jobWorker] 만료 job 정리: ${job.id}`);
       }
     } catch (err) {
