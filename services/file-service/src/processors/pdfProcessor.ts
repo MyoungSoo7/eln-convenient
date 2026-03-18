@@ -1,7 +1,7 @@
 // services/file-service/src/processors/pdfProcessor.ts
 import prisma from '../lib/prisma';
 import { getNoteForExport } from '../lib/elnClient';
-import { generatePdf, markdownToHtml } from '../lib/pdfGenerator';
+import { generatePdf, markdownToHtml, escapeHtml } from '../lib/pdfGenerator';
 import { uploadObjectToBucket, EXPORTS_BUCKET, deleteObjectFromBucket } from '../lib/minio';
 import { failJob } from '../lib/jobWorker';
 
@@ -29,7 +29,7 @@ export async function processPdfJob(jobId: string): Promise<void> {
     pdfBuffer = await generatePdf({
       title: note.title,
       htmlContent,
-      headerHtml: `<div style="font-size:9px;width:100%;text-align:right;padding-right:20px;color:#666;">${note.title} | ${new Date().toLocaleDateString('ko-KR')}</div>`,
+      headerHtml: `<div style="font-size:9px;width:100%;text-align:right;padding-right:20px;color:#666;">${escapeHtml(note.title)} | ${new Date().toLocaleDateString('ko-KR')}</div>`,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

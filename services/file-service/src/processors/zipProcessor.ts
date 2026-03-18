@@ -58,7 +58,7 @@ export async function processZipJob(jobId: string): Promise<void> {
     return;
   }
 
-  // 3. archiver → PassThrough → 버퍼 누적 → multipart parts
+  // 3. archiver → PassThrough → streaming multipart parts (5MB 단위)
   const parts: { PartNumber: number; ETag: string }[] = [];
   let partNumber = 1;
   let totalSize = 0;
@@ -71,14 +71,39 @@ export async function processZipJob(jobId: string): Promise<void> {
 
       archive.pipe(passThrough);
       archive.on('error', reject);
+      passThrough.on('error', reject);
 
       passThrough.on('data', (chunk: Buffer) => {
         buffer = Buffer.concat([buffer, chunk]);
         totalSize += chunk.length;
+
+        // 5MB 이상 쌓이면 즉시 part 업로드 (스트리밍)
+        if (buffer.length >= PART_SIZE) {
+          passThrough.pause();
+          const partBuffer = buffer.slice(0, PART_SIZE);
+          buffer = buffer.slice(PART_SIZE);
+          const currentPartNumber = partNumber++;
+
+          uploadPart(EXPORTS_BUCKET, objectKey, uploadId, currentPartNumber, partBuffer)
+            .then((etag) => {
+              parts.push({ PartNumber: currentPartNumber, ETag: etag });
+              passThrough.resume();
+            })
+            .catch(reject);
+        }
       });
 
-      passThrough.on('end', resolve);
-      passThrough.on('error', reject);
+      passThrough.on('end', () => {
+        // 남은 버퍼 (마지막 파트, 5MB 미만 허용)
+        (async () => {
+          if (buffer.length > 0) {
+            const etag = await uploadPart(EXPORTS_BUCKET, objectKey, uploadId, partNumber, buffer);
+            parts.push({ PartNumber: partNumber, ETag: etag });
+          }
+          await completeMultipartUpload(EXPORTS_BUCKET, objectKey, uploadId, parts);
+          resolve();
+        })().catch(reject);
+      });
 
       // 각 노트를 PDF로 변환 후 ZIP에 추가
       (async () => {
@@ -96,18 +121,6 @@ export async function processZipJob(jobId: string): Promise<void> {
         archive.finalize();
       })();
     });
-
-    // 버퍼를 5MB 단위로 multipart 업로드
-    let offset = 0;
-    while (offset < buffer.length) {
-      const chunk = buffer.slice(offset, offset + PART_SIZE);
-      const etag = await uploadPart(EXPORTS_BUCKET, objectKey, uploadId, partNumber, chunk);
-      parts.push({ PartNumber: partNumber, ETag: etag });
-      partNumber++;
-      offset += PART_SIZE;
-    }
-
-    await completeMultipartUpload(EXPORTS_BUCKET, objectKey, uploadId, parts);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await abortMultipartUpload(EXPORTS_BUCKET, objectKey, uploadId);

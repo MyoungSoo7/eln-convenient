@@ -12,6 +12,10 @@ export async function createPdfExport(req: Request, res: Response): Promise<void
     return;
   }
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   try {
     const job = await prisma.exportJob.create({
       data: {
@@ -46,6 +50,10 @@ export async function createZipExport(req: Request, res: Response): Promise<void
     return;
   }
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   try {
     const job = await prisma.exportJob.create({
       data: {
@@ -67,6 +75,10 @@ export async function createZipExport(req: Request, res: Response): Promise<void
 // ─── GET /api/exports ────────────────────────────────────────────
 export async function listExports(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   const { status, page = '1', limit = '20' } = req.query;
   const VALID_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
   if (status && !VALID_STATUSES.includes(status as string)) {
@@ -100,6 +112,10 @@ export async function listExports(req: Request, res: Response): Promise<void> {
 // ─── GET /api/exports/:jobId ─────────────────────────────────────
 export async function getExport(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   try {
     const job = await prisma.exportJob.findFirst({
       where: { id: req.params.jobId, requestedBy },
@@ -115,6 +131,10 @@ export async function getExport(req: Request, res: Response): Promise<void> {
 // ─── GET /api/exports/:jobId/download ───────────────────────────
 export async function downloadExport(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   try {
     const job = await prisma.exportJob.findFirst({
       where: { id: req.params.jobId, requestedBy },
@@ -136,6 +156,10 @@ export async function downloadExport(req: Request, res: Response): Promise<void>
 // ─── DELETE /api/exports/:jobId ──────────────────────────────────
 export async function cancelExport(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;
+  if (!requestedBy) {
+    res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
+    return;
+  }
   try {
     const job = await prisma.exportJob.findFirst({
       where: { id: req.params.jobId, requestedBy },

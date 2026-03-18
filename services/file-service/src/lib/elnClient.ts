@@ -42,12 +42,13 @@ function request<T>(path: string): Promise<T> {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
+        // 404 check before JSON parse (proxy may return plain text 404)
+        if (res.statusCode === 404) {
+          reject(new Error(`노트를 찾을 수 없습니다: ${path}`));
+          return;
+        }
         try {
           const parsed = JSON.parse(data);
-          if (res.statusCode === 404) {
-            reject(new Error(`노트를 찾을 수 없습니다: ${path}`));
-            return;
-          }
           if (!parsed.ok) {
             reject(new Error(parsed.error || 'eln-service 오류'));
             return;
