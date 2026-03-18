@@ -72,6 +72,18 @@ export async function createZipExport(req: Request, res: Response): Promise<void
   }
 }
 
+// ─── POST /api/exports ───────────────────────────────────────────
+export async function createExport(req: Request, res: Response): Promise<void> {
+  const { type } = req.body;
+  if (type === 'pdf') {
+    return createPdfExport(req, res);
+  }
+  if (type === 'zip') {
+    return createZipExport(req, res);
+  }
+  res.status(400).json({ ok: false, error: 'type은 pdf 또는 zip 이어야 합니다.' });
+}
+
 // ─── GET /api/exports ────────────────────────────────────────────
 export async function listExports(req: Request, res: Response): Promise<void> {
   const requestedBy = req.headers['x-user-id'] as string;

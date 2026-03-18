@@ -6,8 +6,7 @@ import * as ctrl from '../controllers/export.controller';
 const router = Router();
 router.use(requireAuth);
 
-router.post('/pdf',            ctrl.createPdfExport);
-router.post('/zip',            ctrl.createZipExport);
+router.post('/',               ctrl.createExport);
 router.get('/',                ctrl.listExports);
 router.get('/:jobId',          ctrl.getExport);
 router.get('/:jobId/download', ctrl.downloadExport);
