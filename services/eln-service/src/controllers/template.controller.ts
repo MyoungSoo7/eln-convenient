@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
+import { searchClient } from '../lib/searchClient';
 
 /** GET /api/templates */
 export async function listTemplates(req: Request, res: Response): Promise<void> {
@@ -64,6 +65,21 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
         isPublic: req.body.isPublic ?? true,
       },
     });
+    searchClient.index({
+      id: tmpl.id,
+      doc: {
+        domainType: 'TEMPLATE',
+        title: tmpl.title,
+        content: tmpl.content,
+        summary: tmpl.description,
+        tags: tmpl.tags,
+        ownerId: tmpl.createdBy,
+        visibility: tmpl.isPublic ? 'public' : 'private',
+        docStatus: 'active',
+        createdAt: tmpl.createdAt.toISOString(),
+        updatedAt: tmpl.updatedAt.toISOString(),
+      },
+    });
     res.status(201).json({ ok: true, data: tmpl });
   } catch (err) {
     console.error('[createTemplate]', err);
@@ -111,6 +127,21 @@ export async function updateTemplate(req: Request, res: Response): Promise<void>
         ...(isPublic    !== undefined && { isPublic }),
       },
     });
+    searchClient.index({
+      id: updated.id,
+      doc: {
+        domainType: 'TEMPLATE',
+        title: updated.title,
+        content: updated.content,
+        summary: updated.description,
+        tags: updated.tags,
+        ownerId: updated.createdBy,
+        visibility: updated.isPublic ? 'public' : 'private',
+        docStatus: 'active',
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     res.json({ ok: true, data: updated });
   } catch (err: any) {
     if (err?.code === 'P2025') {
@@ -137,6 +168,7 @@ export async function deleteTemplate(req: Request, res: Response): Promise<void>
     }
 
     await prisma.template.delete({ where: { id: req.params.id } });
+    searchClient.delete(req.params.id);
     res.json({ ok: true, message: '템플릿이 삭제되었습니다.' });
   } catch (err: any) {
     if (err?.code === 'P2025') {

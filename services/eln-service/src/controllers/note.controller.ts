@@ -4,6 +4,7 @@ import https from 'https';
 import http from 'http';
 import prisma from '../lib/prisma';
 import { callAuditLog } from '../lib/audit';
+import { searchClient } from '../lib/searchClient';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
@@ -169,6 +170,21 @@ export async function createNote(req: Request, res: Response): Promise<void> {
       });
     }
 
+    searchClient.index({
+      id: note.id,
+      doc: {
+        domainType: note.type === 'protocol' ? 'PROTOCOL' : 'NOTE',
+        title: note.title,
+        content: note.content,
+        tags: note.tags,
+        ownerId: note.authorId,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: note.createdAt.toISOString(),
+        updatedAt: note.updatedAt.toISOString(),
+      },
+    });
+
     // audit 기록 (실패 시 경고 로그만 — 노트 생성은 성공으로 처리)
     await callAuditLog({
       entityType: 'note',
@@ -247,6 +263,20 @@ export async function updateNote(req: Request, res: Response): Promise<void> {
         err: auditErr instanceof Error ? auditErr.message : auditErr,
       });
     });
+    searchClient.index({
+      id: updated.id,
+      doc: {
+        domainType: updated.type === 'protocol' ? 'PROTOCOL' : 'NOTE',
+        title: updated.title,
+        content: updated.content,
+        tags: updated.tags,
+        ownerId: updated.authorId,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     res.json({ ok: true, data: updated });
   } catch (err) {
     console.error('[updateNote]', err);
@@ -274,6 +304,7 @@ export async function deleteNote(req: Request, res: Response): Promise<void> {
     }
 
     await prisma.note.delete({ where: { id: req.params.id } });
+    searchClient.delete(req.params.id);
     await callAuditLog({
       entityType: 'note',
       entityId: req.params.id,
