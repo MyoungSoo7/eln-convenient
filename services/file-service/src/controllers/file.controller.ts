@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IFileMeta } from '../interfaces/file.interface';
+import prisma from '../lib/prisma';
 import {
   uploadObject, getPresignedUrl, getPresignedUploadUrl,
   getObjectStream, deleteObject, headObject,
@@ -67,21 +67,47 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const meta: IFileMeta = {
-    id: fileId,
-    key,
-    originalName: file.originalname,
-    mimeType: file.mimetype,
-    sizeBytes: file.size,
-    storagePath: `${BUCKET}/${key}`,
-    uploadedBy,
-    linkedEntityType,
-    linkedEntityId,
-    createdAt: new Date().toISOString(),
-  };
+  // MinIO 업로드 성공 → DB 저장
+  let dbFile: { id: string } | null = null;
+  try {
+    dbFile = await prisma.file.create({
+      data: {
+        id: fileId,
+        bucket: BUCKET,
+        objectKey: key,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: BigInt(file.size),
+        uploaderId: uploadedBy,
+        refType: linkedEntityType,
+        refId: linkedEntityId,
+      },
+      select: { id: true },
+    });
+  } catch (dbErr) {
+    // DB 실패 → MinIO 롤백
+    console.error('[file-service] DB 저장 실패, MinIO 롤백:', dbErr);
+    try { await deleteObject(key); } catch {}
+    res.status(500).json({ ok: false, error: '파일 메타데이터 저장에 실패했습니다.' });
+    return;
+  }
 
-  console.log(`[file-service] 업로드 완료: ${meta.originalName} → ${key}`);
-  res.status(201).json({ ok: true, data: meta });
+  console.log(`[file-service] 업로드 완료: ${file.originalname} → ${key} (dbId: ${dbFile.id})`);
+  res.status(201).json({
+    ok: true,
+    data: {
+      id: fileId,
+      key,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      storagePath: `${BUCKET}/${key}`,
+      uploadedBy,
+      refType: linkedEntityType,
+      refId: linkedEntityId,
+      createdAt: new Date().toISOString(),
+    },
+  });
 }
 
 /** GET /api/files/presigned-upload — 클라이언트 직접 업로드용 presigned PUT URL */
@@ -176,15 +202,35 @@ export async function streamFile(req: Request, res: Response): Promise<void> {
 
 /** GET /api/files/:id/meta — 파일 메타데이터 */
 export async function getFileMeta(req: Request, res: Response): Promise<void> {
-  const key = await resolveKey(req.params.id, req.query.key as string);
-  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
-
   try {
+    // DB에서 먼저 조회
+    const file = await prisma.file.findFirst({
+      where: { id: req.params.id, isDeleted: false },
+    });
+    if (file) {
+      res.json({
+        ok: true,
+        data: {
+          id: file.id,
+          key: file.objectKey,
+          originalName: file.originalName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes ? Number(file.sizeBytes) : null,
+          storagePath: `${file.bucket}/${file.objectKey}`,
+          uploadedBy: file.uploaderId,
+          refType: file.refType,
+          refId: file.refId,
+          createdAt: file.createdAt.toISOString(),
+        },
+      });
+      return;
+    }
+    // DB에 없으면 MinIO HeadObject fallback (레거시 파일 지원)
+    const key = await resolveKey(req.params.id, req.query.key as string);
+    if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
     const head = await headObject(key);
     const originalName = head.Metadata?.originalname
-      ? decodeURIComponent(head.Metadata.originalname)
-      : key;
-
+      ? decodeURIComponent(head.Metadata.originalname) : key;
     res.json({
       ok: true,
       data: {
@@ -195,8 +241,8 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
         sizeBytes: head.ContentLength,
         storagePath: `${BUCKET}/${key}`,
         uploadedBy: head.Metadata?.uploadedby || 'unknown',
-        linkedEntityType: head.Metadata?.linkedentitytype || null,
-        linkedEntityId: head.Metadata?.linkedentityid || null,
+        refType: head.Metadata?.linkedentitytype || null,
+        refId: head.Metadata?.linkedentityid || null,
         lastModified: head.LastModified?.toISOString(),
       },
     });
@@ -208,14 +254,31 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
 
 /** DELETE /api/files/:id — 파일 삭제 */
 export async function deleteFile(req: Request, res: Response): Promise<void> {
-  const key = await resolveKey(req.params.id, req.query.key as string);
-  if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
-
   try {
+    // DB에서 파일 조회
+    const file = await prisma.file.findFirst({
+      where: { id: req.params.id, isDeleted: false },
+    });
+    if (file) {
+      // DB soft delete
+      await prisma.file.update({
+        where: { id: req.params.id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
+      // MinIO 비동기 삭제 (fire-and-forget)
+      deleteObject(file.objectKey).catch((err) =>
+        console.error('[file-service] MinIO soft-delete 비동기 삭제 실패:', err)
+      );
+      res.json({ ok: true, id: req.params.id, message: '파일이 삭제되었습니다.' });
+      return;
+    }
+    // 레거시 MinIO-only 파일 처리
+    const key = await resolveKey(req.params.id, req.query.key as string);
+    if (!key) { res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' }); return; }
     await deleteObject(key);
     res.json({ ok: true, id: req.params.id, key, message: '파일이 삭제되었습니다.' });
   } catch (err) {
-    console.error('[file-service] MinIO 삭제 실패:', err);
+    console.error('[file-service] 삭제 실패:', err);
     res.status(502).json({ ok: false, error: '파일 삭제에 실패했습니다.' });
   }
 }
