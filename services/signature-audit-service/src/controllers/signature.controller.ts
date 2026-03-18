@@ -69,7 +69,7 @@ export async function signNote(req: Request, res: Response): Promise<void> {
     if (password) {
       const verified = await verifyUserPassword(signerId, password);
       if (!verified) {
-        res.status(401).json({ ok: false, error: '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.' });
+        res.status(400).json({ ok: false, error: '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.' });
         return;
       }
     }

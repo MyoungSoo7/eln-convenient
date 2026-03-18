@@ -15,7 +15,6 @@ import ProtocolsPage from "./pages/ProtocolsPage";
 import InventoryPage from "./pages/InventoryPage";
 import SchedulerPage from "./pages/SchedulerPage";
 import SearchPage from "./pages/SearchPage";
-import AIAssistantPage from "./pages/AIAssistantPage";
 import SignaturesPage from "./pages/SignaturesPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import ExportsPage from "./pages/ExportsPage";
@@ -57,7 +56,6 @@ const App = () => (
                       <Route path="/inventory" element={<InventoryPage />} />
                       <Route path="/scheduler" element={<SchedulerPage />} />
                       <Route path="/search" element={<SearchPage />} />
-                      <Route path="/ai-assistant" element={<AIAssistantPage />} />
                       <Route path="/signatures" element={<SignaturesPage />} />
                       <Route path="/audit-logs" element={<AuditLogsPage />} />
                       <Route path="/exports" element={<ExportsPage />} />

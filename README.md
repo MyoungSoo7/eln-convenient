@@ -6,13 +6,13 @@
 온프레미스 Docker Compose 배포를 전제로 하며, 각 서비스는 독립 컨테이너로 운영한다.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Reverse Proxy                     │
-│                  (api-gateway:8000)                   │
-└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──┘
+┌──────────────────────────────────────────────────────────┐
+│                      Reverse Proxy                        │
+│                   (api-gateway:8000)                      │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┘
    │      │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  ai    file
- :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008
+ auth   eln   sig/aud  inv   sched  search  file  collab
+ :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009
 ```
 
 ---
@@ -28,7 +28,6 @@
 | **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드/라벨 |
 | **scheduler-service** | 8005 | 장비/회의실 예약, 승인 흐름 |
 | **search-service** | 8006 | 통합검색(노트/프로토콜/인벤토리), OpenSearch 연동 |
-| **ai-assistant-service** | 8007 | 템플릿 추천, 초안 생성, 벡터 인덱싱, RAG 질의 |
 | **file-service** | 8008 | 파일 업로드/다운로드, MinIO 스토리지 연동 |
 
 ---
@@ -41,7 +40,6 @@
 | **Redis 7** | 세션, 캐시, 잡큐 | pub/sub 이벤트 브로커로도 활용 가능 |
 | **MinIO** | 오브젝트 스토리지 (첨부파일) | S3 호환 |
 | **OpenSearch 2** | 전문검색 인덱스 | search-service 전용 |
-| **Qdrant** | 벡터DB | ai-assistant-service RAG용 |
 
 ---
 
@@ -120,17 +118,7 @@
 | GET | `/api/search` | 통합검색 (`?q=&type=note,protocol,inventory&page=&size=`) |
 | GET | `/api/search/suggest` | 자동완성 제안 |
 
-### 4.7 ai-assistant-service
-
-| Method | Path | 설명 |
-|--------|------|------|
-| POST | `/api/ai/recommend-template` | 주제 기반 템플릿 추천 (Top 3) |
-| POST | `/api/ai/draft` | 선택 템플릿으로 초안 생성 |
-| POST | `/api/ai/index` | 문서 벡터 인덱싱 요청 |
-| POST | `/api/ai/ask` | RAG 질의 (연구동향/실험 제안) |
-| GET | `/api/ai/index/status` | 인덱싱 상태 조회 |
-
-### 4.8 file-service
+### 4.7 file-service
 
 | Method | Path | 설명 |
 |--------|------|------|
@@ -333,7 +321,7 @@ Redis Pub/Sub 또는 메시지 큐를 통한 이벤트 전파:
 
 | 이벤트 | 발행자 | 구독자 | 설명 |
 |--------|--------|--------|------|
-| `note.created` | eln-service | search-service, ai-assistant | 검색 인덱스 갱신, 벡터 인덱싱 |
+| `note.created` | eln-service | search-service | 검색 인덱스 갱신 |
 | `note.updated` | eln-service | search-service | 인덱스 갱신 |
 | `note.signed` | signature-audit | eln-service | 노트 status → locked |
 | `inventory.updated` | inventory-service | search-service | 인덱스 갱신 |
@@ -399,7 +387,6 @@ labnote-eln/
 │   ├── inventory-service/
 │   ├── scheduler-service/
 │   ├── search-service/
-│   ├── ai-assistant-service/
 │   └── file-service/
 │
 ├── docker-compose.yml
@@ -419,7 +406,6 @@ services:
   redis:       { image: redis:7-alpine, ports: ["6379:6379"] }
   minio:       { image: minio/minio, ports: ["9000:9000", "9001:9001"] }
   opensearch:  { image: opensearchproject/opensearch:2, ports: ["9200:9200"] }
-  qdrant:      { image: qdrant/qdrant, ports: ["6333:6333"] }
 
   # --- 서비스 ---
   api-gateway:           { build: ./services/api-gateway, ports: ["8000:8000"] }
@@ -429,7 +415,6 @@ services:
   inventory-service:     { build: ./services/inventory-service, ports: ["8004:8004"] }
   scheduler-service:     { build: ./services/scheduler-service, ports: ["8005:8005"] }
   search-service:        { build: ./services/search-service, ports: ["8006:8006"] }
-  ai-assistant-service:  { build: ./services/ai-assistant-service, ports: ["8007:8007"] }
   file-service:          { build: ./services/file-service, ports: ["8008:8008"] }
 
   # --- 프론트엔드 ---
@@ -462,7 +447,6 @@ docker compose up --build
 - [x] PDF 변환 엔진 연동 (Puppeteer) — BullMQ 큐 + Puppeteer-core + MinIO presigned URL + 프론트 폴링 UI 완료
 - [x] MinIO 실제 파일 업/다운로드 — `@aws-sdk/client-s3` presigned URL + 스트리밍
 - [x] OpenSearch 인덱싱 파이프라인 — 인덱스 자동 생성 + `POST /api/search/index` 수신 API
-- [x] Qdrant 벡터 임베딩 + RAG 파이프라인 — @qdrant/js-client-rest + OpenAI text-embedding-3-small + BullMQ 비동기 인덱싱 + RAG 질의 완료
 - [x] SSO/Keycloak 연동 — Keycloak 컨테이너 + realm 자동 임포트 + api-gateway 듀얼 모드(JWKS/로컬JWT) + 프론트 PKCE 리다이렉트 완료
 - [x] RBAC 미들웨어 실제 권한 검증 — JWT에 permissions 배열 포함, `requirePermission()` 전 서비스 라우트 적용 완료
 - [x] WebSocket 실시간 협업 편집 — collab-service(ws+Redis pub/sub) + NoteEditor 프레즌스 UI + 디바운스 콘텐츠 동기화 완료

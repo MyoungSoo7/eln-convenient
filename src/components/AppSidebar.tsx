@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FileText, FlaskConical, Package, CalendarDays,
-  Search, Bot, ShieldCheck, ClipboardList, FileDown, Settings,
+  Search, ShieldCheck, ClipboardList, FileDown, Settings,
   Users, Building2, BookOpen, ChevronDown,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -20,7 +20,6 @@ const mainItems = [
   { title: "인벤토리", url: "/inventory", icon: Package },
   { title: "스케줄러", url: "/scheduler", icon: CalendarDays },
   { title: "통합검색", url: "/search", icon: Search },
-  { title: "AI 어시스턴트", url: "/ai-assistant", icon: Bot },
 ];
 
 const complianceItems = [
