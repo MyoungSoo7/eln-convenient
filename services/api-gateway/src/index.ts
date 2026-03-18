@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { registerProxies } from './routes/proxy';
+import { registerDashboard } from './routes/dashboard';
 import { authHook } from './middlewares/auth';
 
 const app = Fastify({ logger: true });
@@ -28,6 +29,9 @@ async function bootstrap() {
 
   // JWT 검증 훅 (로그인/헬스체크 제외)
   app.addHook('onRequest', authHook);
+
+  // 대시보드 집계 라우트 (프록시보다 먼저 등록)
+  await registerDashboard(app);
 
   // 프록시 라우팅
   await registerProxies(app);

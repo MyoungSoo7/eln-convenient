@@ -131,7 +131,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -146,11 +146,14 @@ services:
       - PORT=8002
       - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=eln
       - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -185,7 +188,7 @@ services:
       auth-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8003/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -203,7 +206,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8004/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -221,7 +224,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8005/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -243,7 +246,7 @@ services:
       opensearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8006/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8006/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -266,7 +269,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8007/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8007/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -288,7 +291,7 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8008/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8008/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -307,7 +310,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8009/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8009/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -322,7 +325,7 @@ services:
       api-gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -368,7 +371,7 @@ services:
       collab-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
