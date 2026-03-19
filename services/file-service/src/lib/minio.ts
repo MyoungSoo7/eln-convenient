@@ -203,7 +203,7 @@ export async function uploadObjectToBucket(
 
 /** 임의 버킷 presigned URL */
 export async function getPresignedUrlFromBucket(
-  bucket: string, key: string, expiresIn = EXPIRY.FILE_DOWNLOAD
+  bucket: string, key: string, expiresIn: number = EXPIRY.FILE_DOWNLOAD
 ): Promise<string> {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(s3, command, { expiresIn });

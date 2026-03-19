@@ -18,3 +18,13 @@ export {
   type PermissionValue,
   type RoleNameValue,
 } from './permissions';
+
+export {
+  ServiceEventType,
+  buildServiceEvent,
+  type ServiceEvent,
+  type UserDeletedPayload,
+  type UserSuspendedPayload,
+  type NoteDeletedPayload,
+  type NoteSignedPayload,
+} from './service-events';

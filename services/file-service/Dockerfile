@@ -32,5 +32,7 @@ RUN npm install
 COPY file-service/ .
 RUN npx prisma generate
 RUN npm run build
+COPY shared/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 8008
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npm start"]
+CMD ["/docker-entrypoint.sh"]

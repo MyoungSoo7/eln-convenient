@@ -9,5 +9,7 @@ RUN npm install
 COPY inventory-service/ .
 RUN npx prisma generate
 RUN npm run build
+COPY shared/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 8004
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
+CMD ["/docker-entrypoint.sh"]

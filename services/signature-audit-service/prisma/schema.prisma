@@ -18,6 +18,8 @@ model Signature {
   status        SignatureStatus @default(valid)
 
   @@index([noteId])
+  @@index([noteId, status])
+  @@index([signerId])
 }
 
 model AuditLog {
@@ -33,6 +35,7 @@ model AuditLog {
   @@index([entityId])
   @@index([actorId])
   @@index([createdAt])
+  @@index([actorId, createdAt])
 }
 
 model ExportJob {
