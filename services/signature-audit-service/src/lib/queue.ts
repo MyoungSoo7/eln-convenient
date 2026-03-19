@@ -27,3 +27,34 @@ export interface ExportJobPayload {
   noteIds?: string[]; // zip / report 일 때 복수 노트
   requestedBy: string;
 }
+
+// ── 이벤트 버스 (Redis Streams) ──
+
+/** 이벤트 스트림 이름 */
+export const EVENT_STREAM = 'labnote:events';
+
+/** 이벤트 타입 */
+export type EventType = 'NOTE_SIGNED';
+
+/**
+ * Redis Stream에 이벤트 발행
+ * MAXLEN ~1000 으로 스트림 크기 제한
+ */
+export async function publishEvent(
+  type: EventType,
+  payload: Record<string, string>,
+): Promise<string | null> {
+  try {
+    const id = await redisConnection.xadd(
+      EVENT_STREAM,
+      'MAXLEN', '~', '1000',
+      '*',
+      'type', type,
+      ...Object.entries(payload).flat(),
+    );
+    return id;
+  } catch (err: any) {
+    console.error(`[event-bus] 이벤트 발행 실패 (${type}):`, err.message);
+    return null;
+  }
+}

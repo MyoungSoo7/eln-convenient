@@ -4,8 +4,8 @@ import swaggerUi from 'swagger-ui-express';
 import fileRoutes from './routes/file.routes';
 import exportRoutes from './routes/export.routes';
 import { swaggerDocument } from './swagger';
-import { ensureBucket } from './lib/minio';
-import { startWorker, startExpiryCleanup, registerProcessor } from './lib/jobWorker';
+import { ensureBucket, ensureExportsBucketLifecycle } from './lib/minio';
+import { startWorker, startExpiryCleanup, startSoftDeleteCleanup, registerProcessor } from './lib/jobWorker';
 import { processPdfJob } from './processors/pdfProcessor';
 import { processZipJob } from './processors/zipProcessor';
 import prisma from './lib/prisma';
@@ -59,10 +59,12 @@ app.listen(PORT, async () => {
   // job worker 시작 (2s 폴링)
   startWorker();
   startExpiryCleanup();
+  startSoftDeleteCleanup();
 
   try {
     await ensureBucket();
-    logger.info('MinIO 버킷 준비 완료');
+    await ensureExportsBucketLifecycle();
+    logger.info('MinIO 버킷 및 lifecycle 정책 준비 완료');
   } catch (err) {
     logger.error({ err }, 'MinIO 버킷 초기화 실패 (나중에 재시도)');
   }

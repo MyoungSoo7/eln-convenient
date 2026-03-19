@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import prisma from '../lib/prisma';
+import { publishEvent } from '../lib/queue';
 import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
 
 const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
@@ -31,8 +32,26 @@ function sha256(data: string): string {
 /**
  * ELN 서비스에 노트 상태 변경 요청
  * 서명 완료 후 note.status = 'signed' 로 전환
+ *
+ * 전략: Redis Stream 이벤트 발행 우선 → 실패 시 HTTP 직접 호출 폴백
+ * eln-service의 eventConsumer가 Stream에서 이벤트를 소비하여 상태 변경
  */
 async function patchNoteStatus(noteId: string, status: string, userId: string): Promise<void> {
+  // 1차: Redis Stream 이벤트 발행 (비동기, ~1ms)
+  const eventId = await publishEvent('NOTE_SIGNED', {
+    noteId,
+    status,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (eventId) {
+    console.log(`[signature] 이벤트 발행 완료: NOTE_SIGNED noteId=${noteId} eventId=${eventId}`);
+    return;
+  }
+
+  // 2차 폴백: Redis 실패 시 기존 HTTP 직접 호출
+  console.warn('[signature] Redis 이벤트 발행 실패 — HTTP 폴백으로 전환');
   try {
     const res = await fetch(`${ELN_SERVICE_URL}/api/notes/${noteId}/status`, {
       method: 'PATCH',
@@ -49,7 +68,6 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
       console.warn(`[signature] ELN 상태 변경 실패 (${res.status}): ${body}`);
     }
   } catch (err) {
-    // ELN 서비스 호출 실패는 서명 자체를 막지 않음 (최선 노력)
     console.warn('[signature] ELN 서비스 상태 변경 호출 오류:', err);
   }
 }

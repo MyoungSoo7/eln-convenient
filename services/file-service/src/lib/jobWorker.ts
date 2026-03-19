@@ -126,3 +126,34 @@ export function startExpiryCleanup() {
     }
   }, 60 * 60 * 1000); // 1시간
 }
+
+// soft-delete된 파일을 MinIO에서 실제 삭제 (6시간마다, 24시간 유예)
+export function startSoftDeleteCleanup() {
+  setInterval(async () => {
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24시간 유예
+      const softDeleted = await prisma.file.findMany({
+        where: {
+          isDeleted: true,
+          deletedAt: { lt: cutoff },
+        },
+        take: 100, // 배치 크기 제한
+      });
+
+      for (const file of softDeleted) {
+        try {
+          await deleteObjectFromBucket(file.bucket, file.objectKey);
+          await prisma.file.delete({ where: { id: file.id } });
+        } catch (err) {
+          console.error(`[cleanup] 파일 물리 삭제 실패 ${file.id}:`, err);
+        }
+      }
+
+      if (softDeleted.length > 0) {
+        console.log(`[cleanup] soft-delete 파일 ${softDeleted.length}개 물리 삭제 완료`);
+      }
+    } catch (err) {
+      console.error('[cleanup] soft-delete 정리 실패:', err);
+    }
+  }, 6 * 60 * 60 * 1000); // 6시간
+}

@@ -7,7 +7,7 @@ import * as archiver from 'archiver';
 import { v4 as uuidv4 } from 'uuid';
 import { Writable } from 'stream';
 import { ExportJobPayload, redisConnection } from '../lib/queue';
-import { uploadBuffer, getPresignedUrl, BUCKET } from '../lib/minio';
+import { uploadExportFile } from '../lib/fileServiceClient';
 import prisma from '../lib/prisma';
 
 const ELN_URL = process.env.ELN_SERVICE_URL || 'http://localhost:8002';
@@ -193,15 +193,19 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
   await prisma.exportJob.update({ where: { id: jobId }, data: { status: 'processing' } });
 
   let fileUrl: string;
+  let fileId: string | undefined;
 
   if (format === 'pdf') {
     await job.updateProgress(10);
     const pdfBuffer = await renderNoteToPdf(noteId);
     await job.updateProgress(80);
 
-    const key = `exports/${jobId}.pdf`;
-    await uploadBuffer(key, pdfBuffer, 'application/pdf');
-    fileUrl = await getPresignedUrl(key, 86400 * 7); // 7일 유효
+    const result = await uploadExportFile({
+      jobId, format: 'pdf', buffer: pdfBuffer,
+      contentType: 'application/pdf', filename: `${jobId}.pdf`, requestedBy,
+    });
+    fileUrl = result.downloadUrl;
+    fileId = result.fileId;
 
   } else if (format === 'report') {
     const targets = noteIds ?? [];
@@ -210,9 +214,12 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     const pdfBuffer = await renderReportToPdf(targets);
     await job.updateProgress(85);
 
-    const key = `exports/${jobId}.pdf`;
-    await uploadBuffer(key, pdfBuffer, 'application/pdf');
-    fileUrl = await getPresignedUrl(key, 86400 * 7);
+    const result = await uploadExportFile({
+      jobId, format: 'report', buffer: pdfBuffer,
+      contentType: 'application/pdf', filename: `${jobId}.pdf`, requestedBy,
+    });
+    fileUrl = result.downloadUrl;
+    fileId = result.fileId;
 
   } else {
     // ZIP — 복수 노트
@@ -227,15 +234,18 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     const zipBuffer = await buildZip(pdfMap);
     await job.updateProgress(90);
 
-    const key = `exports/${jobId}.zip`;
-    await uploadBuffer(key, zipBuffer, 'application/zip');
-    fileUrl = await getPresignedUrl(key, 86400 * 7);
+    const result = await uploadExportFile({
+      jobId, format: 'zip', buffer: zipBuffer,
+      contentType: 'application/zip', filename: `${jobId}.zip`, requestedBy,
+    });
+    fileUrl = result.downloadUrl;
+    fileId = result.fileId;
   }
 
   // DB → completed
   await prisma.exportJob.update({
     where: { id: jobId },
-    data: { status: 'completed', fileUrl, completedAt: new Date() },
+    data: { status: 'completed', fileUrl, fileId: fileId ?? null, completedAt: new Date() },
   });
 
   // 완료 감사로그
