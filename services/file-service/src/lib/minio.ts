@@ -11,6 +11,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  PutBucketLifecycleConfigurationCommand,
 } from '@aws-sdk/client-s3';
 import type { GetObjectCommandOutput, HeadObjectCommandOutput } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -24,6 +25,13 @@ const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY;
 const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY;
 export const BUCKET = process.env.MINIO_BUCKET || 'labnote-files';
 export const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || 'labnote-exports';
+
+/** 통일된 presigned URL 만료 시간 (초) */
+export const EXPIRY = {
+  EXPORT_DOWNLOAD: 24 * 3600,   // 24시간 — 내보내기 다운로드
+  FILE_DOWNLOAD: 3600,           // 1시간 — 일반 파일 다운로드
+  FILE_UPLOAD: 900,              // 15분 — presigned 업로드
+} as const;
 
 export const s3 = new S3Client({
   endpoint: `http://${MINIO_ENDPOINT}:${MINIO_PORT}`,
@@ -51,6 +59,26 @@ export async function ensureBuckets(): Promise<void> {
 
 // 하위 호환 alias
 export const ensureBucket = ensureBuckets;
+
+/** labnote-exports 버킷에 7일 자동 만료 lifecycle 정책 설정 */
+export async function ensureExportsBucketLifecycle(): Promise<void> {
+  try {
+    await s3.send(new PutBucketLifecycleConfigurationCommand({
+      Bucket: EXPORTS_BUCKET,
+      LifecycleConfiguration: {
+        Rules: [{
+          ID: 'auto-expire-exports-7d',
+          Status: 'Enabled',
+          Filter: { Prefix: '' },
+          Expiration: { Days: 7 },
+        }],
+      },
+    }));
+    console.log(`[file-service] ${EXPORTS_BUCKET} 버킷 7일 자동 만료 정책 설정 완료`);
+  } catch (err) {
+    console.error('[file-service] 버킷 lifecycle 설정 실패 (무시):', err);
+  }
+}
 
 /** 파일 업로드 (originalName을 Metadata로 저장) */
 export async function uploadObject(
@@ -175,7 +203,7 @@ export async function uploadObjectToBucket(
 
 /** 임의 버킷 presigned URL */
 export async function getPresignedUrlFromBucket(
-  bucket: string, key: string, expiresIn = 300
+  bucket: string, key: string, expiresIn = EXPIRY.FILE_DOWNLOAD
 ): Promise<string> {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(s3, command, { expiresIn });

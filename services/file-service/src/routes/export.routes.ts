@@ -1,11 +1,23 @@
 // services/file-service/src/routes/export.routes.ts
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { validate } from '@lab/shared';
 import { ListExportsQuerySchema, JobIdParamsSchema } from '../dtos/file.dto';
 import * as ctrl from '../controllers/export.controller';
 
+const internalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB (ZIP 파일 대비)
+});
+
 const router = Router();
+
+// ── 내부 서비스 전용 (인증: x-internal-secret) ──
+router.post('/internal/upload',               internalUpload.single('file'), ctrl.internalUploadExport);
+router.get('/internal/presigned/:fileId',     ctrl.internalPresignedUrl);
+
+// ── 사용자 API (인증: JWT/x-user-id) ──
 router.use(requireAuth);
 
 router.post('/',               ctrl.createExport);

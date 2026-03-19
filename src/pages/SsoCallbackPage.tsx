@@ -80,6 +80,7 @@ export default function SsoCallbackPage() {
           const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
           const meRes = await fetch(`${API_BASE}/auth/me`, {
             headers: { Authorization: `Bearer ${tokens.access_token}` },
+            credentials: 'include',
           });
           if (meRes.ok) {
             const meData = await meRes.json();

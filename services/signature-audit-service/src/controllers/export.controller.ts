@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import { exportQueue } from '../lib/queue';
+import { getExportPresignedUrl } from '../lib/fileServiceClient';
 
 async function recordAuditLog(
   action: string,
@@ -76,6 +77,17 @@ export async function getExportStatus(req: Request, res: Response): Promise<void
   try {
     const job = await prisma.exportJob.findUnique({ where: { id: req.params.jobId } });
     if (!job) { res.status(404).json({ ok: false, error: '작업을 찾을 수 없습니다.' }); return; }
+
+    // 완료된 작업이고 fileId가 있으면 presigned URL 재발급 (만료 방지)
+    let downloadUrl = job.fileUrl ?? null;
+    if (job.status === 'completed' && job.fileId) {
+      try {
+        downloadUrl = await getExportPresignedUrl(job.fileId);
+      } catch {
+        // file-service 호출 실패 시 기존 URL 유지
+      }
+    }
+
     res.json({
       ok: true,
       data: {
@@ -84,8 +96,8 @@ export async function getExportStatus(req: Request, res: Response): Promise<void
         noteId: job.noteId,
         format: job.format,
         status: job.status,
-        fileUrl: job.fileUrl ?? null,
-        downloadUrl: job.fileUrl ?? null,
+        fileUrl: downloadUrl,
+        downloadUrl,
         errorMsg: job.errorMsg ?? null,
         createdAt: job.createdAt.toISOString(),
         completedAt: job.completedAt?.toISOString() ?? null,
@@ -213,18 +225,25 @@ export async function listExportJobs(req: Request, res: Response): Promise<void>
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    res.json({
-      ok: true,
-      data: jobs.map((j) => ({
+
+    // 완료된 작업의 presigned URL 재발급 (병렬)
+    const jobDtos = await Promise.all(jobs.map(async (j) => {
+      let downloadUrl = j.fileUrl ?? null;
+      if (j.status === 'completed' && j.fileId) {
+        try { downloadUrl = await getExportPresignedUrl(j.fileId); } catch { /* 기존 URL 유지 */ }
+      }
+      return {
         jobId: j.id,
         noteId: j.noteId,
         format: j.format,
         status: j.status,
-        downloadUrl: j.fileUrl ?? null,
+        downloadUrl,
         createdAt: j.createdAt.toISOString(),
         completedAt: j.completedAt?.toISOString() ?? null,
-      })),
-    });
+      };
+    }));
+
+    res.json({ ok: true, data: jobDtos });
   } catch (err) {
     console.error('[listExportJobs]', err);
     res.status(500).json({ ok: false, error: '작업 목록 조회 중 오류가 발생했습니다.' });

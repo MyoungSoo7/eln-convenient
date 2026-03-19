@@ -43,6 +43,7 @@ model ExportJob {
   status      ExportStatus @default(pending)
   requestedBy String       @default("")
   fileUrl     String?
+  fileId      String?      // file-service File 레코드 ID (presigned URL 재발급용)
   errorMsg    String?
   createdAt   DateTime     @default(now())
   completedAt DateTime?

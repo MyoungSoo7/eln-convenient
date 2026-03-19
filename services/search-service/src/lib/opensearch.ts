@@ -22,10 +22,26 @@ export function parseDomainTypes(param?: string): DomainType[] | undefined {
   return parsed.length > 0 ? parsed : undefined;
 }
 
+const REPLICAS = parseInt(process.env.OPENSEARCH_REPLICAS || '0', 10);
+
 const unifiedMapping = {
   settings: {
     number_of_shards: 1,
-    number_of_replicas: 0,
+    number_of_replicas: REPLICAS,
+    analysis: {
+      analyzer: {
+        korean: {
+          type: 'custom',
+          tokenizer: 'nori_tokenizer',
+          filter: ['nori_readingform', 'lowercase'],
+        },
+        korean_search: {
+          type: 'custom',
+          tokenizer: 'nori_tokenizer',
+          filter: ['nori_readingform', 'lowercase', 'nori_part_of_speech'],
+        },
+      },
+    },
   },
   mappings: {
     properties: {
@@ -33,14 +49,29 @@ const unifiedMapping = {
       domainType:  { type: 'keyword' },
       title: {
         type: 'text',
-        analyzer: 'standard',
-        fields: { keyword: { type: 'keyword', ignore_above: 256 } },
+        analyzer: 'korean',
+        search_analyzer: 'korean_search',
+        fields: {
+          keyword: { type: 'keyword', ignore_above: 256 },
+          standard: { type: 'text', analyzer: 'standard' },
+        },
       },
-      content:   { type: 'text', analyzer: 'standard' },
-      summary:   { type: 'text', analyzer: 'standard' },
+      content: {
+        type: 'text',
+        analyzer: 'korean',
+        search_analyzer: 'korean_search',
+        fields: { standard: { type: 'text', analyzer: 'standard' } },
+      },
+      summary: {
+        type: 'text',
+        analyzer: 'korean',
+        search_analyzer: 'korean_search',
+        fields: { standard: { type: 'text', analyzer: 'standard' } },
+      },
       tags: {
         type: 'text',
-        analyzer: 'standard',
+        analyzer: 'korean',
+        search_analyzer: 'korean_search',
         fields: { keyword: { type: 'keyword' } },
       },
       ownerId:    { type: 'keyword' },
@@ -77,7 +108,6 @@ export async function indexDocument(id: string, doc: Record<string, unknown>): P
     index: UNIFIED_ALIAS,
     id,
     body: doc,
-    refresh: 'wait_for',
   });
 }
 
@@ -87,7 +117,6 @@ export async function softDeleteDocument(id: string): Promise<void> {
       index: UNIFIED_ALIAS,
       id,
       body: { doc: { docStatus: 'deleted', updatedAt: new Date().toISOString() } },
-      refresh: 'wait_for',
     });
   } catch (err) {
     console.warn('[opensearch] softDelete 무시 (문서 없음):', (err as Error).message);
@@ -96,7 +125,7 @@ export async function softDeleteDocument(id: string): Promise<void> {
 
 export async function deleteDocument(id: string): Promise<void> {
   try {
-    await osClient.delete({ index: UNIFIED_ALIAS, id, refresh: 'wait_for' } as any);
+    await osClient.delete({ index: UNIFIED_ALIAS, id } as any);
   } catch (err) {
     console.warn('[opensearch] delete 무시 (문서 없음):', (err as Error).message);
   }
@@ -112,7 +141,7 @@ export async function bulkIndexDocuments(
     doc,
   ]);
 
-  const response = await osClient.bulk({ body, refresh: 'wait_for' });
+  const response = await osClient.bulk({ body });
   const items = response.body.items as Array<{ index: { error?: unknown } }>;
   const errors = items.filter((item) => item.index?.error).length;
   return { indexed: docs.length - errors, errors };

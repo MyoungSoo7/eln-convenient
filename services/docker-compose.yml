@@ -68,6 +68,12 @@ services:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        /usr/share/opensearch/bin/opensearch-plugin install --batch analysis-nori 2>/dev/null || true
+        /usr/share/opensearch/opensearch-docker-entrypoint.sh
     ports:
       - "9200:9200"
     volumes:
@@ -77,7 +83,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -173,24 +179,20 @@ services:
       - PORT=8003
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8
       - REDIS_URL=redis://redis:6379
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?}
-      - MINIO_BUCKET=labnote-files
       - ELN_SERVICE_URL=http://eln-service:8002
       - AUTH_SERVICE_URL=http://auth-service:8001
+      - FILE_SERVICE_URL=http://file-service:8008
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       eln-service:
         condition: service_healthy
       auth-service:
+        condition: service_healthy
+      file-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8003/health || exit 1"]

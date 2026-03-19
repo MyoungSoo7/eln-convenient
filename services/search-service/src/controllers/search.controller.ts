@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import redis from '../lib/redis';
+import redis, { invalidateSearchCache } from '../lib/redis';
+import { createHttpLogger } from '@lab/shared';
 import type { ISearchResult, ISearchResponse, DomainType } from '../interfaces/search.interface';
 import {
   osClient,
@@ -15,17 +16,42 @@ import {
   getIndexStats,
 } from '../lib/opensearch';
 
+const { logger } = createHttpLogger('search-controller');
+
 const SEARCH_CACHE_TTL = 180; // 3분
 
 // ─── 권한 필터 ────────────────────────────────────────────
-function buildPermissionFilter(userId: string): object {
-  // MVP: ownerId 일치 OR visibility=public
+function buildPermissionFilter(userId: string, labId?: string, projectId?: string): object {
+  const should: object[] = [
+    { term: { ownerId: userId } },
+    { term: { visibility: 'public' } },
+  ];
+
+  // 같은 lab/project 멤버가 공유 문서를 볼 수 있도록 확장
+  if (labId) {
+    should.push({
+      bool: {
+        must: [
+          { term: { labId } },
+          { terms: { visibility: ['lab', 'public'] } },
+        ],
+      },
+    });
+  }
+  if (projectId) {
+    should.push({
+      bool: {
+        must: [
+          { term: { projectId } },
+          { terms: { visibility: ['project', 'lab', 'public'] } },
+        ],
+      },
+    });
+  }
+
   return {
     bool: {
-      should: [
-        { term: { ownerId: userId } },
-        { term: { visibility: 'public' } },
-      ],
+      should,
       minimum_should_match: 1,
     },
   };
@@ -43,6 +69,8 @@ export async function search(req: Request, res: Response): Promise<void> {
   const dateFrom = req.query.dateFrom as string | undefined;
   const dateTo = req.query.dateTo as string | undefined;
   const userId = (req.headers['x-user-id'] as string)?.trim() || '';
+  const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
+  const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
 
   if (!q) {
     const emptyCounts = Object.fromEntries(DOMAIN_TYPES.map(t => [t, 0])) as Record<DomainType, number>;
@@ -71,9 +99,8 @@ export async function search(req: Request, res: Response): Promise<void> {
     ];
 
     if (userId) {
-      filters.push(buildPermissionFilter(userId));
+      filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
     } else {
-      // Anonymous users see only public documents (MVP scope)
       filters.push({ term: { visibility: 'public' } });
     }
 
@@ -150,7 +177,7 @@ export async function search(req: Request, res: Response): Promise<void> {
     if (userId) {
       prisma.searchHistory.create({
         data: { id: uuidv4(), userId, query: q },
-      }).catch((err) => console.warn('[search] 히스토리 저장 실패 (무시):', err));
+      }).catch((err) => logger.warn({ err, userId, query: q }, '검색 히스토리 저장 실패'));
     }
 
     const responseBody: ISearchResponse = {
@@ -171,7 +198,7 @@ export async function search(req: Request, res: Response): Promise<void> {
 
     res.json(responseBody);
   } catch (err) {
-    console.error('[search] OpenSearch 검색 실패:', err);
+    logger.error({ err }, 'OpenSearch 검색 실패');
     res.status(502).json({ ok: false, error: 'OpenSearch 검색에 실패했습니다.' });
   }
 }
@@ -179,12 +206,24 @@ export async function search(req: Request, res: Response): Promise<void> {
 /** GET /api/search/suggest?q=... */
 export async function suggest(req: Request, res: Response): Promise<void> {
   const q = (req.query.q as string)?.trim() || '';
+  const userId = (req.headers['x-user-id'] as string)?.trim() || '';
+  const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
+  const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
+
   if (!q) {
     res.json({ ok: true, query: q, suggestions: [] });
     return;
   }
 
   try {
+    const filters: object[] = [{ term: { docStatus: 'active' } }];
+
+    if (userId) {
+      filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
+    } else {
+      filters.push({ term: { visibility: 'public' } });
+    }
+
     const body = {
       size: 7,
       query: {
@@ -196,7 +235,7 @@ export async function suggest(req: Request, res: Response): Promise<void> {
               type: 'phrase_prefix',
             },
           },
-          filter: [{ term: { docStatus: 'active' } }],
+          filter: filters,
         },
       },
       _source: ['title', 'domainType'],
@@ -211,7 +250,7 @@ export async function suggest(req: Request, res: Response): Promise<void> {
 
     res.json({ ok: true, query: q, suggestions });
   } catch (err) {
-    console.error('[suggest] 실패:', err);
+    logger.error({ err }, '자동완성 검색 실패');
     res.json({ ok: true, query: q, suggestions: [] });
   }
 }
@@ -223,9 +262,10 @@ export async function indexDoc(req: Request, res: Response): Promise<void> {
   const { id, doc } = req.body;
   try {
     await indexDocument(id, { ...doc, docStatus: doc.docStatus ?? 'active' });
+    await invalidateSearchCache();
     res.json({ ok: true, message: `${doc.domainType}:${id} 색인 완료` });
   } catch (err) {
-    console.error('[indexDoc] 색인 실패:', err);
+    logger.error({ err }, '문서 색인 실패');
     res.status(502).json({ ok: false, error: 'OpenSearch 색인에 실패했습니다.' });
   }
 }
@@ -235,9 +275,10 @@ export async function bulkIndexDocs(req: Request, res: Response): Promise<void> 
   const { docs } = req.body;
   try {
     const result = await bulkIndexDocuments(docs);
+    await invalidateSearchCache();
     res.json({ ok: true, ...result });
   } catch (err) {
-    console.error('[bulkIndexDocs] 벌크 색인 실패:', err);
+    logger.error({ err }, '벌크 색인 실패');
     res.status(502).json({ ok: false, error: 'OpenSearch 벌크 색인에 실패했습니다.' });
   }
 }
@@ -247,9 +288,10 @@ export async function removeDoc(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     await softDeleteDocument(id);
+    await invalidateSearchCache();
     res.json({ ok: true, message: `${id} 소프트 삭제 완료` });
   } catch (err) {
-    console.error('[removeDoc] 삭제 실패:', err);
+    logger.error({ err }, '문서 삭제 실패');
     res.status(502).json({ ok: false, error: 'OpenSearch 삭제에 실패했습니다.' });
   }
 }
@@ -260,7 +302,7 @@ export async function statsHandler(_req: Request, res: Response): Promise<void> 
     const data = await getIndexStats();
     res.json({ ok: true, data });
   } catch (err) {
-    console.error('[stats] 통계 조회 실패:', err);
+    logger.error({ err }, '통계 조회 실패');
     res.status(502).json({ ok: false, error: 'OpenSearch 통계 조회에 실패했습니다.' });
   }
 }

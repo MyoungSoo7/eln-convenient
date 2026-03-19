@@ -5,6 +5,7 @@ import noteRoutes from './routes/note.routes';
 import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
+import { startEventConsumer, stopEventConsumer } from './lib/eventConsumer';
 
 const { logger, httpLogger } = createHttpLogger('eln-service');
 
@@ -30,6 +31,19 @@ app.use(globalErrorHandler('eln-service', logger));
 app.listen(PORT, () => {
   logger.info({ port: PORT }, '서버 시작');
   logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
+
+  // Redis Stream 이벤트 Consumer 시작 (비동기, 실패해도 서버 기동에 영향 없음)
+  startEventConsumer().catch((err) => {
+    logger.warn({ err }, 'Event Consumer 시작 실패 — HTTP 폴백으로 운영');
+  });
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', async () => {
+  await stopEventConsumer();
+});
+process.on('SIGINT', async () => {
+  await stopEventConsumer();
 });
 
 export default app;
