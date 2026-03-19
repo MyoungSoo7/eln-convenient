@@ -211,11 +211,6 @@ export async function revokeSignature(req: Request, res: Response): Promise<void
   }
 
   const { reason } = req.body;
-  if (!reason?.trim()) {
-    res.status(400).json({ ok: false, error: '취소 사유(reason)는 필수입니다.' });
-    return;
-  }
-
   const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
 
   try {
@@ -284,17 +279,15 @@ export async function getComplianceStats(_req: Request, res: Response): Promise<
 
 /** GET /api/signatures/compliance/list */
 export async function getComplianceList(req: Request, res: Response): Promise<void> {
-  const { status, page = '1', limit = '20' } = req.query;
-  const parsedLimit = parseInt(limit as string, 10);
-  const limitNum = isNaN(parsedLimit) ? 20 : Math.min(parsedLimit, 100);
+  const { status, page, limit } = req.query as unknown as { status?: string; page: number; limit: number };
 
   try {
     const params: Record<string, string> = {
       type: 'note',
-      page: page as string,
-      limit: String(limitNum),
+      page: String(page),
+      limit: String(limit),
     };
-    if (status) params.status = status as string;
+    if (status) params.status = status;
 
     const noteList = await fetchNotes(params);
     const noteIds = noteList.data.map((n) => n.id);
@@ -335,7 +328,7 @@ export async function getComplianceList(req: Request, res: Response): Promise<vo
       };
     });
 
-    res.json({ ok: true, data, total: noteList.total, page: parseInt(page as string) });
+    res.json({ ok: true, data, total: noteList.total, page });
   } catch (err) {
     if (err instanceof ElnServiceError) {
       res.status(503).json({ ok: false, error: '노트 데이터를 가져올 수 없습니다.' });

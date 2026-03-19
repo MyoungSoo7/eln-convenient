@@ -2,6 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as ctrl from '../controllers/file.controller';
 import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
+import { validate } from '@lab/shared';
+import { PresignedUploadQuerySchema } from '../dtos/file.dto';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -21,6 +23,7 @@ router.post('/',
 // presigned PUT URL (클라이언트 → MinIO 직접 업로드)
 router.get('/presigned-upload',
   requirePermission('file:upload'),
+  validate({ query: PresignedUploadQuerySchema }),
   ctrl.getPresignedUpload,
 );
 

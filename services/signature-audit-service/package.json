@@ -24,7 +24,9 @@
     "ioredis": "^5.3.2",
     "puppeteer-core": "^22.0.0",
     "swagger-ui-express": "^5.0.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zod": "^4.3.6",
+    "@lab/shared": "file:../shared"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.2",

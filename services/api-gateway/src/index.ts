@@ -6,6 +6,15 @@ import { registerProxies } from './routes/proxy';
 import { registerDashboard } from './routes/dashboard';
 import { authHook } from './middlewares/auth';
 
+// ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('[api-gateway] Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[api-gateway] Uncaught Exception:', err);
+  process.exit(1);
+});
+
 const app = Fastify({ logger: true });
 
 async function bootstrap() {

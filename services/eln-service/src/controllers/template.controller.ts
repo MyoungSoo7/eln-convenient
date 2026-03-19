@@ -47,10 +47,6 @@ export async function listTemplates(req: Request, res: Response): Promise<void> 
 
 /** POST /api/templates */
 export async function createTemplate(req: Request, res: Response): Promise<void> {
-  if (!req.body.title) {
-    res.status(400).json({ ok: false, error: 'title은 필수입니다.' });
-    return;
-  }
   try {
     const tmpl = await prisma.template.create({
       data: {

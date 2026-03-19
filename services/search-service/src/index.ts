@@ -5,6 +5,9 @@ import searchRoutes from './routes/search.routes';
 import { swaggerDocument } from './swagger';
 import { ensureIndices } from './lib/opensearch';
 import prisma from './lib/prisma';
+import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+
+setupProcessHandlers('search-service');
 
 const app = express();
 const PORT = process.env.PORT || 8006;
@@ -18,6 +21,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/search', searchRoutes);
+
+app.use(globalErrorHandler('search-service'));
 
 app.listen(PORT, async () => {
   console.log(`[search-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

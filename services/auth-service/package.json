@@ -20,7 +20,9 @@
     "ioredis": "^5.3.2",
     "jsonwebtoken": "^9.0.2",
     "swagger-ui-express": "^5.0.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zod": "^4.3.6",
+    "@lab/shared": "file:../shared"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

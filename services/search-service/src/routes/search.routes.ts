@@ -4,6 +4,13 @@ import * as historyCtrl from '../controllers/history.controller';
 import * as favoritesCtrl from '../controllers/favorites.controller';
 import * as keywordFavCtrl from '../controllers/keyword-favorites.controller';
 import { requireAuth, requirePermission, requireInternalSecret } from '../middlewares/auth.middleware';
+import { validate } from '@lab/shared';
+import {
+  IndexDocBodySchema, BulkIndexBodySchema,
+  SaveHistoryBodySchema,
+  AddFavoriteBodySchema, GetFavoritesQuerySchema,
+  AddKeywordFavoriteBodySchema,
+} from '../dtos/search.dto';
 
 const router = Router();
 
@@ -13,24 +20,24 @@ router.get('/suggest',  requireAuth, requirePermission('note:read'), ctrl.sugges
 
 // ── 검색 히스토리 ─────────────────────────────────────────
 // 주의: DELETE /history 는 반드시 DELETE /history/:id 보다 먼저 등록
-router.post('/history',         requireAuth, historyCtrl.saveHistory);
+router.post('/history',         requireAuth, validate({ body: SaveHistoryBodySchema }), historyCtrl.saveHistory);
 router.get('/history',          requireAuth, historyCtrl.getHistory);
 router.delete('/history',       requireAuth, historyCtrl.clearHistory);
 router.delete('/history/:id',   requireAuth, historyCtrl.deleteHistoryEntry);
 
 // ── 즐겨찾기 ─────────────────────────────────────────────
-router.post('/favorites',       requireAuth, favoritesCtrl.addFavorite);
+router.post('/favorites',       requireAuth, validate({ body: AddFavoriteBodySchema }), favoritesCtrl.addFavorite);
 router.delete('/favorites/:id', requireAuth, favoritesCtrl.removeFavorite);
-router.get('/favorites',        requireAuth, favoritesCtrl.getFavorites);
+router.get('/favorites',        requireAuth, validate({ query: GetFavoritesQuerySchema }), favoritesCtrl.getFavorites);
 
 // ── 검색어 즐겨찾기 ─────────────────────────────────────
-router.post('/keyword-favorites',       requireAuth, keywordFavCtrl.addKeywordFavorite);
+router.post('/keyword-favorites',       requireAuth, validate({ body: AddKeywordFavoriteBodySchema }), keywordFavCtrl.addKeywordFavorite);
 router.get('/keyword-favorites',        requireAuth, keywordFavCtrl.getKeywordFavorites);
 router.delete('/keyword-favorites/:id', requireAuth, keywordFavCtrl.removeKeywordFavorite);
 
 // ── 인덱스 관리 (내부 서비스 전용 — x-internal-secret 헤더 필요) ──
-router.post('/index',               requireInternalSecret, ctrl.indexDoc);
-router.post('/index/bulk',          requireInternalSecret, ctrl.bulkIndexDocs);
+router.post('/index',               requireInternalSecret, validate({ body: IndexDocBodySchema }), ctrl.indexDoc);
+router.post('/index/bulk',          requireInternalSecret, validate({ body: BulkIndexBodySchema }), ctrl.bulkIndexDocs);
 router.delete('/index/:id', requireInternalSecret, ctrl.removeDoc);
 router.get('/stats',                requireInternalSecret, ctrl.statsHandler);
 

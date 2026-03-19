@@ -1,9 +1,11 @@
 FROM node:20-alpine
 RUN apk add --no-cache openssl
+WORKDIR /shared
+COPY shared/ ./
 WORKDIR /app
-COPY package*.json ./
+COPY eln-service/package*.json ./
 RUN npm install
-COPY . .
+COPY eln-service/ .
 RUN npx prisma generate
 RUN npm run build
 EXPOSE 8002

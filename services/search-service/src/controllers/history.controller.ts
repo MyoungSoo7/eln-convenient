@@ -7,11 +7,6 @@ export async function saveHistory(req: Request, res: Response): Promise<void> {
   const userId = req.headers['x-user-id'] as string;
   const { query } = req.body;
 
-  if (!query?.trim()) {
-    res.status(400).json({ ok: false, error: 'query는 필수입니다.' });
-    return;
-  }
-
   try {
     const entry = await prisma.searchHistory.create({
       data: { id: uuidv4(), userId, query: query.trim() },

@@ -100,12 +100,7 @@ export async function getExportStatus(req: Request, res: Response): Promise<void
 /** POST /api/export/zip */
 export async function exportZip(req: Request, res: Response): Promise<void> {
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-  const noteIds: string[] = req.body.noteIds ?? [];
-
-  if (noteIds.length === 0) {
-    res.status(400).json({ ok: false, error: 'noteIds 배열이 필요합니다.' });
-    return;
-  }
+  const noteIds: string[] = req.body.noteIds;
 
   try {
     const job = await prisma.exportJob.create({
@@ -156,12 +151,7 @@ export async function exportZip(req: Request, res: Response): Promise<void> {
 /** POST /api/export/report — 프로젝트 보고서 종합 PDF (복수 노트 → 1개 PDF) */
 export async function exportReport(req: Request, res: Response): Promise<void> {
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-  const noteIds: string[] = req.body.noteIds ?? [];
-
-  if (noteIds.length === 0) {
-    res.status(400).json({ ok: false, error: 'noteIds 배열이 필요합니다.' });
-    return;
-  }
+  const noteIds: string[] = req.body.noteIds;
 
   try {
     const job = await prisma.exportJob.create({

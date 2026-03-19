@@ -1,9 +1,11 @@
 FROM node:20-alpine
 RUN apk add --no-cache openssl
+WORKDIR /shared
+COPY shared/ ./
 WORKDIR /app
-COPY package*.json ./
+COPY search-service/package*.json ./
 RUN npm install
-COPY . .
+COPY search-service/ .
 RUN npx prisma generate
 RUN npm run build
 EXPOSE 8006

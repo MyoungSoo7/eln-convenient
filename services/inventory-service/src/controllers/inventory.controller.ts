@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import { VALID_ITEM_TYPES } from '../dtos/inventory.dto';
+import type { ItemType } from '../dtos/inventory.dto';
 import { searchClient } from '../lib/searchClient';
 
 // ─────────────────────────────────────────────
@@ -83,17 +83,6 @@ export async function getItemByBarcode(req: Request, res: Response): Promise<voi
 /** POST /api/inventory/items */
 export async function createItem(req: Request, res: Response): Promise<void> {
   const { name, type } = req.body;
-  if (!name || !type) {
-    res.status(400).json({ ok: false, error: 'name과 type은 필수입니다.' });
-    return;
-  }
-  if (!VALID_ITEM_TYPES.includes(type)) {
-    res.status(400).json({
-      ok: false,
-      error: `유효하지 않은 type입니다. 가능한 값: ${VALID_ITEM_TYPES.join(', ')}`,
-    });
-    return;
-  }
 
   try {
     const item = await prisma.inventoryItem.create({
@@ -246,19 +235,6 @@ export async function deleteItem(req: Request, res: Response): Promise<void> {
 export async function adjustQuantity(req: Request, res: Response): Promise<void> {
   const { changeType, quantity, reason } = req.body;
   const performedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-
-  if (!changeType || quantity === undefined) {
-    res.status(400).json({ ok: false, error: 'changeType과 quantity는 필수입니다.' });
-    return;
-  }
-  if (!['in', 'out', 'adjust'].includes(changeType)) {
-    res.status(400).json({ ok: false, error: 'changeType은 in | out | adjust 중 하나여야 합니다.' });
-    return;
-  }
-  if (typeof quantity !== 'number' || quantity < 0) {
-    res.status(400).json({ ok: false, error: 'quantity는 0 이상의 숫자여야 합니다.' });
-    return;
-  }
 
   try {
     const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
@@ -413,10 +389,6 @@ export async function getCategories(_req: Request, res: Response): Promise<void>
 /** POST /api/inventory/categories */
 export async function createCategory(req: Request, res: Response): Promise<void> {
   const { name } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ ok: false, error: 'name은 필수입니다.' });
-    return;
-  }
   try {
     const category = await prisma.category.create({ data: { id: uuidv4(), name: name.trim() } });
     res.status(201).json({ ok: true, data: category });
@@ -433,10 +405,6 @@ export async function createCategory(req: Request, res: Response): Promise<void>
 /** PUT /api/inventory/categories/:id */
 export async function updateCategory(req: Request, res: Response): Promise<void> {
   const { name } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ ok: false, error: 'name은 필수입니다.' });
-    return;
-  }
   try {
     const category = await prisma.category.update({
       where: { id: req.params.id },

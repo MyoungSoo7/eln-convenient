@@ -11,22 +11,31 @@ export async function listAuditLogs(req: Request, res: Response): Promise<void> 
     action,
     dateFrom,
     dateTo,
-    page = '1',
-    limit = '50',
-  } = req.query;
+    page,
+    limit,
+  } = req.query as unknown as {
+    entityId?: string;
+    entityType?: string;
+    actorId?: string;
+    action?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page: number;
+    limit: number;
+  };
 
-  const skip = (Number.parseInt(page as string) - 1) * Number.parseInt(limit as string);
+  const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
-  if (entityId)   where.entityId   = entityId as string;
-  if (entityType) where.entityType = entityType as string;
-  if (actorId)    where.actorId    = actorId as string;
-  if (action)     where.action     = action as string;
+  if (entityId)   where.entityId   = entityId;
+  if (entityType) where.entityType = entityType;
+  if (actorId)    where.actorId    = actorId;
+  if (action)     where.action     = action;
 
   if (dateFrom || dateTo) {
     where.createdAt = {
-      ...(dateFrom && { gte: new Date(dateFrom as string) }),
-      ...(dateTo   && { lte: new Date(dateTo as string) }),
+      ...(dateFrom && { gte: new Date(dateFrom) }),
+      ...(dateTo   && { lte: new Date(dateTo) }),
     };
   }
 
@@ -36,11 +45,11 @@ export async function listAuditLogs(req: Request, res: Response): Promise<void> 
         where,
         orderBy: { createdAt: 'desc' },
         skip,
-        take: Number.parseInt(limit as string),
+        take: limit,
       }),
       prisma.auditLog.count({ where }),
     ]);
-    res.json({ ok: true, data: logs, total, page: Number.parseInt(page as string) });
+    res.json({ ok: true, data: logs, total, page });
   } catch (err) {
     console.error('[listAuditLogs]', err);
     res.status(500).json({ ok: false, error: '감사로그 목록 조회 중 오류가 발생했습니다.' });
@@ -88,10 +97,6 @@ export async function createAuditLogInternal(req: Request, res: Response): Promi
   }
 
   const { entityType, entityId, action, actorId, details, ipAddress } = req.body;
-  if (!entityType || !entityId || !action || !actorId) {
-    res.status(400).json({ ok: false, error: 'entityType, entityId, action, actorId는 필수입니다.' });
-    return;
-  }
 
   try {
     const log = await prisma.auditLog.create({

@@ -16,10 +16,12 @@ RUN apk add --no-cache \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
+WORKDIR /shared
+COPY shared/ ./
 WORKDIR /app
-COPY package*.json ./
+COPY signature-audit-service/package*.json ./
 RUN npm install
-COPY . .
+COPY signature-audit-service/ .
 RUN npx prisma generate && npm run build && cp -r src/templates dist/templates
 EXPOSE 8003
 CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]

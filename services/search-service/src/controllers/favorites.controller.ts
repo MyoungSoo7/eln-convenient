@@ -2,24 +2,10 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 
-const VALID_DOC_TYPES = ['notes', 'templates', 'inventory'] as const;
-
 /** POST /api/search/favorites — 즐겨찾기 추가 */
 export async function addFavorite(req: Request, res: Response): Promise<void> {
   const userId = req.headers['x-user-id'] as string;
   const { docType, docId, title } = req.body;
-
-  if (!docType || !docId || !title) {
-    res.status(400).json({ ok: false, error: 'docType, docId, title은 필수입니다.' });
-    return;
-  }
-  if (!VALID_DOC_TYPES.includes(docType)) {
-    res.status(400).json({
-      ok: false,
-      error: `유효하지 않은 docType입니다. 가능한 값: ${VALID_DOC_TYPES.join(', ')}`,
-    });
-    return;
-  }
 
   try {
     const favorite = await prisma.favorite.create({
@@ -63,14 +49,6 @@ export async function removeFavorite(req: Request, res: Response): Promise<void>
 export async function getFavorites(req: Request, res: Response): Promise<void> {
   const userId = req.headers['x-user-id'] as string;
   const docType = req.query.docType as string | undefined;
-
-  if (docType && !VALID_DOC_TYPES.includes(docType as any)) {
-    res.status(400).json({
-      ok: false,
-      error: `유효하지 않은 docType입니다. 가능한 값: ${VALID_DOC_TYPES.join(', ')}`,
-    });
-    return;
-  }
 
   try {
     // Prisma 타입 호환을 위해 명시적 타입 사용

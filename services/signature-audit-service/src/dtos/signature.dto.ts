@@ -1,16 +1,76 @@
-export interface SignRequestDto {
-  noteId: string;
-  password: string;  // TODO: 실제 인증 시 사용
-  comment?: string;
-}
+import { z } from 'zod';
 
-export interface ExportPdfDto {
-  noteId: string;
-  includeAttachments?: boolean;
-  includeAuditLog?: boolean;
-}
+// ── Signature schemas ──
 
-export interface ExportZipDto {
-  noteIds: string[];
-  includeAttachments?: boolean;
-}
+export const SignNoteParamsSchema = z.object({
+  noteId: z.string().uuid('noteId must be a valid UUID'),
+});
+
+export const SignNoteBodySchema = z.object({
+  password: z.string().optional(),
+  comment: z.string().optional(),
+});
+
+export const RevokeSignatureParamsSchema = z.object({
+  signatureId: z.string().uuid('signatureId must be a valid UUID'),
+});
+
+export const RevokeSignatureBodySchema = z.object({
+  reason: z.string().min(1, 'reason is required'),
+});
+
+export const NoteIdParamsSchema = z.object({
+  noteId: z.string().uuid('noteId must be a valid UUID'),
+});
+
+// ── Audit schemas ──
+
+export const CreateAuditLogInternalSchema = z.object({
+  entityType: z.string().min(1, 'entityType is required'),
+  entityId: z.string().min(1, 'entityId is required'),
+  action: z.string().min(1, 'action is required'),
+  actorId: z.string().min(1, 'actorId is required'),
+  details: z.record(z.string(), z.unknown()).optional(),
+  ipAddress: z.string().optional(),
+});
+
+export const ListAuditLogsQuerySchema = z.object({
+  entityId: z.string().optional(),
+  entityType: z.string().optional(),
+  actorId: z.string().optional(),
+  action: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export const AuditIdParamsSchema = z.object({
+  id: z.string().min(1, 'id is required'),
+});
+
+// ── Export schemas ──
+
+export const ExportPdfParamsSchema = z.object({
+  noteId: z.string().uuid('noteId must be a valid UUID'),
+});
+
+export const ExportZipBodySchema = z.object({
+  noteIds: z.array(z.string().uuid('each noteId must be a valid UUID')).min(1, 'noteIds must contain at least one item'),
+});
+
+export const ExportReportBodySchema = z.object({
+  noteIds: z.array(z.string().uuid('each noteId must be a valid UUID')).min(1, 'noteIds must contain at least one item'),
+});
+
+export const ExportStatusParamsSchema = z.object({
+  jobId: z.string().min(1, 'jobId is required'),
+});
+
+// ── Compliance schemas ──
+
+export const ComplianceListQuerySchema = z.object({
+  status: z.enum(['draft', 'in_progress', 'signed', 'locked']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});

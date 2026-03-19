@@ -9,6 +9,9 @@ import { startWorker, startExpiryCleanup, registerProcessor } from './lib/jobWor
 import { processPdfJob } from './processors/pdfProcessor';
 import { processZipJob } from './processors/zipProcessor';
 import prisma from './lib/prisma';
+import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+
+setupProcessHandlers('file-service');
 
 const app = express();
 const PORT = process.env.PORT || 8008;
@@ -39,6 +42,8 @@ app.get('/health', async (_req, res) => {
 
 app.use('/api/files', fileRoutes);
 app.use('/api/exports', exportRoutes);
+
+app.use(globalErrorHandler('file-service'));
 
 app.listen(PORT, async () => {
   console.log(`[file-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

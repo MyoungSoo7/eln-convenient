@@ -4,6 +4,9 @@ import swaggerUi from 'swagger-ui-express';
 import noteRoutes from './routes/note.routes';
 import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
+import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+
+setupProcessHandlers('eln-service');
 
 const app = express();
 const PORT = process.env.PORT || 8002;
@@ -18,6 +21,8 @@ app.get('/health', (_req, res) => {
 
 app.use('/api', noteRoutes);
 app.use('/api/templates', templateRoutes);
+
+app.use(globalErrorHandler('eln-service'));
 
 app.listen(PORT, () => {
   console.log(`[eln-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

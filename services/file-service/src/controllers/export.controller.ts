@@ -7,10 +7,6 @@ import { getPresignedUrlFromBucket } from '../lib/minio';
 // ─── POST /api/exports/pdf ───────────────────────────────────────
 export async function createPdfExport(req: Request, res: Response): Promise<void> {
   const { noteId } = req.body;
-  if (!noteId) {
-    res.status(400).json({ ok: false, error: 'noteId가 필요합니다.' });
-    return;
-  }
   const requestedBy = req.headers['x-user-id'] as string;
   if (!requestedBy) {
     res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
@@ -37,18 +33,6 @@ export async function createPdfExport(req: Request, res: Response): Promise<void
 // ─── POST /api/exports/zip ───────────────────────────────────────
 export async function createZipExport(req: Request, res: Response): Promise<void> {
   const { scope, projectId, noteIds } = req.body;
-  if (!scope || !['all', 'project', 'selected'].includes(scope)) {
-    res.status(400).json({ ok: false, error: 'scope는 all | project | selected 중 하나입니다.' });
-    return;
-  }
-  if (scope === 'project' && !projectId) {
-    res.status(400).json({ ok: false, error: 'scope=project 이면 projectId가 필요합니다.' });
-    return;
-  }
-  if (scope === 'selected' && (!Array.isArray(noteIds) || noteIds.length === 0)) {
-    res.status(400).json({ ok: false, error: 'scope=selected 이면 noteIds 배열이 필요합니다.' });
-    return;
-  }
   const requestedBy = req.headers['x-user-id'] as string;
   if (!requestedBy) {
     res.status(401).json({ ok: false, error: '인증이 필요합니다.' });
@@ -92,11 +76,6 @@ export async function listExports(req: Request, res: Response): Promise<void> {
     return;
   }
   const { status, page = '1', limit = '20' } = req.query;
-  const VALID_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
-  if (status && !VALID_STATUSES.includes(status as string)) {
-    res.status(400).json({ ok: false, error: `status는 ${VALID_STATUSES.join(', ')} 중 하나입니다.` });
-    return;
-  }
   const pageNum = Math.max(1, parseInt(page as string) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
   const skip = (pageNum - 1) * limitNum;

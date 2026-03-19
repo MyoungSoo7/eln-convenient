@@ -113,10 +113,6 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
 /** GET /api/files/presigned-upload — 클라이언트 직접 업로드용 presigned PUT URL */
 export async function getPresignedUpload(req: Request, res: Response): Promise<void> {
   const { filename, contentType } = req.query;
-  if (!filename || !contentType) {
-    res.status(400).json({ ok: false, error: 'filename과 contentType 쿼리 파라미터가 필요합니다.' });
-    return;
-  }
 
   const mimeType = contentType as string;
   if (BLOCKED_MIME.has(mimeType)) {

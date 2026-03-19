@@ -7,6 +7,15 @@ const PORT = parseInt(process.env.PORT || '8009');
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
+// ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('[collab-service] Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[collab-service] Uncaught Exception:', err);
+  process.exit(1);
+});
+
 // 색상 팔레트 크기 (프론트엔드 COLLAB_COLORS 배열과 인덱스 동기화)
 const COLOR_COUNT = 8;
 
@@ -50,18 +59,23 @@ let subClient: Redis | null = null;
 try {
   pubClient = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
   subClient = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
-  pubClient.on('error', () => {});
-  subClient.on('error', () => {});
+  pubClient.on('error', (err) => { console.error('[collab] Redis pub error:', err.message); });
+  subClient.on('error', (err) => { console.error('[collab] Redis sub error:', err.message); });
 
   subClient.subscribe('labnote:collab', (err) => {
-    if (err) { subClient = null; pubClient = null; }
+    if (err) {
+      console.error('[collab] Redis subscribe failed:', err.message);
+      subClient = null; pubClient = null;
+    }
   });
 
   subClient.on('message', (_channel, data) => {
     try {
       const { noteId, payload, sourceUserId } = JSON.parse(data);
       if (noteId) broadcast(noteId, payload, sourceUserId);
-    } catch {}
+    } catch (err) {
+      console.error('[collab] Redis message parse error:', err);
+    }
   });
 } catch {
   pubClient = null;
@@ -72,7 +86,9 @@ function publishToRedis(noteId: string, payload: object, sourceUserId: string) {
   if (!pubClient) return;
   try {
     pubClient.publish('labnote:collab', JSON.stringify({ noteId, payload, sourceUserId }));
-  } catch {}
+  } catch (err) {
+    console.error('[collab] Redis publish error:', err);
+  }
 }
 
 // ── HTTP 서버 (healthcheck + WebSocket upgrade) ──
@@ -156,7 +172,9 @@ wss.on('connection', (
         broadcast(noteId, outgoing, userId);
         publishToRedis(noteId, outgoing, userId);
       }
-    } catch {}
+    } catch (err) {
+      console.error('[collab] Message parse error:', err);
+    }
   });
 
   ws.on('close', () => {
@@ -168,7 +186,9 @@ wss.on('connection', (
     console.log(`[collab] ${userName} left note ${noteId} (room size: ${room.size})`);
   });
 
-  ws.on('error', () => {});
+  ws.on('error', (err) => {
+    console.error(`[collab] WebSocket error for ${userName}:`, err.message);
+  });
 
   console.log(`[collab] ${userName} joined note ${noteId} (room size: ${room.size})`);
 });

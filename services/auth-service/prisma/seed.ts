@@ -62,6 +62,24 @@ async function main() {
     },
   });
 
+  const reviewerRole = await prisma.role.upsert({
+    where: { id: 'role-reviewer-001' },
+    update: {},
+    create: {
+      id: 'role-reviewer-001',
+      orgId: org.id,
+      name: 'reviewer',
+      permissions: [
+        'note:read', 'note:sign',
+        'template:read',
+        'inventory:read',
+        'scheduler:read',
+        'file:read',
+        'audit:read',
+      ],
+    },
+  });
+
   const viewerRole = await prisma.role.upsert({
     where: { id: 'role-viewer-001' },
     update: {},
@@ -79,7 +97,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ 역할: ${adminRole.name}, ${researcherRole.name}, ${viewerRole.name}`);
+  console.log(`✅ 역할: ${adminRole.name}, ${researcherRole.name}, ${reviewerRole.name}, ${viewerRole.name}`);
 
   // 3. 기본 팀 생성
   const team = await prisma.team.upsert({

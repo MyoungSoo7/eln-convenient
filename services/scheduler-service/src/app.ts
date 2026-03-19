@@ -42,16 +42,18 @@ export function buildApp(): FastifyInstance {
   app.register(resourcesRoute, { prefix: '/api/scheduler' });
   app.register(bookingsRoute, { prefix: '/api/scheduler' });
 
-  // ── 전역 에러 핸들러 ─────────────────────────────────────
+  // ── 전역 에러 핸들러 (통일된 ErrorResponse 포맷) ─────────
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = error.statusCode ?? 500;
 
     // Fastify 스키마 검증 실패 (400)
     if (error.validation) {
+      const details = error.validation.map((v) => v.message ?? String(v));
       return reply.code(400).send({
         ok: false,
         error: '요청 데이터가 올바르지 않습니다.',
-        details: error.validation.map((v) => v.message),
+        code: 'ERR_VALIDATION',
+        details,
       });
     }
 
@@ -59,6 +61,7 @@ export function buildApp(): FastifyInstance {
     return reply.code(statusCode).send({
       ok: false,
       error: statusCode === 500 ? '서버 내부 오류가 발생했습니다.' : error.message,
+      code: `ERR_${statusCode}`,
     });
   });
 

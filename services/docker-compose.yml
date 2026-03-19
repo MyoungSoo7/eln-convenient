@@ -109,7 +109,9 @@ services:
   # ═══════════════════════════════════════════
 
   auth-service:
-    build: ./auth-service
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
     container_name: labnote-auth
     ports:
       - "${AUTH_PORT:-8001}:8001"
@@ -131,7 +133,9 @@ services:
       start_period: 15s
 
   eln-service:
-    build: ./eln-service
+    build:
+      context: .
+      dockerfile: eln-service/Dockerfile
     container_name: labnote-eln
     ports:
       - "${ELN_PORT:-8002}:8002"
@@ -156,7 +160,9 @@ services:
       start_period: 15s
 
   signature-audit-service:
-    build: ./signature-audit-service
+    build:
+      context: .
+      dockerfile: signature-audit-service/Dockerfile
     container_name: labnote-signature
     ports:
       - "${SIGNATURE_PORT:-8003}:8003"
@@ -191,7 +197,9 @@ services:
       start_period: 20s
 
   inventory-service:
-    build: ./inventory-service
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
     container_name: labnote-inventory
     ports:
       - "${INVENTORY_PORT:-8004}:8004"
@@ -231,7 +239,9 @@ services:
       start_period: 15s
 
   search-service:
-    build: ./search-service
+    build:
+      context: .
+      dockerfile: search-service/Dockerfile
     container_name: labnote-search
     ports:
       - "${SEARCH_PORT:-8006}:8006"
@@ -253,7 +263,9 @@ services:
       start_period: 15s
 
   file-service:
-    build: ./file-service
+    build:
+      context: .
+      dockerfile: file-service/Dockerfile
     container_name: labnote-file
     ports:
       - "${FILE_PORT:-8008}:8008"

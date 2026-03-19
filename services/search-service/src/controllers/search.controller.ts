@@ -198,17 +198,6 @@ export async function suggest(req: Request, res: Response): Promise<void> {
 /** POST /api/search/index — 단일 문서 색인 */
 export async function indexDoc(req: Request, res: Response): Promise<void> {
   const { id, doc } = req.body;
-  if (!id || !doc) {
-    res.status(400).json({ ok: false, error: 'id, doc 필드가 필요합니다.' });
-    return;
-  }
-  if (!doc.domainType || !DOMAIN_TYPES.includes(doc.domainType)) {
-    res.status(400).json({
-      ok: false,
-      error: `doc.domainType은 ${DOMAIN_TYPES.join('|')} 중 하나여야 합니다.`,
-    });
-    return;
-  }
   try {
     await indexDocument(id, { ...doc, docStatus: doc.docStatus ?? 'active' });
     res.json({ ok: true, message: `${doc.domainType}:${id} 색인 완료` });
@@ -221,16 +210,6 @@ export async function indexDoc(req: Request, res: Response): Promise<void> {
 /** POST /api/search/index/bulk — 벌크 색인 */
 export async function bulkIndexDocs(req: Request, res: Response): Promise<void> {
   const { docs } = req.body;
-  if (!Array.isArray(docs) || docs.length === 0) {
-    res.status(400).json({ ok: false, error: 'docs(배열) 필드가 필요합니다.' });
-    return;
-  }
-  for (const item of docs) {
-    if (!item.id || !item.doc) {
-      res.status(400).json({ ok: false, error: 'docs 배열의 각 항목은 { id, doc } 형태여야 합니다.' });
-      return;
-    }
-  }
   try {
     const result = await bulkIndexDocuments(docs);
     res.json({ ok: true, ...result });

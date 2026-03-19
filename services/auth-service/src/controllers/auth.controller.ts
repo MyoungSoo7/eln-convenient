@@ -15,10 +15,6 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 /** POST /api/auth/login */
 export async function login(req: Request, res: Response): Promise<void> {
   const { email, password } = req.body;
-  if (!email || !password) {
-    res.status(400).json({ ok: false, error: '이메일과 비밀번호를 입력해주세요.' });
-    return;
-  }
   try {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -68,10 +64,6 @@ export async function login(req: Request, res: Response): Promise<void> {
 /** POST /api/auth/register */
 export async function register(req: Request, res: Response): Promise<void> {
   const { email, name, password, orgId } = req.body;
-  if (!email || !name || !password) {
-    res.status(400).json({ ok: false, error: 'email, name, password는 필수입니다.' });
-    return;
-  }
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -211,10 +203,6 @@ export async function getUsers(_req: Request, res: Response): Promise<void> {
 /** POST /api/auth/users (admin) */
 export async function createUser(req: Request, res: Response): Promise<void> {
   const { email, name, password, orgId, roleId } = req.body;
-  if (!email || !name || !password) {
-    res.status(400).json({ ok: false, error: 'email, name, password는 필수입니다.' });
-    return;
-  }
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -331,10 +319,6 @@ export async function getOrgs(_req: Request, res: Response): Promise<void> {
 /** POST /api/auth/orgs (admin) */
 export async function createOrg(req: Request, res: Response): Promise<void> {
   const { name, slug } = req.body;
-  if (!name || !slug) {
-    res.status(400).json({ ok: false, error: 'name과 slug는 필수입니다.' });
-    return;
-  }
   try {
     const org = await prisma.organization.create({ data: { id: uuidv4(), name, slug } });
     res.status(201).json({
@@ -428,10 +412,6 @@ export async function getTeams(_req: Request, res: Response): Promise<void> {
 /** POST /api/auth/teams (admin) */
 export async function createTeam(req: Request, res: Response): Promise<void> {
   const { orgId, name } = req.body;
-  if (!orgId || !name) {
-    res.status(400).json({ ok: false, error: 'orgId와 name은 필수입니다.' });
-    return;
-  }
   try {
     const team = await prisma.team.create({ data: { id: uuidv4(), orgId, name } });
     res.status(201).json({
@@ -447,10 +427,6 @@ export async function createTeam(req: Request, res: Response): Promise<void> {
 /** PUT /api/auth/teams/:id (admin) */
 export async function updateTeam(req: Request, res: Response): Promise<void> {
   const { name } = req.body;
-  if (!name) {
-    res.status(400).json({ ok: false, error: 'name은 필수입니다.' });
-    return;
-  }
   try {
     const team = await prisma.team.update({
       where: { id: req.params.id },
@@ -512,10 +488,6 @@ export async function getTeamMembers(req: Request, res: Response): Promise<void>
 /** POST /api/auth/teams/:id/members (admin) */
 export async function addTeamMember(req: Request, res: Response): Promise<void> {
   const { userId } = req.body;
-  if (!userId) {
-    res.status(400).json({ ok: false, error: 'userId는 필수입니다.' });
-    return;
-  }
   try {
     await prisma.teamMember.create({
       data: { userId, teamId: req.params.id },
@@ -572,12 +544,19 @@ export async function getRoles(_req: Request, res: Response): Promise<void> {
 }
 
 /** POST /api/auth/roles (admin) */
+const ALLOWED_ROLE_NAMES = ['admin', 'researcher', 'reviewer', 'viewer'] as const;
+
 export async function createRole(req: Request, res: Response): Promise<void> {
   const { orgId, name, permissions } = req.body;
-  if (!orgId || !name) {
-    res.status(400).json({ ok: false, error: 'orgId와 name은 필수입니다.' });
+
+  if (!ALLOWED_ROLE_NAMES.includes(name)) {
+    res.status(400).json({
+      ok: false,
+      error: `허용되지 않는 역할명입니다. 사용 가능: ${ALLOWED_ROLE_NAMES.join(', ')}`,
+    });
     return;
   }
+
   try {
     const role = await prisma.role.create({
       data: { id: uuidv4(), orgId, name, permissions: permissions || [] },
@@ -595,10 +574,6 @@ export async function createRole(req: Request, res: Response): Promise<void> {
 /** PUT /api/auth/roles/:id/permissions (admin) */
 export async function updatePermissions(req: Request, res: Response): Promise<void> {
   const { permissions } = req.body;
-  if (!Array.isArray(permissions)) {
-    res.status(400).json({ ok: false, error: 'permissions는 배열이어야 합니다.' });
-    return;
-  }
   try {
     const role = await prisma.role.update({
       where: { id: req.params.id },
@@ -655,11 +630,6 @@ export async function verifyPassword(req: Request, res: Response): Promise<void>
   }
 
   const { userId, password } = req.body;
-  if (!userId || !password) {
-    res.status(400).json({ ok: false, error: 'userId와 password는 필수입니다.' });
-    return;
-  }
-
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.passwordHash) {
@@ -702,11 +672,6 @@ export async function ssoHook(req: Request, res: Response): Promise<void> {
     userId?: string;
     details?: Record<string, string>;
   };
-
-  if (!type) {
-    res.status(400).json({ ok: false, error: 'type 필드가 필요합니다.' });
-    return;
-  }
 
   try {
     switch (type) {

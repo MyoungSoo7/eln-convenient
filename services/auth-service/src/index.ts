@@ -3,6 +3,9 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import authRoutes from './routes/auth.routes';
 import { swaggerDocument } from './swagger';
+import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+
+setupProcessHandlers('auth-service');
 
 const app = express();
 const PORT = process.env.PORT || 8001;
@@ -20,6 +23,8 @@ app.get('/health', (_req, res) => {
 
 // 라우트
 app.use('/api/auth', authRoutes);
+
+app.use(globalErrorHandler('auth-service'));
 
 app.listen(PORT, () => {
   console.log(`[auth-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

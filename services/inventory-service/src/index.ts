@@ -3,6 +3,9 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import inventoryRoutes from './routes/inventory.routes';
 import { swaggerDocument } from './swagger';
+import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+
+setupProcessHandlers('inventory-service');
 
 const app = express();
 const PORT = process.env.PORT || 8004;
@@ -16,6 +19,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/inventory', inventoryRoutes);
+
+app.use(globalErrorHandler('inventory-service'));
 
 app.listen(PORT, () => {
   console.log(`[inventory-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);

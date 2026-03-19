@@ -7,11 +7,6 @@ export async function addKeywordFavorite(req: Request, res: Response): Promise<v
   const userId = (req.headers['x-user-id'] as string)?.trim();
   const { keyword } = req.body;
 
-  if (!keyword?.trim()) {
-    res.status(400).json({ ok: false, error: 'keyword는 필수입니다.' });
-    return;
-  }
-
   try {
     const fav = await prisma.searchKeywordFavorite.create({
       data: { id: uuidv4(), userId, keyword: keyword.trim() },

@@ -137,7 +137,16 @@
       "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=eln\" npx prisma migrate dev --name add_note_status_history_soft_delete)",
       "Bash(DATABASE_URL=\"postgresql://labnote:labnote_secret_2024@localhost:5432/labnote?schema=eln\" npx prisma db push)",
       "Bash(node -e \"require\\(''puppeteer''\\); console.log\\(''puppeteer OK''\\)\")",
-      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra -type f \\\\\\(-name *.sql -o -name *.prisma -o -name *schema* -o -name *migration* -o -name *entity* -o -name *entities* \\\\\\))"
+      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra -type f \\\\\\(-name *.sql -o -name *.prisma -o -name *schema* -o -name *migration* -o -name *entity* -o -name *entities* \\\\\\))",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:d[k] for k in [''''scripts'''',''''jest''''] if k in d}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''scripts'''',{}\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''scripts'''',{}\\)\\)\" cat /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/api-gateway/package.json)",
+      "Bash(ls:*)",
+      "Bash(wc -l /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/*/src/controllers/*.ts)",
+      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra -name validation* -o -name validator* -o -name validate*)",
+      "Bash(find C:/vscode/lab/lab-companion-feature-phase1-backend-infra/services/search-service/src -name *.ts)",
+      "Bash(find C:/vscode/lab/lab-companion-feature-phase1-backend-infra/services/file-service/src -name *.routes.ts -o -name export*)",
+      "Bash(find C:/vscode/lab/lab-companion-feature-phase1-backend-infra/services/eln-service/src -name template*)"
     ]
   }
 }

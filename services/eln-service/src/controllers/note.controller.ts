@@ -125,10 +125,6 @@ export async function getNoteById(req: Request, res: Response): Promise<void> {
 /** POST /api/notes  또는  POST /api/protocols */
 export async function createNote(req: Request, res: Response): Promise<void> {
   const { title, content, sections, templateId, tags, type } = req.body;
-  if (!title) {
-    res.status(400).json({ ok: false, error: 'title은 필수입니다.' });
-    return;
-  }
   const authorId = (req.headers['x-user-id'] as string) || 'anonymous';
   const noteType: NoteType = type || 'note';
 
@@ -405,10 +401,6 @@ export async function adminUnlockNote(req: Request, res: Response): Promise<void
     }
 
     const { adminPassword, reason } = req.body as AdminUnlockDto;
-    if (!adminPassword?.trim()) {
-      res.status(400).json({ ok: false, error: '관리자 비밀번호를 입력해주세요.' });
-      return;
-    }
 
     const adminId = req.headers['x-user-id'] as string;
     const verified = await verifyAdminPassword(adminId, adminPassword);
@@ -580,10 +572,6 @@ export async function getNoteLinks(req: Request, res: Response): Promise<void> {
 /** POST /api/notes/:id/links */
 export async function createNoteLink(req: Request, res: Response): Promise<void> {
   const { targetType, targetId, label } = req.body;
-  if (!targetType || !targetId) {
-    res.status(400).json({ ok: false, error: 'targetType과 targetId는 필수입니다.' });
-    return;
-  }
   try {
     const link = await prisma.noteLink.create({
       data: {
@@ -665,10 +653,6 @@ export async function getTemplateById(req: Request, res: Response): Promise<void
 }
 
 export async function createTemplate(req: Request, res: Response): Promise<void> {
-  if (!req.body.title) {
-    res.status(400).json({ ok: false, error: 'title은 필수입니다.' });
-    return;
-  }
   try {
     const tmpl = await prisma.template.create({
       data: {
@@ -693,10 +677,6 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
 /** GET /api/notes/stats */
 export async function getNoteStats(req: Request, res: Response): Promise<void> {
   const type = (req.query.type as string) || 'note';
-  if (!['note', 'protocol'].includes(type)) {
-    res.status(400).json({ ok: false, error: 'type은 note 또는 protocol이어야 합니다.' });
-    return;
-  }
   try {
     const rows = await prisma.note.groupBy({
       by: ['status'],
@@ -718,18 +698,6 @@ export async function getNoteStats(req: Request, res: Response): Promise<void> {
 /** POST /api/notes/batch */
 export async function getNotesBatch(req: Request, res: Response): Promise<void> {
   const { ids } = req.body;
-  if (!Array.isArray(ids) || !ids.every((id: unknown) => typeof id === 'string')) {
-    res.status(400).json({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
-    return;
-  }
-  if (ids.length === 0) {
-    res.json({ ok: true, data: [] });
-    return;
-  }
-  if (ids.length > 500) {
-    res.status(400).json({ ok: false, error: 'ids는 최대 500개까지 허용됩니다.' });
-    return;
-  }
   try {
     const notes = await prisma.note.findMany({
       where: { id: { in: ids }, deletedAt: null },

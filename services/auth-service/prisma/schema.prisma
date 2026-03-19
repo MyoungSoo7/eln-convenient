@@ -21,10 +21,17 @@ model Organization {
 model Role {
   id          String       @id @default(uuid())
   orgId       String
-  name        String
+  name        RoleName
   permissions String[]
   org         Organization @relation(fields: [orgId], references: [id])
   users       User[]
+}
+
+enum RoleName {
+  admin
+  researcher
+  reviewer
+  viewer
 }
 
 model User {

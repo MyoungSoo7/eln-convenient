@@ -1,5 +1,14 @@
 import { buildApp } from './app';
 
+// ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('[scheduler-service] Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[scheduler-service] Uncaught Exception:', err);
+  process.exit(1);
+});
+
 const PORT = Number(process.env.PORT) || 8005;
 const HOST = '0.0.0.0';
 
