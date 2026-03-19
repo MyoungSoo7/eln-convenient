@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -24,26 +25,6 @@ function useCurrentUser() {
   };
 }
 
-const mainItems = [
-  { title: "대시보드", url: "/", icon: LayoutDashboard },
-  { title: "연구노트", url: "/notes", icon: FileText },
-  { title: "프로토콜 / 템플릿", url: "/protocols", icon: BookOpen },
-  { title: "인벤토리", url: "/inventory", icon: Package },
-  { title: "스케줄러", url: "/scheduler", icon: CalendarDays },
-  { title: "통합검색", url: "/search", icon: Search },
-];
-
-const complianceItems = [
-  { title: "전자서명", url: "/signatures", icon: ShieldCheck },
-  { title: "감사로그", url: "/audit-logs", icon: ClipboardList },
-  { title: "내보내기 (PDF/ZIP)", url: "/exports", icon: FileDown },
-];
-
-const adminItems = [
-  { title: "조직 / 팀 / 사용자", url: "/admin/users", icon: Users },
-  { title: "역할 / 권한", url: "/admin/roles", icon: Building2 },
-  { title: "설정", url: "/admin/settings", icon: Settings },
-];
 
 function SidebarNavGroup({ label, items, defaultOpen = true }: {
   label: string;
@@ -97,6 +78,28 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const user = useCurrentUser();
   const subLabel = user.team || user.org;
+  const { t } = useTranslation('common');
+
+  const mainItems = [
+    { title: t('nav.dashboard'), url: "/", icon: LayoutDashboard },
+    { title: t('nav.notes'), url: "/notes", icon: FileText },
+    { title: t('nav.protocols'), url: "/protocols", icon: BookOpen },
+    { title: t('nav.inventory'), url: "/inventory", icon: Package },
+    { title: t('nav.scheduler'), url: "/scheduler", icon: CalendarDays },
+    { title: t('nav.search'), url: "/search", icon: Search },
+  ];
+
+  const complianceItems = [
+    { title: t('nav.signatures'), url: "/signatures", icon: ShieldCheck },
+    { title: t('nav.auditLogs'), url: "/audit-logs", icon: ClipboardList },
+    { title: t('nav.exports'), url: "/exports", icon: FileDown },
+  ];
+
+  const adminItems = [
+    { title: t('nav.orgTeamUser'), url: "/admin/users", icon: Users },
+    { title: t('nav.rolesPermissions'), url: "/admin/roles", icon: Building2 },
+    { title: t('nav.settings'), url: "/admin/settings", icon: Settings },
+  ];
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -108,17 +111,17 @@ export function AppSidebar() {
           {!collapsed && (
             <div>
               <h2 className="text-sm font-bold text-sidebar-foreground">LabNote</h2>
-              <p className="text-[10px] text-sidebar-foreground/50">전자연구노트 플랫폼</p>
+              <p className="text-[10px] text-sidebar-foreground/50">{t('sidebar.platformSubtitle')}</p>
             </div>
           )}
         </div>
       </SidebarHeader>
 
       <SidebarContent className="py-2">
-        <SidebarNavGroup label="메인" items={mainItems} />
-        <SidebarNavGroup label="규정 준수" items={complianceItems} />
+        <SidebarNavGroup label={t('sidebar.main')} items={mainItems} />
+        <SidebarNavGroup label={t('sidebar.compliance')} items={complianceItems} />
         {user.role === 'admin' && (
-          <SidebarNavGroup label="관리" items={adminItems} defaultOpen={false} />
+          <SidebarNavGroup label={t('sidebar.admin')} items={adminItems} defaultOpen={false} />
         )}
       </SidebarContent>
 

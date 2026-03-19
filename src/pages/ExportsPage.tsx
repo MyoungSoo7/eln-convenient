@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,27 @@ import {
   getExportStatus,
   type ExportJob,
 } from "@/api/signatures";
+import { getToken } from "@/lib/authToken";
 import { useTranslation } from "react-i18next";
 
 // ── 진행 중인 단일 내보내기 작업 폴링 컴포넌트 ──
 function ExportJobPoller({ job, onDone }: { job: ExportJob; onDone: (finished: ExportJob) => void }) {
+  const errorCountRef = useRef(0);
   const { data } = useQuery({
     queryKey: ["export-status", job.id],
-    queryFn: () => getExportStatus(job.id),
+    queryFn: async () => {
+      const res = await getExportStatus(job.id);
+      if (!res.ok) {
+        errorCountRef.current += 1;
+        // 5회 연속 실패 시 failed 처리
+        if (errorCountRef.current >= 5) {
+          return { ...res, data: { ...job, status: 'failed' as const } };
+        }
+      } else {
+        errorCountRef.current = 0;
+      }
+      return res;
+    },
     refetchInterval: (query) => {
       const status = query.state.data?.data?.status;
       return status === "completed" || status === "failed" ? false : 3000;
@@ -109,6 +123,44 @@ export default function ExportsPage() {
       toast({ title: t('toast.failed'), description: t('toast.failedDesc'), variant: "destructive" });
     }
   };
+
+  // SSE: 내보내기 상태 실시간 수신 (폴링 폴백은 ExportJobPoller가 담당)
+  const handleJobDoneRef = useRef(handleJobDone);
+  handleJobDoneRef.current = handleJobDone;
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+    const url = `${apiBase}/events/exports`;
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(url);
+      es.addEventListener('export-status', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const finished: ExportJob = {
+            id: data.jobId,
+            noteId: data.noteId ?? '',
+            format: data.format ?? 'pdf',
+            status: data.status,
+            fileUrl: data.fileUrl,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          };
+          handleJobDoneRef.current(finished);
+        } catch { /* 무시 */ }
+      });
+      es.onerror = () => {
+        // SSE 실패 시 조용히 닫기 — 폴링이 폴백
+        es?.close();
+      };
+    } catch { /* SSE 미지원 환경 */ }
+
+    return () => { es?.close(); };
+  }, []);
 
   const handlePdfExport = async (noteId: string, noteTitle: string) => {
     const res = await requestPdfExport(noteId);

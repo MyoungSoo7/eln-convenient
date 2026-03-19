@@ -250,6 +250,13 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     },
   });
 
+  // Redis Pub/Sub: 내보내기 완료 알림 (SSE용)
+  try {
+    redisConnection.publish('export-status', JSON.stringify({
+      jobId, status: 'completed', fileUrl, format, noteId, requestedBy,
+    }));
+  } catch { /* 무시 */ }
+
   await job.updateProgress(100);
   console.log(`[export-worker] 잡 완료: ${jobId} → ${fileUrl.slice(0, 60)}...`);
 }
@@ -283,6 +290,14 @@ exportWorker.on('failed', (job, err) => {
         details: { jobId, format, noteId, error: err.message.slice(0, 500) },
       },
     }).catch(() => {});
+
+    // Redis Pub/Sub: 내보내기 실패 알림 (SSE용)
+    try {
+      redisConnection.publish('export-status', JSON.stringify({
+        jobId, status: 'failed', format, noteId, requestedBy,
+        error: err.message.slice(0, 200),
+      }));
+    } catch { /* 무시 */ }
   }
 });
 

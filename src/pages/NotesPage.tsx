@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,10 +43,6 @@ const statusColors: Record<string, string> = {
   signed: "bg-success/10 text-success",
   locked: "bg-destructive/10 text-destructive",
 };
-const statusLabels: Record<string, string> = {
-  draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
-};
-
 const statusTransitions: Record<string, string[]> = {
   draft: ["in_progress"],
   in_progress: ["draft", "locked"],
@@ -58,6 +55,13 @@ const statusTransitions: Record<string, string[]> = {
 const isDeletable = (status: string) => status === "draft" || status === "in_progress";
 
 export default function NotesPage() {
+  const { t } = useTranslation('notes');
+  const { t: tc } = useTranslation('common');
+
+  const statusLabels: Record<string, string> = {
+    draft: tc('status.draft'), in_progress: tc('status.in_progress'), signed: tc('status.signed'), locked: tc('status.locked'),
+  };
+
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
   const [notes, setNotes] = useState<Note[]>([]);
@@ -86,7 +90,7 @@ export default function NotesPage() {
         if (res.ok) {
           setNotes(res.data);
         } else {
-          setLoadError(res.error || "노트 목록을 불러오지 못했습니다.");
+          setLoadError(res.error || t('loadError'));
           setNotes([]);
         }
       })
@@ -103,20 +107,20 @@ export default function NotesPage() {
             : n
         )
       );
-      toast.success(`상태가 "${statusLabels[newStatus]}"(으)로 변경되었습니다.`);
+      toast.success(t('statusChanged', { status: statusLabels[newStatus] }));
     } else {
-      toast.error(res.error || "상태 변경에 실패했습니다.");
+      toast.error(res.error || t('statusChangeFailed'));
     }
   };
 
   const handleAdminUnlock = async () => {
     if (!unlockTarget) return;
     if (!adminPassword.trim()) {
-      toast.error("관리자 비밀번호를 입력해주세요.");
+      toast.error(t('unlockPasswordRequired'));
       return;
     }
     setUnlocking(true);
-    const res = await adminUnlockNote(unlockTarget.id, adminPassword, "관리자 잠금 해제");
+    const res = await adminUnlockNote(unlockTarget.id, adminPassword, t('unlockTitle'));
     setUnlocking(false);
     if (res.ok) {
       setNotes((prev) =>
@@ -126,14 +130,14 @@ export default function NotesPage() {
             : n
         )
       );
-      toast.success(`"${unlockTarget.title}" 노트의 잠금이 해제되었습니다.`, {
-        description: "관리자 권한으로 잠금 해제됨 — 감사로그에 기록됩니다.",
+      toast.success(t('unlockSuccess', { title: unlockTarget.title }), {
+        description: t('unlockSuccessDesc'),
         icon: <Unlock className="h-4 w-4" />,
       });
       setUnlockTarget(null);
       setAdminPassword("");
     } else {
-      toast.error(res.error || "잠금 해제에 실패했습니다.");
+      toast.error(res.error || t('unlockFailed'));
     }
   };
 
@@ -144,10 +148,10 @@ export default function NotesPage() {
     setDeleting(false);
     if (res.ok) {
       setNotes((prev) => prev.filter((n) => n.id !== deleteTarget.id));
-      toast.success(`"${deleteTarget.title}" 노트가 삭제되었습니다.`);
+      toast.success(t('deleteSuccess', { title: deleteTarget.title }));
       setDeleteTarget(null);
     } else {
-      toast.error(res.error || "노트 삭제에 실패했습니다.");
+      toast.error(res.error || t('deleteFailed'));
     }
   };
 
@@ -163,14 +167,14 @@ export default function NotesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            연구노트
-            <HelpTooltip text="모든 연구노트를 조회하고 관리하는 화면입니다. 제목이나 태그로 검색하고, 상태별로 필터링할 수 있습니다." />
+            {t('title')}
+            <HelpTooltip text={t('titleTooltip')} />
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">실험 기록 관리 및 검색</p>
+          <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         </div>
         <Link to="/notes/new">
           <Button className="gradient-primary text-primary-foreground gap-2">
-            <Plus className="h-4 w-4" /> 새 노트
+            <Plus className="h-4 w-4" /> {t('newNote')}
           </Button>
         </Link>
       </div>
@@ -179,14 +183,14 @@ export default function NotesPage() {
       {templateIdFilter && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
           <FileText className="h-4 w-4 shrink-0" />
-          특정 프로토콜로 생성된 노트만 표시 중
+          {t('templateFilterBanner')}
           <Button
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs ml-auto"
             onClick={() => navigate("/notes")}
           >
-            필터 해제
+            {t('clearFilter')}
           </Button>
         </div>
       )}
@@ -195,14 +199,14 @@ export default function NotesPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="노트 제목, 태그 검색..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
         </div>
         <div className="flex gap-1.5 items-center">
-          <HelpTooltip text="상태 필터: 초안(작성 중), 진행 중(실험 수행), 서명 완료(검증됨), 잠김(변경 불가). 관리자는 잠긴 노트를 해제할 수 있습니다." side="bottom" />
+          <HelpTooltip text={t('filterTooltip')} side="bottom" />
           {["all", "draft", "in_progress", "signed", "locked"].map((f) => (
             <Button
               key={f}
@@ -211,21 +215,21 @@ export default function NotesPage() {
               onClick={() => setFilter(f)}
               className="text-xs"
             >
-              {f === "all" ? "전체" : statusLabels[f]}
+              {f === "all" ? tc('all') : statusLabels[f]}
             </Button>
           ))}
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">로딩 중...</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">{tc('loading')}</div>
       ) : loadError ? (
         <div className="text-center py-12 text-destructive text-sm">
           ⚠️ {loadError}
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
-          {search ? "검색 결과가 없습니다." : "노트가 없습니다. 새 노트를 작성해보세요."}
+          {search ? t('noResults') : t('empty')}
         </div>
       ) : (
         <div className="space-y-3">
@@ -271,14 +275,14 @@ export default function NotesPage() {
                               <>
                                 {canTransition && <DropdownMenuSeparator />}
                                 <DropdownMenuLabel className="text-[10px] text-muted-foreground font-normal flex items-center gap-1">
-                                  <ShieldAlert className="h-3 w-3" /> 관리자 전용
+                                  <ShieldAlert className="h-3 w-3" /> {t('adminOnly')}
                                 </DropdownMenuLabel>
                                 <DropdownMenuItem
                                   onClick={() => setUnlockTarget(note)}
                                   className="text-xs text-destructive focus:text-destructive"
                                 >
                                   <Unlock className="h-3 w-3 mr-2" />
-                                  잠금 해제
+                                  {t('unlock')}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -318,35 +322,34 @@ export default function NotesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-destructive" />
-              관리자 잠금 해제
+              {t('unlockTitle')}
             </DialogTitle>
             <DialogDescription>
-              <strong>"{unlockTarget?.title}"</strong> 노트의 잠금을 해제합니다.
-              해제 후 상태가 "초안"으로 변경되며, 이 작업은 감사로그에 기록됩니다.
+              {t('unlockDesc', { title: unlockTarget?.title })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
-              <label className="text-sm font-medium mb-1.5 block">관리자 비밀번호</label>
+              <label className="text-sm font-medium mb-1.5 block">{t('unlockPassword')}</label>
               <Input
                 type="password"
-                placeholder="비밀번호를 입력하세요"
+                placeholder={t('unlockPasswordPlaceholder')}
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdminUnlock()}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              ⚠️ 이 작업은 되돌릴 수 없으며, 감사 추적(Audit Trail)에 관리자 정보와 함께 기록됩니다.
+              {t('unlockWarning')}
             </p>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setUnlockTarget(null); setAdminPassword(""); }}>
-              취소
+              {tc('cancel')}
             </Button>
             <Button variant="destructive" onClick={handleAdminUnlock} disabled={unlocking} className="gap-2">
               <Unlock className="h-4 w-4" />
-              {unlocking ? "해제 중..." : "잠금 해제"}
+              {unlocking ? t('unlocking') : t('unlock')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -359,20 +362,19 @@ export default function NotesPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>노트를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>"{deleteTarget?.title}"</strong> 노트를 삭제합니다.
-              삭제된 노트는 복구할 수 없습니다.
+              {t('deleteDesc', { title: deleteTarget?.title })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteNote}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "삭제 중..." : "삭제"}
+              {deleting ? tc('deleting') : tc('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

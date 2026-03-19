@@ -12,8 +12,48 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
+      '/api/auth': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/api/protocols': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/templates': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/notes': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/tags': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/signatures': {
+        target: 'http://localhost:8003',
+        changeOrigin: true,
+      },
+      '/api/audit': {
+        target: 'http://localhost:8003',
+        changeOrigin: true,
+      },
+      '/api/notifications': {
+        target: 'http://localhost:8003',
+        changeOrigin: true,
+      },
+      '/api/inventory': {
+        target: 'http://localhost:8004',
+        changeOrigin: true,
+      },
+      '/api/search': {
+        target: 'http://localhost:8006',
+        changeOrigin: true,
+      },
+      '/api/files': {
+        target: 'http://localhost:8008',
         changeOrigin: true,
       },
     },

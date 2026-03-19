@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
+import redis from '../lib/redis';
 import type { ItemType } from '../dtos/inventory.dto';
 import { searchClient } from '../lib/searchClient';
+
+const CATEGORY_CACHE_KEY = 'cache:inv-categories';
+const CATEGORY_CACHE_TTL = 1800; // 30분
 
 // ─────────────────────────────────────────────
 // 아이템 CRUD
@@ -375,10 +379,27 @@ export async function getLowStockItems(req: Request, res: Response): Promise<voi
 // 카테고리 CRUD
 // ─────────────────────────────────────────────
 
-/** GET /api/inventory/categories */
+/** GET /api/inventory/categories (Redis 캐시 적용: 30분 TTL) */
 export async function getCategories(_req: Request, res: Response): Promise<void> {
+  // Redis 캐시 확인
+  if (redis) {
+    try {
+      const cached = await redis.get(CATEGORY_CACHE_KEY);
+      if (cached) {
+        res.json({ ok: true, data: JSON.parse(cached) });
+        return;
+      }
+    } catch { /* Redis 오류 무시 → DB 폴백 */ }
+  }
+
   try {
     const categories = await prisma.category.findMany({ orderBy: { name: 'asc' } });
+
+    // Redis에 캐싱
+    if (redis) {
+      try { await redis.set(CATEGORY_CACHE_KEY, JSON.stringify(categories), 'EX', CATEGORY_CACHE_TTL); } catch { /* 무시 */ }
+    }
+
     res.json({ ok: true, data: categories });
   } catch (err) {
     console.error('[getCategories]', err);
@@ -386,11 +407,17 @@ export async function getCategories(_req: Request, res: Response): Promise<void>
   }
 }
 
+/** 카테고리 캐시 무효화 헬퍼 */
+async function invalidateCategoryCache(): Promise<void> {
+  if (redis) { try { await redis.del(CATEGORY_CACHE_KEY); } catch { /* 무시 */ } }
+}
+
 /** POST /api/inventory/categories */
 export async function createCategory(req: Request, res: Response): Promise<void> {
   const { name } = req.body;
   try {
     const category = await prisma.category.create({ data: { id: uuidv4(), name: name.trim() } });
+    await invalidateCategoryCache();
     res.status(201).json({ ok: true, data: category });
   } catch (err: any) {
     if (err?.code === 'P2002') {
@@ -410,6 +437,7 @@ export async function updateCategory(req: Request, res: Response): Promise<void>
       where: { id: req.params.id },
       data: { name: name.trim() },
     });
+    await invalidateCategoryCache();
     res.json({ ok: true, data: category });
   } catch (err: any) {
     if (err?.code === 'P2025') {
@@ -429,6 +457,7 @@ export async function updateCategory(req: Request, res: Response): Promise<void>
 export async function deleteCategory(req: Request, res: Response): Promise<void> {
   try {
     await prisma.category.delete({ where: { id: req.params.id } });
+    await invalidateCategoryCache();
     res.json({ ok: true, message: '카테고리가 삭제되었습니다.' });
   } catch (err: any) {
     if (err?.code === 'P2025') {

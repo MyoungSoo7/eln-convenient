@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { search as searchFn, type SearchResult } from "@/api/search";
 const searchApi = { search: searchFn };
@@ -41,6 +42,9 @@ function Snippet({ result }: { result: SearchResult }) {
 }
 
 export default function SearchPage() {
+  const { t } = useTranslation('searchPage');
+  const { t: tc } = useTranslation('common');
+
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -55,8 +59,8 @@ export default function SearchPage() {
   } = useSearchHistory();
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
   }, [query]);
 
   const hasQuery = debouncedQuery.length > 0;
@@ -65,7 +69,7 @@ export default function SearchPage() {
     queryKey: ["search", debouncedQuery],
     queryFn: async () => {
       const res = await searchApi.search(debouncedQuery, undefined, 1, 20);
-      if (!res.ok) throw new Error(res.error ?? "검색 실패");
+      if (!res.ok) throw new Error(res.error ?? t('searchFailed'));
       return res.data;
     },
     enabled: hasQuery,
@@ -88,11 +92,11 @@ export default function SearchPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          통합검색
-          <HelpTooltip text="연구노트, 프로토콜, 인벤토리를 한 번에 검색합니다. 키워드를 입력하면 각 카테고리별 결과가 탭으로 분류됩니다." />
+          {t('title')}
+          <HelpTooltip text={t('titleTooltip')} />
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          노트, 프로토콜, 인벤토리 통합 검색 · 최근 검색 · 즐겨찾기
+          {t('subtitle')}
         </p>
       </div>
 
@@ -101,7 +105,7 @@ export default function SearchPage() {
           <div className="relative flex-1">
             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
-              placeholder="검색어를 입력하세요..."
+              placeholder={t('placeholder')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-12 h-12 text-base shadow-card"
@@ -114,7 +118,7 @@ export default function SearchPage() {
               variant="outline"
               size="icon"
               className="h-12 w-12 shrink-0"
-              title={currentIsFavorite ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
+              title={currentIsFavorite ? t('removeFavorite') : t('addFavorite')}
               onClick={() => toggleFavorite(query.trim() || debouncedQuery)}
             >
               <Star
@@ -126,8 +130,8 @@ export default function SearchPage() {
         {hasQuery && (
           <p className="text-xs text-muted-foreground">
             {currentIsFavorite
-              ? "이 검색어는 즐겨찾기에 있습니다. 별 아이콘을 누르면 해제됩니다."
-              : "별 아이콘을 누르면 즐겨찾기에 추가됩니다."}
+              ? t('isFavoriteHint')
+              : t('notFavoriteHint')}
           </p>
         )}
       </div>
@@ -137,8 +141,8 @@ export default function SearchPage() {
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" /> 최근 검색
-                <HelpTooltip text="최근에 검색했던 키워드입니다. 클릭하면 바로 검색됩니다." />
+                <Clock className="h-4 w-4 text-muted-foreground" /> {t('recentSearches')}
+                <HelpTooltip text={t('recentTooltip')} />
               </h3>
               {recentSearches.length > 0 && (
                 <Button
@@ -148,13 +152,13 @@ export default function SearchPage() {
                   className="text-muted-foreground h-8"
                   onClick={clearRecent}
                 >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> 지우기
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> {t('clearRecent')}
                 </Button>
               )}
             </div>
             <div className="flex gap-2 flex-wrap">
               {recentSearches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">최근 검색 내역이 없습니다.</p>
+                <p className="text-sm text-muted-foreground">{t('noRecent')}</p>
               ) : (
                 recentSearches.map((s) => (
                   <Badge
@@ -171,12 +175,12 @@ export default function SearchPage() {
           </div>
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
-              <Star className="h-4 w-4 text-amber-500" /> 즐겨찾기
-              <HelpTooltip text="자주 쓰는 검색어를 즐겨찾기해 두세요. 클릭하면 검색되고, 옆 ×로 제거할 수 있습니다." />
+              <Star className="h-4 w-4 text-amber-500" /> {t('favorites')}
+              <HelpTooltip text={t('favoritesTooltip')} />
             </h3>
             <div className="flex gap-2 flex-wrap">
               {favoriteSearches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">즐겨찾기한 검색어가 없습니다.</p>
+                <p className="text-sm text-muted-foreground">{t('noFavorites')}</p>
               ) : (
                 favoriteSearches.map((s) => (
                   <Badge
@@ -189,7 +193,7 @@ export default function SearchPage() {
                     <button
                       type="button"
                       className="ml-0.5 rounded p-0.5 hover:bg-muted"
-                      aria-label={`${s} 즐겨찾기 해제`}
+                      aria-label={`${s} ${t('removeFavorite')}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         removeFavorite(s);
@@ -208,25 +212,25 @@ export default function SearchPage() {
           {isLoading && (
             <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span>검색 중...</span>
+              <span>{t('searching')}</span>
             </div>
           )}
           {isError && (
             <p className="text-sm text-destructive py-4">
-              {(error as Error)?.message ?? "검색 중 오류가 발생했습니다."}
+              {(error as Error)?.message ?? t('searchError')}
             </p>
           )}
           {!isLoading && !isError && (
             <Tabs defaultValue="notes" className="max-w-4xl">
               <TabsList>
                 <TabsTrigger value="notes" className="gap-1.5">
-                  <FileText className="h-3.5 w-3.5" /> 노트 ({notes.length})
+                  <FileText className="h-3.5 w-3.5" /> {t('tab.notes')} ({notes.length})
                 </TabsTrigger>
                 <TabsTrigger value="protocols" className="gap-1.5">
-                  <BookOpen className="h-3.5 w-3.5" /> 프로토콜 ({protocols.length})
+                  <BookOpen className="h-3.5 w-3.5" /> {t('tab.protocols')} ({protocols.length})
                 </TabsTrigger>
                 <TabsTrigger value="inventory" className="gap-1.5">
-                  <Package className="h-3.5 w-3.5" /> 인벤토리 ({inventory.length})
+                  <Package className="h-3.5 w-3.5" /> {t('tab.inventory')} ({inventory.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -242,7 +246,7 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {notes.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">검색 결과가 없습니다</p>
+                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
                 )}
               </TabsContent>
 
@@ -258,7 +262,7 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {protocols.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">검색 결과가 없습니다</p>
+                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
                 )}
               </TabsContent>
 
@@ -274,13 +278,13 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {inventory.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">검색 결과가 없습니다</p>
+                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
                 )}
               </TabsContent>
             </Tabs>
           )}
           {!isLoading && !isError && total > 0 && (
-            <p className="text-xs text-muted-foreground">총 {total}건 (노트·프로토콜·인벤토리 통합)</p>
+            <p className="text-xs text-muted-foreground">{t('total', { total })}</p>
           )}
         </>
       )}

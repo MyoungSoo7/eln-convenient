@@ -35,10 +35,10 @@ export default function Dashboard() {
   const pendingBookings = apiData?.scheduler?.pendingBookings ?? mockBookings.filter(b => b.status === 'pending').length;
 
   const stats = [
-    { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: "작성된 전체 연구노트 수입니다." },
-    { label: t('stats.experiments'), value: String(noteInProgress), change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: "현재 진행 중인 실험 노트 수입니다." },
-    { label: t('stats.inventory'), value: String(invTotal), change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: "등록된 시약, 샘플, 장비의 총 수량입니다." },
-    { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: "승인 대기 중인 예약 건수입니다." },
+    { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip') },
+    { label: t('stats.experiments'), value: String(noteInProgress), change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: t('stats.experimentsTooltip') },
+    { label: t('stats.inventory'), value: String(invTotal), change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: t('stats.inventoryTooltip') },
+    { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip') },
   ];
 
   // 최근 노트: API → mock fallback
@@ -78,7 +78,7 @@ export default function Dashboard() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         {isError && (
-          <p className="text-xs text-destructive mt-1">서버 연결 실패 — 임시 데이터를 표시합니다.</p>
+          <p className="text-xs text-destructive mt-1">{tc('error.serverFallback')}</p>
         )}
       </div>
 
@@ -112,7 +112,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 {t('recentNotes')}
-                <HelpTooltip text="최근에 수정된 연구노트 4개를 보여줍니다." />
+                <HelpTooltip text={t('recentNotesTooltip')} />
               </CardTitle>
               <Link to="/notes" className="text-xs text-primary hover:underline">{t('viewAll')}</Link>
             </div>
@@ -141,10 +141,10 @@ export default function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                예약 일정
-                <HelpTooltip text="예정된 장비 및 회의실 예약 목록입니다. 승인/대기 상태를 확인할 수 있습니다." />
+                {t('bookings_section')}
+                <HelpTooltip text={t('bookingsTooltip')} />
               </CardTitle>
-              <Link to="/scheduler" className="text-xs text-primary hover:underline">전체 보기</Link>
+              <Link to="/scheduler" className="text-xs text-primary hover:underline">{t('viewAll')}</Link>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -165,7 +165,7 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground">{dateStr} {startTime}–{endTime} · {b.userId}</p>
                   </div>
                   <Badge variant="secondary" className={`text-[10px] ${isApproved ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                    {isApproved ? '승인' : '대기'}
+                    {isApproved ? t('approved') : t('pending')}
                   </Badge>
                 </div>
               );
@@ -179,7 +179,7 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground">{b.date} {b.startTime}–{b.endTime} · {b.user}</p>
                 </div>
                 <Badge variant="secondary" className={`text-[10px] ${b.status === 'approved' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                  {b.status === 'approved' ? '승인' : '대기'}
+                  {b.status === 'approved' ? t('approved') : t('pending')}
                 </Badge>
               </div>
             ))}
@@ -190,8 +190,8 @@ export default function Dashboard() {
         <Card className="shadow-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              최근 활동 로그
-              <HelpTooltip text="시스템 내 모든 사용자의 최근 활동 기록입니다. 서명, 편집, 예약 등의 이력을 추적합니다." />
+              {t('recentActivity')}
+              <HelpTooltip text={t('recentActivityTooltip')} />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -225,8 +225,8 @@ export default function Dashboard() {
         <Card className="shadow-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              만료/주의 항목
-              <HelpTooltip text="재고 부족이거나 만료 임박/만료된 항목을 표시합니다." />
+              {t('alerts')}
+              <HelpTooltip text={t('alertsTooltip')} />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -238,7 +238,7 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground">
                     {item.quantity != null && `${item.quantity} ${item.unit ?? ''}`}
                     {item.location && ` · ${item.location}`}
-                    {'daysLeft' in item && ` · ${(item as any).isExpired ? '만료됨' : `${(item as any).daysLeft}일 남음`}`}
+                    {'daysLeft' in item && ` · ${(item as any).isExpired ? t('isExpired') : t('daysLeft', { count: (item as any).daysLeft })}`}
                   </p>
                 </div>
               </div>
@@ -251,7 +251,7 @@ export default function Dashboard() {
                 </div>
               </div>
             )) : (
-              <p className="text-sm text-muted-foreground text-center py-4">만료/주의 항목 없음</p>
+              <p className="text-sm text-muted-foreground text-center py-4">{t('noAlerts')}</p>
             )}
           </CardContent>
         </Card>

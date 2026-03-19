@@ -12,11 +12,32 @@
   "submit": "제출",
   "download": "다운로드",
   "upload": "업로드",
+  "add": "추가",
+  "close": "닫기",
+  "retry": "재시도",
+  "refresh": "새로고침",
+  "all": "전체",
+  "previous": "이전",
+  "next": "다음",
+  "apply": "적용",
+  "saving": "저장 중...",
+  "deleting": "삭제 중...",
+  "processing": "처리 중...",
+  "back": "목록",
+  "viewAll": "전체 보기",
+  "noData": "데이터가 없습니다.",
+  "loadFailed": "데이터를 불러오지 못했습니다.",
+  "saveFailed": "저장에 실패했습니다.",
+  "deleteFailed": "삭제에 실패했습니다.",
+  "items": "건",
   "status": {
     "draft": "초안",
     "in_progress": "진행 중",
     "signed": "서명 완료",
-    "locked": "잠김"
+    "locked": "잠김",
+    "active": "활성",
+    "inactive": "비활성",
+    "suspended": "정지"
   },
   "role": {
     "admin": "관리자",
@@ -26,18 +47,43 @@
   "nav": {
     "dashboard": "대시보드",
     "notes": "연구노트",
-    "protocols": "프로토콜",
+    "protocols": "프로토콜 / 템플릿",
     "inventory": "인벤토리",
     "scheduler": "스케줄러",
     "signatures": "전자서명",
-    "exports": "내보내기",
-    "auditLogs": "감사 로그",
-    "search": "검색",
+    "exports": "내보내기 (PDF/ZIP)",
+    "auditLogs": "감사로그",
+    "search": "통합검색",
+    "orgTeamUser": "조직 / 팀 / 사용자",
+    "rolesPermissions": "역할 / 권한",
+    "settings": "설정",
     "ai": "AI 어시스턴트",
     "admin": "관리자"
   },
+  "sidebar": {
+    "platformSubtitle": "전자연구노트 플랫폼",
+    "main": "메인",
+    "compliance": "규정 준수",
+    "admin": "관리"
+  },
+  "notification": {
+    "title": "알림",
+    "markAllRead": "모두 읽음",
+    "empty": "알림이 없습니다",
+    "noteLocked": "잠금",
+    "noteSigned": "서명",
+    "noteUnlocked": "잠금 해제",
+    "bookingApproved": "예약 승인"
+  },
+  "time": {
+    "justNow": "방금 전",
+    "minutesAgo": "{{count}}분 전",
+    "hoursAgo": "{{count}}시간 전",
+    "daysAgo": "{{count}}일 전"
+  },
   "error": {
     "serverError": "서버 연결에 실패했습니다.",
+    "serverFallback": "서버 연결 실패 — 임시 데이터를 표시합니다.",
     "unauthorized": "인증이 필요합니다.",
     "forbidden": "권한이 부족합니다.",
     "notFound": "찾을 수 없습니다."

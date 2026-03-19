@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,12 +16,8 @@ import { getStoredUser } from "@/lib/authToken";
 
 const APPROVE_ROLES = ["admin", "reviewer"];
 
-const days = ["월", "화", "수", "목", "금", "토", "일"];
 const hours = Array.from({ length: 10 }, (_, i) => `${(i + 8).toString().padStart(2, "0")}:00`);
 
-const statusLabels: Record<string, string> = {
-  PENDING: "대기", APPROVED: "승인", REJECTED: "거절", CANCELLED: "취소", COMPLETED: "완료",
-};
 const statusColors: Record<string, string> = {
   PENDING: "bg-warning/10 text-warning border-warning/30",
   APPROVED: "bg-success/10 text-success border-success/30",
@@ -28,7 +25,6 @@ const statusColors: Record<string, string> = {
   CANCELLED: "bg-muted text-muted-foreground",
   COMPLETED: "bg-muted text-muted-foreground",
 };
-const typeLabels: Record<string, string> = { EQUIPMENT: "장비", ROOM: "회의실" };
 
 // ISO datetime → "YYYY-MM-DD" (로컬 시간 기준)
 function toLocalDate(iso: string): string {
@@ -62,6 +58,15 @@ function formatDate(d: Date): string {
 type StatusFilter = "all" | "PENDING" | "APPROVED";
 
 export default function SchedulerPage() {
+  const { t } = useTranslation('scheduler');
+  const { t: tc } = useTranslation('common');
+
+  const days = [t('days.mon'), t('days.tue'), t('days.wed'), t('days.thu'), t('days.fri'), t('days.sat'), t('days.sun')];
+  const statusLabels: Record<string, string> = {
+    PENDING: t('status.PENDING'), APPROVED: t('status.APPROVED'), REJECTED: t('status.REJECTED'), CANCELLED: t('status.CANCELLED'), COMPLETED: t('status.COMPLETED'),
+  };
+  const typeLabels: Record<string, string> = { EQUIPMENT: t('type.EQUIPMENT'), ROOM: t('type.ROOM') };
+
   const [weekOffset, setWeekOffset] = useState(0);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -119,15 +124,15 @@ export default function SchedulerPage() {
 
   const handleCreate = async () => {
     if (!formResourceId) {
-      toast({ title: "장비/회의실을 선택해주세요.", variant: "destructive" });
+      toast({ title: t('form.selectResource'), variant: "destructive" });
       return;
     }
     if (!formTitle.trim()) {
-      toast({ title: "예약 목적을 입력해주세요.", variant: "destructive" });
+      toast({ title: t('form.enterPurpose'), variant: "destructive" });
       return;
     }
     if (formStartTime >= formEndTime) {
-      toast({ title: "종료 시간이 시작 시간보다 늦어야 합니다.", variant: "destructive" });
+      toast({ title: t('form.invalidTime'), variant: "destructive" });
       return;
     }
 
@@ -141,21 +146,21 @@ export default function SchedulerPage() {
     if (res.ok && res.data) {
       const newBooking = res.data as BackendBooking;
       setBookings((prev) => [newBooking, ...prev]);
-      toast({ title: "예약 생성 완료", description: `${newBooking.resource?.name || formResourceId} 예약이 등록되었습니다. (대기 중)` });
+      toast({ title: t('createSuccess'), description: t('createSuccessDesc', { name: newBooking.resource?.name || formResourceId }) });
       setNewBookingOpen(false);
       resetForm();
     } else {
-      toast({ title: "예약 실패", description: res.error || "예약 생성에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('createFailed'), description: res.error || t('createFailedDesc'), variant: "destructive" });
     }
   };
 
   const handleApprove = async (id: string) => {
     const res = await approveBooking(id);
     if (res.ok) {
-      toast({ title: "승인 완료", description: "예약이 승인되었습니다." });
+      toast({ title: t('approveSuccess'), description: t('approveSuccessDesc') });
       loadData();
     } else {
-      toast({ title: "승인 실패", description: res.error || "승인에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('approveFailed'), description: res.error || t('approveFailedDesc'), variant: "destructive" });
     }
   };
 
@@ -163,10 +168,10 @@ export default function SchedulerPage() {
     if (!rejectTarget) return;
     const res = await rejectBooking(rejectTarget, rejectReason || undefined);
     if (res.ok) {
-      toast({ title: "반려 완료", description: "예약이 반려되었습니다." });
+      toast({ title: t('rejectSuccess'), description: t('rejectSuccessDesc') });
       loadData();
     } else {
-      toast({ title: "반려 실패", description: res.error || "반려에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('rejectFailed'), description: res.error || t('rejectFailedDesc'), variant: "destructive" });
     }
     setRejectTarget(null);
     setRejectReason("");
@@ -178,38 +183,38 @@ export default function SchedulerPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            스케줄러
-            <HelpTooltip text="장비, 회의실 등 공유 자원의 예약을 관리하는 캘린더입니다. 주간 뷰로 예약 현황을 확인하고 새 예약을 생성할 수 있습니다." />
+            {t('title')}
+            <HelpTooltip text={t('titleTooltip')} />
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">장비 및 회의실 예약 관리</p>
+          <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={loadData} className="gap-1.5">
-            <RefreshCw className="h-3.5 w-3.5" /> 새로고침
+            <RefreshCw className="h-3.5 w-3.5" /> {tc('refresh')}
           </Button>
           <Dialog open={newBookingOpen} onOpenChange={(open) => { setNewBookingOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button className="gradient-primary text-primary-foreground gap-2">
-                <Plus className="h-4 w-4" /> 예약 생성
+                <Plus className="h-4 w-4" /> {t('newBooking')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  예약 생성
-                  <HelpTooltip text="장비 또는 회의실을 선택하고 날짜, 시간, 사용 목적을 입력하여 예약을 생성합니다. 관리자 승인 후 확정됩니다." />
+                  {t('form.title')}
+                  <HelpTooltip text={t('form.tooltip')} />
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>장비 / 회의실 <span className="text-destructive">*</span></Label>
+                  <Label>{t('form.resource')} <span className="text-destructive">*</span></Label>
                   <Select value={formResourceId} onValueChange={setFormResourceId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="선택하세요" />
+                      <SelectValue placeholder={t('form.resourcePlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
                       {resources.length === 0 ? (
-                        <SelectItem value="_none" disabled>자원이 없습니다</SelectItem>
+                        <SelectItem value="_none" disabled>{t('form.noResources')}</SelectItem>
                       ) : (
                         resources.map((r) => (
                           <SelectItem key={r.id} value={r.id}>
@@ -225,15 +230,15 @@ export default function SchedulerPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>예약 목적 <span className="text-destructive">*</span></Label>
+                  <Label>{t('form.purpose')} <span className="text-destructive">*</span></Label>
                   <Input
-                    placeholder="예: CRISPR 실험 장비 사용"
+                    placeholder={t('form.purposePlaceholder')}
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>날짜 <span className="text-destructive">*</span></Label>
+                  <Label>{t('form.date')} <span className="text-destructive">*</span></Label>
                   <Input
                     type="date"
                     value={formDate}
@@ -243,7 +248,7 @@ export default function SchedulerPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>시작 시간</Label>
+                    <Label>{t('form.startTime')}</Label>
                     <Input
                       type="time"
                       value={formStartTime}
@@ -252,7 +257,7 @@ export default function SchedulerPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>종료 시간</Label>
+                    <Label>{t('form.endTime')}</Label>
                     <Input
                       type="time"
                       value={formEndTime}
@@ -263,13 +268,13 @@ export default function SchedulerPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setNewBookingOpen(false); resetForm(); }}>취소</Button>
+                <Button variant="outline" onClick={() => { setNewBookingOpen(false); resetForm(); }}>{tc('cancel')}</Button>
                 <Button
                   onClick={handleCreate}
                   disabled={submitting}
                   className="gradient-primary text-primary-foreground"
                 >
-                  {submitting ? "처리 중..." : "예약하기"}
+                  {submitting ? tc('processing') : t('form.submit')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -279,7 +284,7 @@ export default function SchedulerPage() {
 
       {/* 주간 네비게이션 */}
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={() => setWeekOffset(0)}>오늘</Button>
+        <Button variant="outline" size="sm" onClick={() => setWeekOffset(0)}>{t('today')}</Button>
         <Button variant="ghost" size="icon" onClick={() => setWeekOffset(weekOffset - 1)}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -290,7 +295,7 @@ export default function SchedulerPage() {
           {weekDates[0].getMonth() + 1}월 {weekDates[0].getDate()}일 –{" "}
           {weekDates[6].getMonth() + 1}월 {weekDates[6].getDate()}일
         </span>
-        <HelpTooltip text="화살표로 이전/다음 주를 탐색하고, '오늘' 버튼으로 현재 주로 돌아옵니다." />
+        <HelpTooltip text={t('weekNavTooltip')} />
       </div>
 
       {/* 캘린더 그리드 */}
@@ -342,27 +347,27 @@ export default function SchedulerPage() {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="text-base flex items-center gap-2">
-              예약 목록
-              <HelpTooltip text="모든 예약의 상세 목록입니다. 전체·대기·승인 상태별로 필터링할 수 있습니다." />
+              {t('bookingList')}
+              <HelpTooltip text={t('bookingListTooltip')} />
               {bookings.length > 0 && (
                 <span className="text-xs text-muted-foreground font-normal ml-1">({bookings.length}건)</span>
               )}
             </CardTitle>
             <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-auto">
               <TabsList className="h-9">
-                <TabsTrigger value="all" className="text-xs px-3">전체</TabsTrigger>
-                <TabsTrigger value="PENDING" className="text-xs px-3">대기</TabsTrigger>
-                <TabsTrigger value="APPROVED" className="text-xs px-3">승인</TabsTrigger>
+                <TabsTrigger value="all" className="text-xs px-3">{tc('all')}</TabsTrigger>
+                <TabsTrigger value="PENDING" className="text-xs px-3">{t('status.PENDING')}</TabsTrigger>
+                <TabsTrigger value="APPROVED" className="text-xs px-3">{t('status.APPROVED')}</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
+            <p className="text-sm text-muted-foreground text-center py-6">{tc('loading')}</p>
           ) : bookings.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              {statusFilter === "all" ? "예약이 없습니다. 새 예약을 생성해보세요." : `'${statusFilter === "PENDING" ? "대기" : "승인"}' 상태 예약이 없습니다.`}
+              {statusFilter === "all" ? t('emptyAll') : t('emptyFiltered', { status: statusLabels[statusFilter] })}
             </p>
           ) : (
             <div className="space-y-3">
@@ -394,7 +399,7 @@ export default function SchedulerPage() {
                           className="h-7 px-2 text-xs text-success border-success/30 hover:bg-success/10"
                           onClick={() => handleApprove(b.id)}
                         >
-                          <Check className="h-3 w-3 mr-1" /> 승인
+                          <Check className="h-3 w-3 mr-1" /> {t('approve')}
                         </Button>
                         <Button
                           variant="outline"
@@ -402,7 +407,7 @@ export default function SchedulerPage() {
                           className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
                           onClick={() => setRejectTarget(b.id)}
                         >
-                          <X className="h-3 w-3 mr-1" /> 반려
+                          <X className="h-3 w-3 mr-1" /> {t('rejectBtn')}
                         </Button>
                       </>
                     )}
@@ -421,19 +426,19 @@ export default function SchedulerPage() {
       <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open) { setRejectTarget(null); setRejectReason(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>예약 반려</DialogTitle>
+            <DialogTitle>{t('rejectTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            <Label>반려 사유</Label>
+            <Label>{t('rejectLabel')}</Label>
             <Input
-              placeholder="반려 사유를 입력해주세요 (선택)"
+              placeholder={t('rejectPlaceholder')}
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>취소</Button>
-            <Button variant="destructive" onClick={handleReject}>반려</Button>
+            <Button variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>{tc('cancel')}</Button>
+            <Button variant="destructive" onClick={handleReject}>{t('rejectBtn')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

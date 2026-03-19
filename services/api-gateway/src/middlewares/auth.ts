@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
-import Redis from 'ioredis';
+import redis from '../lib/redis';
 
 // 공개 경로 (인증 불필요)
 const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook'];
@@ -34,9 +34,20 @@ const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
 /**
  * auth-service에서 역할별 권한 목록 조회 (Keycloak SSO 사용자용)
+ * Redis 캐시 적용: 1시간 TTL (role-perms:{role})
  * 조회 실패 시 빈 배열 반환 (graceful)
  */
 async function fetchRolePermissions(role: string): Promise<string[]> {
+  const cacheKey = `role-perms:${role}`;
+
+  // Redis 캐시 확인
+  if (redis) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch { /* Redis 오류는 무시 */ }
+  }
+
   try {
     const res = await fetch(
       `${AUTH_SERVICE_URL}/api/auth/internal/role-permissions?role=${encodeURIComponent(role)}`,
@@ -44,22 +55,17 @@ async function fetchRolePermissions(role: string): Promise<string[]> {
     );
     if (!res.ok) return [];
     const body = await res.json() as { ok: boolean; permissions?: string[] };
-    return body.permissions ?? [];
+    const permissions = body.permissions ?? [];
+
+    // Redis에 캐싱 (1시간 TTL)
+    if (redis && permissions.length > 0) {
+      try { await redis.set(cacheKey, JSON.stringify(permissions), 'EX', 3600); } catch { /* 무시 */ }
+    }
+
+    return permissions;
   } catch {
     return [];
   }
-}
-
-// Redis 블랙리스트 (연결 실패 시 graceful 무시)
-let redis: Redis | null = null;
-try {
-  redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    lazyConnect: true,
-    maxRetriesPerRequest: 1,
-  });
-  redis.on('error', () => { /* Redis 없어도 운영 가능 */ });
-} catch {
-  redis = null;
 }
 
 /**

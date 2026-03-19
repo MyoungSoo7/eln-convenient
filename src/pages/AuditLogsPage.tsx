@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, ClipboardList, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { listAuditLogs, listAuditActions, type AuditLogQuery, type AuditLogEntry } from "@/api/signatures";
 
@@ -26,6 +27,9 @@ const ACTION_COLORS: Record<string, string> = {
 const PAGE_SIZE = 20;
 
 export default function AuditLogsPage() {
+  const { t, i18n } = useTranslation('auditLogs');
+  const { t: tc } = useTranslation('common');
+
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -65,12 +69,12 @@ export default function AuditLogsPage() {
       setLogs(Array.isArray(res.data) ? res.data : []);
       setTotal(res.total ?? 0);
     } else {
-      setError("감사로그를 불러올 수 없습니다. 백엔드 서비스를 확인하세요.");
+      setError(t('loadError'));
       setLogs([]);
       setTotal(0);
     }
     setLoading(false);
-  }, [page, actionFilter, dateFrom, dateTo, search]);
+  }, [page, actionFilter, dateFrom, dateTo, search, t]);
 
   useEffect(() => {
     fetchLogs();
@@ -86,7 +90,7 @@ export default function AuditLogsPage() {
   function formatDate(iso: string) {
     try {
       const d = new Date(iso);
-      return d.toLocaleString("ko-KR", {
+      return d.toLocaleString(i18n.language === 'en' ? 'en-US' : 'ko-KR', {
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "2-digit", minute: "2-digit", second: "2-digit",
       });
@@ -108,10 +112,10 @@ export default function AuditLogsPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          감사로그
-          <HelpTooltip text="시스템 내 모든 사용자 활동을 시간순으로 기록합니다. 규정 준수(GLP/GMP) 및 연구 무결성 검증에 활용됩니다." />
+          {t('title')}
+          <HelpTooltip text={t('titleTooltip')} />
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">모든 활동 이력 추적 및 검색 (총 {total}건)</p>
+        <p className="text-sm text-muted-foreground mt-1">{t('subtitle', { total })}</p>
       </div>
 
       {/* 검색 & 필터 */}
@@ -119,7 +123,7 @@ export default function AuditLogsPage() {
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="사용자 ID 검색..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); handleFilterChange(); }}
             className="pl-10"
@@ -127,10 +131,10 @@ export default function AuditLogsPage() {
         </div>
         <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); handleFilterChange(); }}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="활동 유형" />
+            <SelectValue placeholder={t('actionFilterPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">전체 활동</SelectItem>
+            <SelectItem value="all">{t('allActions')}</SelectItem>
             {actions.map((a) => (
               <SelectItem key={a} value={a}>{a}</SelectItem>
             ))}
@@ -149,30 +153,30 @@ export default function AuditLogsPage() {
           {loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
               <Loader2 className="h-5 w-5 animate-spin" />
-              불러오는 중...
+              {t('loadingText')}
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
               <p>{error}</p>
-              <Button variant="outline" size="sm" onClick={fetchLogs}>재시도</Button>
+              <Button variant="outline" size="sm" onClick={fetchLogs}>{tc('retry')}</Button>
             </div>
           ) : logs.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
-              조건에 맞는 감사로그가 없습니다.
+              {t('empty')}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>시간</TableHead>
+                  <TableHead>{t('col.time')}</TableHead>
                   <TableHead className="flex items-center gap-1">
-                    활동 <HelpTooltip text="수행된 작업의 유형입니다 (서명, 내보내기, 잠금 등)." />
+                    {t('col.action')} <HelpTooltip text={t('col.actionTooltip')} />
                   </TableHead>
-                  <TableHead>사용자</TableHead>
-                  <TableHead>대상</TableHead>
-                  <TableHead>상세</TableHead>
+                  <TableHead>{t('col.user')}</TableHead>
+                  <TableHead>{t('col.target')}</TableHead>
+                  <TableHead>{t('col.details')}</TableHead>
                   <TableHead className="flex items-center gap-1">
-                    IP <HelpTooltip text="활동이 발생한 네트워크 주소입니다. 보안 감사 시 추적에 활용됩니다." />
+                    {t('col.ip')} <HelpTooltip text={t('col.ipTooltip')} />
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -214,11 +218,11 @@ export default function AuditLogsPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
-              이전
+              {tc('previous')}
             </Button>
             <span className="text-sm text-muted-foreground">{page} / {totalPages}</span>
             <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              다음
+              {tc('next')}
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

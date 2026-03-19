@@ -1,0 +1,23 @@
+{
+  "title": "Integrated Search",
+  "titleTooltip": "Search lab notes, protocols, and inventory at once. Results are organized by category tabs.",
+  "subtitle": "Notes, protocols, inventory search · Recent · Favorites",
+  "placeholder": "Enter search query...",
+  "searching": "Searching...",
+  "searchFailed": "Search failed",
+  "searchError": "An error occurred while searching.",
+  "noResults": "No results found",
+  "total": "{{total}} total (notes, protocols, inventory)",
+  "recentSearches": "Recent Searches",
+  "recentTooltip": "Recently searched keywords. Click to search again.",
+  "clearRecent": "Clear",
+  "noRecent": "No recent searches.",
+  "favorites": "Favorites",
+  "favoritesTooltip": "Save frequently used searches. Click to search, × to remove.",
+  "noFavorites": "No favorite searches.",
+  "addFavorite": "Add to favorites",
+  "removeFavorite": "Remove from favorites",
+  "isFavoriteHint": "This search is in your favorites. Click the star to remove.",
+  "notFavoriteHint": "Click the star to add to favorites.",
+  "tab": { "notes": "Notes", "protocols": "Protocols", "inventory": "Inventory" }
+}

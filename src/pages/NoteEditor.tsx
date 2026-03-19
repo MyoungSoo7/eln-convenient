@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,30 +27,12 @@ import { uploadFile, getFileDownloadUrl } from "@/api/files";
 import { listItems } from "@/api/inventory";
 import { type InventoryItem } from "@/lib/mockData";
 
-const statusLabels: Record<string, string> = {
-  draft: "초안", in_progress: "진행 중", signed: "서명 완료", locked: "잠김",
-};
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   in_progress: "bg-info/10 text-info",
   signed: "bg-success/10 text-success",
   locked: "bg-destructive/10 text-destructive",
 };
-
-const sectionTemplate = `## 목적
-연구 목적을 기재하세요.
-
-## 재료
-- 시약/샘플 목록
-
-## 방법
-1. 실험 절차
-
-## 결과
-실험 결과 기재
-
-## 고찰
-결과에 대한 분석 및 해석`;
 
 function formatBytes(bytes?: number | null): string {
   if (!bytes) return "";
@@ -58,13 +41,23 @@ function formatBytes(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const INVENTORY_TYPE_LABELS: Record<string, string> = {
-  reagent: "시약", sample: "샘플", equipment: "장비", consumable: "소모품",
-  antibody: "항체", plasmid: "플라스미드", cell_line: "세포주",
-  output: "산출물", license: "라이선스", infrastructure: "인프라", other: "기타",
-};
-
 export default function NoteEditor() {
+  const { t } = useTranslation('notes');
+  const { t: tc } = useTranslation('common');
+  const { t: ti } = useTranslation('inventory');
+
+  const statusLabels: Record<string, string> = {
+    draft: tc('status.draft'), in_progress: tc('status.in_progress'), signed: tc('status.signed'), locked: tc('status.locked'),
+  };
+
+  const INVENTORY_TYPE_LABELS: Record<string, string> = {
+    reagent: ti('type.reagent'), sample: ti('type.sample'), equipment: ti('type.equipment'), consumable: ti('type.consumable'),
+    antibody: ti('type.antibody'), plasmid: ti('type.plasmid'), cell_line: ti('type.cell_line'),
+    output: ti('type.output'), license: ti('type.license'), infrastructure: ti('type.infrastructure'), other: ti('type.other'),
+  };
+
+  const sectionTemplate = t('sectionTemplate');
+
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -81,8 +74,9 @@ export default function NoteEditor() {
 
   const buildProtocolContent = () => {
     if (!protocolState?.fromProtocol) return sectionTemplate;
-    const cat = protocolState.category || "";
-    return `## 목적\n[${cat}] 실험 목적을 기재하세요.\n\n## 재료\n- 시약/샘플 목록\n\n## 방법\n1. 실험 절차\n\n## 결과\n실험 결과 기재\n\n## 고찰\n결과에 대한 분석 및 해석\n\n---\n> 📋 프로토콜 "${protocolState.title}" 기반으로 생성됨`;
+    const category = protocolState.category || "";
+    const title = protocolState.title || "";
+    return t('sectionTemplateFromProtocol', { category, title });
   };
 
   const [content, setContent] = useState(buildProtocolContent());
@@ -200,7 +194,7 @@ export default function NoteEditor() {
   // ── 저장 ──────────────────────────────────────
   const handleSave = async () => {
     if (!title.trim()) {
-      toast({ title: "제목을 입력해주세요.", variant: "destructive" });
+      toast({ title: t('editor.titleRequired'), variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -213,32 +207,32 @@ export default function NoteEditor() {
       });
       setSaving(false);
       if (res.ok && res.data?.id) {
-        toast({ title: "노트 생성 완료", description: "노트가 저장되었습니다." });
+        toast({ title: t('editor.createSuccess'), description: t('editor.saved') });
         navigate(`/notes/${res.data.id}`, { replace: true });
       } else {
-        toast({ title: "저장 실패", description: res.error || "노트 생성에 실패했습니다.", variant: "destructive" });
+        toast({ title: t('editor.saveFailed'), description: res.error || t('editor.createFailed'), variant: "destructive" });
       }
     } else {
-      const res = await updateNote(id!, { title, content, changeSummary: "직접 편집" });
+      const res = await updateNote(id!, { title, content, changeSummary: t('editor.directEdit') });
       setSaving(false);
       if (res.ok) {
-        toast({ title: "저장 완료", description: "노트가 저장되었습니다." });
+        toast({ title: t('editor.saveSuccess'), description: t('editor.saved') });
       } else {
-        toast({ title: "저장 실패", description: res.error || "저장에 실패했습니다.", variant: "destructive" });
+        toast({ title: t('editor.saveFailed'), description: res.error || t('editor.saveFailed'), variant: "destructive" });
       }
     }
   };
 
   const handleSign = async () => {
     if (!signPassword.trim()) {
-      toast({ title: "비밀번호를 입력해주세요.", variant: "destructive" });
+      toast({ title: t('editor.passwordRequired'), variant: "destructive" });
       return;
     }
     setSigning(true);
     const signRes = await signNote(id!, signPassword);
     setSigning(false);
     if (!signRes.ok) {
-      toast({ title: "서명 실패", description: signRes.error || "전자서명에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('editor.signFailed'), description: signRes.error || t('editor.signFailed'), variant: "destructive" });
       return;
     }
     // signature-audit-service가 내부적으로 ELN 노트 상태를 "signed"로 전환하므로
@@ -246,27 +240,27 @@ export default function NoteEditor() {
     setNoteStatus("signed");
     setSignDialogOpen(false);
     setSignPassword("");
-    toast({ title: "전자서명 완료", description: "노트가 서명되어 잠금 처리되었습니다." });
+    toast({ title: t('editor.signSuccess'), description: t('editor.signSuccessDesc') });
   };
 
   const handleStartProgress = async () => {
     const res = await changeNoteStatus(id!, "in_progress");
     if (res.ok) {
       setNoteStatus("in_progress");
-      toast({ title: "상태 변경", description: "노트가 '진행 중' 상태로 변경되었습니다." });
+      toast({ title: t('editor.statusChanged'), description: t('editor.statusChangedToProgress') });
     } else {
-      toast({ title: "상태 변경 실패", description: res.error || "상태 변경에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('editor.statusChangeFailed'), description: res.error || t('editor.statusChangeFailed'), variant: "destructive" });
     }
   };
 
   // ── 첨부파일 ──────────────────────────────────
   const handleFileUpload = async (file: File) => {
     if (isNew) {
-      toast({ title: "먼저 노트를 저장하세요.", variant: "destructive" });
+      toast({ title: t('editor.attachment.saveFirst'), variant: "destructive" });
       return;
     }
     if (isLocked) {
-      toast({ title: "서명/잠금된 노트에는 파일을 추가할 수 없습니다.", variant: "destructive" });
+      toast({ title: t('editor.attachment.lockedNote'), variant: "destructive" });
       return;
     }
     setUploading(true);
@@ -274,7 +268,7 @@ export default function NoteEditor() {
     // 1. file-service에 업로드
     const uploadRes = await uploadFile(file, { type: 'note', id: id! });
     if (!uploadRes.ok) {
-      toast({ title: "업로드 실패", description: uploadRes.error || "파일 업로드에 실패했습니다.", variant: "destructive" });
+      toast({ title: t('editor.attachment.uploadFailed'), description: uploadRes.error || t('editor.attachment.uploadFailed'), variant: "destructive" });
       setUploading(false);
       return;
     }
@@ -289,9 +283,9 @@ export default function NoteEditor() {
 
     if (attRes.ok) {
       setAttachments((prev) => [...prev, attRes.data]);
-      toast({ title: "업로드 완료", description: `${file.name} 이(가) 첨부되었습니다.` });
+      toast({ title: t('editor.attachment.uploadSuccess'), description: t('editor.attachment.attached', { name: file.name }) });
     } else {
-      toast({ title: "첨부 등록 실패", description: attRes.error, variant: "destructive" });
+      toast({ title: t('editor.attachment.registerFailed'), description: attRes.error, variant: "destructive" });
     }
     setUploading(false);
   };
@@ -313,13 +307,13 @@ export default function NoteEditor() {
     const res = await deleteAttachmentRecord(id!, att.id);
     if (res.ok) {
       setAttachments((prev) => prev.filter((a) => a.id !== att.id));
-      toast({ title: "첨부파일 삭제 완료" });
+      toast({ title: t('editor.attachment.deleteSuccess') });
     }
   };
 
   // ── 인벤토리 연결 ──────────────────────────────
   const openInventoryDialog = async () => {
-    if (isNew) { toast({ title: "먼저 노트를 저장하세요.", variant: "destructive" }); return; }
+    if (isNew) { toast({ title: t('editor.attachment.saveFirst'), variant: "destructive" }); return; }
     setInventoryDialogOpen(true);
     setInventoryLoading(true);
     const res = await listItems();
@@ -335,7 +329,7 @@ export default function NoteEditor() {
     });
     if (res.ok) {
       setLinks((prev) => [...prev, res.data]);
-      toast({ title: "연결 완료", description: `${item.name} 이(가) 연결되었습니다.` });
+      toast({ title: t('editor.link.linkSuccess'), description: t('editor.link.linked', { name: item.name }) });
     }
     setInventoryDialogOpen(false);
     setInventorySearch("");
@@ -345,7 +339,7 @@ export default function NoteEditor() {
     const res = await deleteNoteLink(id!, link.id);
     if (res.ok) {
       setLinks((prev) => prev.filter((l) => l.id !== link.id));
-      toast({ title: "연결 해제 완료" });
+      toast({ title: t('editor.link.unlinkSuccess') });
     }
   };
 
@@ -367,44 +361,44 @@ export default function NoteEditor() {
     <div className="p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-3">
         <Link to="/notes">
-          <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> 목록</Button>
+          <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> {tc('back')}</Button>
         </Link>
-        <HelpTooltip text="연구노트 편집기입니다. Markdown 형식으로 작성하며, 첨부파일 추가, 시약/장비 연결, 버전 이력 확인이 가능합니다. 서명 시 노트가 잠금 처리됩니다." />
+        <HelpTooltip text={t('editor.tooltip')} />
         <div className="flex-1" />
         {!isLocked && (
           <>
             <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
               <Save className="h-4 w-4" />
-              {saving ? "저장 중..." : "저장"}
+              {saving ? tc('saving') : tc('save')}
             </Button>
             {!isNew && noteStatus === "draft" && (
               <Button variant="outline" size="sm" onClick={handleStartProgress} className="gap-1.5">
-                진행 시작
+                {t('editor.startProgress')}
               </Button>
             )}
             {!isNew && noteStatus === "in_progress" && (
               <Dialog open={signDialogOpen} onOpenChange={(open) => { setSignDialogOpen(open); if (!open) setSignPassword(""); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">
-                    <ShieldCheck className="h-4 w-4" /> 서명하기
+                    <ShieldCheck className="h-4 w-4" /> {t('editor.sign')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                      전자서명 확인
-                      <HelpTooltip text="서명을 진행하면 노트 내용이 해시화되어 시점인증이 완료됩니다. 서명 후에는 내용 수정이 불가능합니다." />
+                      {t('editor.signTitle')}
+                      <HelpTooltip text={t('editor.signTooltip')} />
                     </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <p className="text-sm text-muted-foreground">
-                      서명 후 노트는 잠금 처리되며 수정이 불가합니다. 서명을 진행하시겠습니까?
+                      {t('editor.signWarning')}
                     </p>
                     <div className="space-y-2">
-                      <Label>비밀번호 확인 <span className="text-destructive">*</span></Label>
+                      <Label>{t('editor.passwordConfirm')} <span className="text-destructive">*</span></Label>
                       <Input
                         type="password"
-                        placeholder="비밀번호를 입력하세요"
+                        placeholder={t('editor.passwordPlaceholder')}
                         value={signPassword}
                         onChange={(e) => setSignPassword(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSign()}
@@ -412,9 +406,9 @@ export default function NoteEditor() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => { setSignDialogOpen(false); setSignPassword(""); }}>취소</Button>
+                    <Button variant="outline" onClick={() => { setSignDialogOpen(false); setSignPassword(""); }}>{tc('cancel')}</Button>
                     <Button onClick={handleSign} disabled={signing} className="gradient-primary text-primary-foreground">
-                      {signing ? "처리 중..." : "서명 확인"}
+                      {signing ? tc('processing') : t('editor.signConfirm')}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -431,7 +425,7 @@ export default function NoteEditor() {
           <span className="flex items-center gap-1.5 text-green-700 dark:text-green-400 font-medium">
             <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
             <Users className="h-3 w-3" />
-            실시간 편집 중
+            {t('editor.liveEditing')}
           </span>
           <div className="flex items-center gap-1">
             {connectedUsers.slice(0, 6).map((u) => (
@@ -454,7 +448,7 @@ export default function NoteEditor() {
       {isNew ? (
         <div className="space-y-2">
           <Input
-            placeholder="노트 제목을 입력하세요"
+            placeholder={t('editor.titlePlaceholder')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="text-xl font-bold border-0 bg-transparent px-0 focus-visible:ring-0 h-auto py-2"
@@ -462,7 +456,7 @@ export default function NoteEditor() {
           {protocolState?.fromProtocol && (
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-[10px] gap-1">
-                <FileText className="h-3 w-3" /> 프로토콜 기반
+                <FileText className="h-3 w-3" /> {t('editor.protocolBased')}
               </Badge>
               {protocolState.tags?.map((t) => (
                 <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
@@ -483,7 +477,7 @@ export default function NoteEditor() {
               <Link to="/protocols">
                 <Badge variant="secondary" className="text-[10px] gap-1 cursor-pointer hover:bg-secondary/80">
                   <FileText className="h-3 w-3" />
-                  프로토콜: {templateTitle}
+                  {t('editor.protocolLabel', { title: templateTitle })}
                 </Badge>
               </Link>
             </div>
@@ -493,21 +487,21 @@ export default function NoteEditor() {
 
       <Tabs defaultValue="editor" className="mt-4">
         <TabsList>
-          <TabsTrigger value="editor" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> 편집기</TabsTrigger>
+          <TabsTrigger value="editor" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> {t('editor.tab.editor')}</TabsTrigger>
           <TabsTrigger value="attachments" className="gap-1.5">
-            <Paperclip className="h-3.5 w-3.5" /> 첨부파일
+            <Paperclip className="h-3.5 w-3.5" /> {t('editor.tab.attachments')}
             {attachments.length > 0 && (
               <span className="ml-1 text-[10px] bg-primary/10 text-primary rounded-full px-1.5">{attachments.length}</span>
             )}
           </TabsTrigger>
           <TabsTrigger value="links" className="gap-1.5">
-            <Link2 className="h-3.5 w-3.5" /> 연결 항목
+            <Link2 className="h-3.5 w-3.5" /> {t('editor.tab.links')}
             {links.length > 0 && (
               <span className="ml-1 text-[10px] bg-primary/10 text-primary rounded-full px-1.5">{links.length}</span>
           )}
           </TabsTrigger>
           <TabsTrigger value="revisions" className="gap-1.5" onClick={handleRevisionsTabActivate}>
-            <Clock className="h-3.5 w-3.5" /> 버전 이력
+            <Clock className="h-3.5 w-3.5" /> {t('editor.tab.revisions')}
           </TabsTrigger>
         </TabsList>
 
@@ -520,7 +514,7 @@ export default function NoteEditor() {
                 onChange={(e) => handleContentChange(e.target.value)}
                 disabled={isLocked}
                 className="min-h-[500px] border-0 rounded-lg font-mono text-sm resize-none focus-visible:ring-0 p-6"
-                placeholder="Markdown 형식으로 작성하세요..."
+                placeholder={t('editor.contentPlaceholder')}
               />
             </CardContent>
           </Card>
@@ -532,7 +526,7 @@ export default function NoteEditor() {
             <CardContent className="p-6 space-y-4">
               {isNew ? (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  노트를 먼저 저장하면 파일을 첨부할 수 있습니다.
+                  {t('editor.attachment.saveFirstHint')}
                 </p>
               ) : (
                 <>
@@ -549,9 +543,9 @@ export default function NoteEditor() {
                     >
                       <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
                       <p className="text-sm font-medium mt-3">
-                        {uploading ? "업로드 중..." : "파일을 드래그하거나 클릭하여 업로드"}
+                        {uploading ? t('editor.attachment.uploading') : t('editor.attachment.dropOrClick')}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">PDF, 이미지, 데이터 파일 등 여러 파일 동시 첨부 가능 (최대 50MB)</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t('editor.attachment.hint')}</p>
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -600,7 +594,7 @@ export default function NoteEditor() {
                   )}
 
                   {attachments.length === 0 && !uploading && (
-                    <p className="text-sm text-muted-foreground text-center py-2">첨부된 파일이 없습니다.</p>
+                    <p className="text-sm text-muted-foreground text-center py-2">{t('editor.attachment.empty')}</p>
                   )}
                 </>
               )}
@@ -613,14 +607,14 @@ export default function NoteEditor() {
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                연결된 항목
-                <HelpTooltip text="이 노트에서 사용된 시약, 샘플, 장비를 연결하여 추적성을 확보합니다. 인벤토리 항목과 양방향으로 연결됩니다." />
+                {t('editor.link.title')}
+                <HelpTooltip text={t('editor.link.tooltip')} />
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {isNew ? (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  노트를 먼저 저장하면 시약/장비를 연결할 수 있습니다.
+                  {t('editor.link.saveFirstHint')}
                 </p>
               ) : (
                 <>
@@ -644,11 +638,11 @@ export default function NoteEditor() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-6">연결된 항목이 없습니다</p>
+                    <p className="text-sm text-muted-foreground text-center py-6">{t('editor.link.empty')}</p>
                   )}
                   {!isLocked && (
                     <Button variant="outline" size="sm" className="w-full mt-2 gap-1.5" onClick={openInventoryDialog}>
-                      <Link2 className="h-3.5 w-3.5" /> 시약/샘플/장비 연결
+                      <Link2 className="h-3.5 w-3.5" /> {t('editor.link.addLink')}
                     </Button>
                   )}
                 </>
@@ -662,13 +656,13 @@ export default function NoteEditor() {
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                버전 이력
-                <HelpTooltip text="노트의 모든 수정 이력을 시간순으로 표시합니다." />
+                {t('editor.revision.title')}
+                <HelpTooltip text={t('editor.revision.tooltip')} />
               </CardTitle>
             </CardHeader>
             <CardContent>
               {isNew ? (
-                <p className="text-sm text-muted-foreground text-center py-6">저장 후 버전 이력을 확인할 수 있습니다.</p>
+                <p className="text-sm text-muted-foreground text-center py-6">{t('editor.revision.saveFirstHint')}</p>
               ) : revisions.length > 0 ? (
                 <div className="relative">
                   <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
@@ -683,7 +677,7 @@ export default function NoteEditor() {
                               {new Date(rev.createdAt).toLocaleString('ko-KR')}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground mt-0.5">{rev.changeSummary || "수정"}</p>
+                          <p className="text-sm text-muted-foreground mt-0.5">{rev.changeSummary || t('editor.revision.edited')}</p>
                           <p className="text-xs text-muted-foreground">{rev.changedBy}</p>
                         </div>
                       </div>
@@ -691,7 +685,7 @@ export default function NoteEditor() {
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-6">버전 이력이 없습니다</p>
+                <p className="text-sm text-muted-foreground text-center py-6">{t('editor.revision.empty')}</p>
               )}
             </CardContent>
           </Card>
@@ -703,14 +697,14 @@ export default function NoteEditor() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Link2 className="h-4 w-4" /> 시약/샘플/장비 연결
+              <Link2 className="h-4 w-4" /> {t('editor.link.addLink')}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="relative">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="이름 또는 타입으로 검색..."
+                placeholder={t('editor.link.searchPlaceholder')}
                 value={inventorySearch}
                 onChange={(e) => setInventorySearch(e.target.value)}
                 className="pl-10"
@@ -718,9 +712,9 @@ export default function NoteEditor() {
             </div>
             <div className="max-h-72 overflow-y-auto space-y-1.5">
               {inventoryLoading ? (
-                <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
+                <p className="text-sm text-muted-foreground text-center py-6">{tc('loading')}</p>
               ) : filteredInventory.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">항목이 없습니다.</p>
+                <p className="text-sm text-muted-foreground text-center py-6">{t('editor.link.noItems')}</p>
               ) : (
                 filteredInventory.map((item) => (
                   <button
@@ -739,7 +733,7 @@ export default function NoteEditor() {
                       variant={item.status === "available" ? "default" : "secondary"}
                       className="text-[10px] shrink-0"
                     >
-                      {item.status === "available" ? "이용 가능" : item.status}
+                      {item.status === "available" ? t('editor.link.available') : item.status}
                     </Badge>
                   </button>
                 ))
@@ -747,7 +741,7 @@ export default function NoteEditor() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInventoryDialogOpen(false)}>닫기</Button>
+            <Button variant="outline" onClick={() => setInventoryDialogOpen(false)}>{tc('close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

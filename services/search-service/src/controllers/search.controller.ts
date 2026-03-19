@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
+import redis from '../lib/redis';
 import type { ISearchResult, ISearchResponse, DomainType } from '../interfaces/search.interface';
 import {
   osClient,
@@ -12,6 +14,8 @@ import {
   bulkIndexDocuments,
   getIndexStats,
 } from '../lib/opensearch';
+
+const SEARCH_CACHE_TTL = 180; // 3분
 
 // ─── 권한 필터 ────────────────────────────────────────────
 function buildPermissionFilter(userId: string): object {
@@ -47,6 +51,19 @@ export async function search(req: Request, res: Response): Promise<void> {
   }
 
   const domainTypes = parseDomainTypes(domainTypesParam);
+
+  // Redis 캐시 확인 (3분 TTL)
+  const cacheParams = JSON.stringify({ q, domainTypes, page, size, dateFrom, dateTo, userId });
+  const cacheKey = `cache:search:${createHash('sha256').update(cacheParams).digest('hex').slice(0, 16)}`;
+  if (redis) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        res.json(JSON.parse(cached));
+        return;
+      }
+    } catch { /* Redis 오류 무시 */ }
+  }
 
   try {
     const filters: object[] = [
@@ -146,6 +163,12 @@ export async function search(req: Request, res: Response): Promise<void> {
       size,
       took: response.body.took,
     };
+
+    // 결과가 있을 때만 캐싱 (3분 TTL)
+    if (redis && results.length > 0) {
+      try { await redis.set(cacheKey, JSON.stringify(responseBody), 'EX', SEARCH_CACHE_TTL); } catch { /* 무시 */ }
+    }
+
     res.json(responseBody);
   } catch (err) {
     console.error('[search] OpenSearch 검색 실패:', err);

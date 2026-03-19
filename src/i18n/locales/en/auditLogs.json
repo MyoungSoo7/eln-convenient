@@ -1,0 +1,12 @@
+{
+  "title": "Audit Logs",
+  "titleTooltip": "Records all user activities in chronological order. Used for compliance (GLP/GMP) and research integrity verification.",
+  "subtitle": "Activity history tracking and search ({{total}} total)",
+  "searchPlaceholder": "Search by user ID...",
+  "actionFilterPlaceholder": "Action type",
+  "allActions": "All Actions",
+  "loadError": "Cannot load audit logs. Please check the backend service.",
+  "loadingText": "Loading...",
+  "empty": "No audit logs matching the criteria.",
+  "col": { "time": "Time", "action": "Action", "actionTooltip": "The type of action performed (sign, export, lock, etc.).", "user": "User", "target": "Target", "details": "Details", "ip": "IP", "ipTooltip": "The network address where the activity occurred. Used for security audit tracking." }
+}

@@ -676,6 +676,9 @@ export async function updatePermissions(req: Request, res: Response): Promise<vo
       });
     }
 
+    // Redis 역할 권한 캐시 무효화 (api-gateway 캐시)
+    try { await redis.del(`role-perms:${role.name}`); } catch { /* 무시 */ }
+
     res.json({ ok: true, data: { id: role.id, permissions: role.permissions }, message: '권한 수정 완료' });
   } catch (err: any) {
     if (err?.code === 'P2025') {

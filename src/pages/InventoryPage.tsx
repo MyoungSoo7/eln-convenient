@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,20 +18,8 @@ import {
 } from "@/api/inventory";
 
 // ─────────────────────────────────────────────
-// 상수
+// 상수 (non-translatable)
 // ─────────────────────────────────────────────
-
-const TYPE_LABELS: Record<string, string> = {
-  reagent: "시약", sample: "샘플", equipment: "장비",
-  consumable: "소모품", antibody: "항체", plasmid: "플라스미드",
-  cell_line: "세포주", output: "산출물", license: "라이선스",
-  infrastructure: "인프라", other: "기타",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  available: "사용가능", in_use: "사용중", depleted: "소진",
-  expired: "만료", disposed: "폐기", maintenance: "유지보수",
-};
 
 const STATUS_COLORS: Record<string, string> = {
   available: "bg-green-100 text-green-800",
@@ -42,18 +31,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const OTHER_TYPES = ["output", "license", "infrastructure", "other"];
-
-const TAB_DEFS = [
-  { key: "all", label: "전체" },
-  { key: "reagent", label: "시약" },
-  { key: "sample", label: "샘플" },
-  { key: "equipment", label: "장비" },
-  { key: "consumable", label: "소모품" },
-  { key: "antibody", label: "항체" },
-  { key: "plasmid", label: "플라스미드" },
-  { key: "cell_line", label: "세포주" },
-  { key: "other_group", label: "기타" },
-] as const;
 
 const SENTINEL_ALL = "__ALL__";
 
@@ -72,6 +49,7 @@ function AlertBanner({
   onExpiringClick: () => void;
   onLowStockClick: () => void;
 }) {
+  const { t } = useTranslation('inventory');
   if (expiringCount === 0 && lowStockCount === 0) return null;
   return (
     <div className="flex gap-2 flex-wrap">
@@ -80,7 +58,7 @@ function AlertBanner({
           onClick={onExpiringClick}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-sm hover:bg-orange-100 transition-colors"
         >
-          <span className="font-semibold">{expiringCount}건</span> 만료 임박
+          {t('alert.expiring', { count: expiringCount })}
         </button>
       )}
       {lowStockCount > 0 && (
@@ -88,7 +66,7 @@ function AlertBanner({
           onClick={onLowStockClick}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm hover:bg-red-100 transition-colors"
         >
-          <span className="font-semibold">{lowStockCount}건</span> 재고 부족
+          {t('alert.lowStock', { count: lowStockCount })}
         </button>
       )}
     </div>
@@ -112,6 +90,21 @@ function AddEditDialog({
   categories: { id: string; name: string }[];
   onSaved: () => void;
 }) {
+  const { t } = useTranslation('inventory');
+  const { t: tc } = useTranslation('common');
+
+  const TYPE_LABELS: Record<string, string> = {
+    reagent: t('type.reagent'), sample: t('type.sample'), equipment: t('type.equipment'),
+    consumable: t('type.consumable'), antibody: t('type.antibody'), plasmid: t('type.plasmid'),
+    cell_line: t('type.cell_line'), output: t('type.output'), license: t('type.license'),
+    infrastructure: t('type.infrastructure'), other: t('type.other'),
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    available: t('status.available'), in_use: t('status.in_use'), depleted: t('status.depleted'),
+    expired: t('status.expired'), disposed: t('status.disposed'), maintenance: t('status.maintenance'),
+  };
+
   const isEdit = !!editItem;
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -147,7 +140,7 @@ function AddEditDialog({
   }, [editItem, open]);
 
   const handleSave = async () => {
-    if (!form.name.trim()) { toast.error("이름을 입력해주세요."); return; }
+    if (!form.name.trim()) { toast.error(t('dialog.nameRequired')); return; }
     setSubmitting(true);
     const basePayload = {
       name: form.name.trim(),
@@ -169,11 +162,11 @@ function AddEditDialog({
         : await createItem(basePayload);
 
       if (res.ok) {
-        toast.success(isEdit ? "아이템이 수정되었습니다." : "아이템이 추가되었습니다.");
+        toast.success(isEdit ? t('dialog.editSuccess') : t('dialog.addSuccess'));
         onOpenChange(false);
         onSaved();
       } else {
-        toast.error((res as { ok: false; error: string }).error || "저장에 실패했습니다.");
+        toast.error((res as { ok: false; error: string }).error || tc('saveFailed'));
       }
     } finally {
       setSubmitting(false);
@@ -184,16 +177,16 @@ function AddEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "아이템 수정" : "아이템 추가"}</DialogTitle>
+          <DialogTitle>{isEdit ? t('dialog.editTitle') : t('dialog.addTitle')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1">
-            <Label>이름 <span className="text-destructive">*</span></Label>
-            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="예: Cas9 단백질" />
+            <Label>{t('dialog.name')} <span className="text-destructive">*</span></Label>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('dialog.namePlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>유형 <span className="text-destructive">*</span></Label>
+              <Label>{t('dialog.type')} <span className="text-destructive">*</span></Label>
               <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as InventoryItem["type"] }))} disabled={isEdit}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -205,7 +198,7 @@ function AddEditDialog({
             </div>
             {isEdit && (
               <div className="space-y-1">
-                <Label>상태</Label>
+                <Label>{t('dialog.statusLabel')}</Label>
                 <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v as InventoryItem["status"] }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -219,15 +212,15 @@ function AddEditDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>카테고리</Label>
+              <Label>{t('dialog.category')}</Label>
               <Select
                 value={form.category || SENTINEL_ALL}
                 onValueChange={(v) => setForm((f) => ({ ...f, category: v === SENTINEL_ALL ? "" : v }))}
                 disabled={categories.length === 0}
               >
-                <SelectTrigger><SelectValue placeholder="선택..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t('dialog.category')} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={SENTINEL_ALL}>없음</SelectItem>
+                  <SelectItem value={SENTINEL_ALL}>{t('dialog.categoryNone')}</SelectItem>
                   {categories.map((c) => (
                     <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
                   ))}
@@ -235,49 +228,49 @@ function AddEditDialog({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>위치</Label>
-              <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder="예: A동 냉장고 #2" />
+              <Label>{t('dialog.location')}</Label>
+              <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder={t('dialog.locationPlaceholder')} />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label>수량</Label>
+              <Label>{t('dialog.quantity')}</Label>
               <Input type="number" min="0" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} placeholder="0" />
             </div>
             <div className="space-y-1">
-              <Label>단위</Label>
-              <Input value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} placeholder="μg, 개..." />
+              <Label>{t('dialog.unit')}</Label>
+              <Input value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} placeholder={t('dialog.unitPlaceholder')} />
             </div>
             <div className="space-y-1">
-              <Label>최소재고</Label>
+              <Label>{t('dialog.minQuantity')}</Label>
               <Input type="number" min="0" value={form.minQuantity} onChange={(e) => setForm((f) => ({ ...f, minQuantity: e.target.value }))} placeholder="0" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>바코드</Label>
+              <Label>{t('dialog.barcode')}</Label>
               <Input value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="REA-2026-001" />
             </div>
             <div className="space-y-1">
-              <Label>만료일</Label>
+              <Label>{t('dialog.expiryDate')}</Label>
               <Input type="date" value={form.expiryDate} onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>만료경고일수</Label>
+              <Label>{t('dialog.expiryWarningDays')}</Label>
               <Input type="number" min="1" value={form.expiryWarningDays} onChange={(e) => setForm((f) => ({ ...f, expiryWarningDays: e.target.value }))} placeholder="30" />
             </div>
             <div className="space-y-1">
-              <Label>태그</Label>
-              <Input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder="태그1, 태그2" />
+              <Label>{t('dialog.tags')}</Label>
+              <Input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder={t('dialog.tagsPlaceholder')} />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tc('cancel')}</Button>
           <Button onClick={handleSave} disabled={submitting} className="gradient-primary text-primary-foreground">
-            {submitting ? "저장 중..." : isEdit ? "수정" : "추가"}
+            {submitting ? tc('saving') : isEdit ? t('dialog.saveEdit') : tc('add')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -298,6 +291,9 @@ function AdjustQuantityDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation('inventory');
+  const { t: tc } = useTranslation('common');
+
   const [changeType, setChangeType] = useState<"in" | "out" | "adjust">("in");
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
@@ -315,16 +311,16 @@ function AdjustQuantityDialog({
 
   const handleSave = async () => {
     if (!item) return;
-    if (!qty || qtyNum <= 0) { toast.error("수량은 0보다 커야 합니다."); return; }
+    if (!qty || qtyNum <= 0) { toast.error(t('adjust.quantityRequired')); return; }
     setSubmitting(true);
     try {
       const res = await adjustQuantity(item.id, { changeType, quantity: qtyNum, reason: reason || undefined });
       if (res.ok) {
-        toast.success("수량이 조정되었습니다.");
+        toast.success(t('adjust.success'));
         onClose();
         onSaved();
       } else {
-        toast.error((res as { ok: false; error: string }).error || "수량 조정에 실패했습니다.");
+        toast.error((res as { ok: false; error: string }).error || t('adjust.failed'));
       }
     } finally {
       setSubmitting(false);
@@ -335,38 +331,37 @@ function AdjustQuantityDialog({
     <Dialog open={!!item} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>수량 조정 — {item?.name}</DialogTitle>
+          <DialogTitle>{t('adjust.title', { name: item?.name })}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label>변경 유형</Label>
+            <Label>{t('adjust.changeType')}</Label>
             <div className="flex gap-4">
-              {(["in", "out", "adjust"] as const).map((t) => (
-                <label key={t} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="radio" name="changeType" value={t} checked={changeType === t}
-                    onChange={() => setChangeType(t)} className="accent-primary" />
-                  <span className="text-sm">{t === "in" ? "입고" : t === "out" ? "출고" : "절대값 설정"}</span>
+              {(["in", "out", "adjust"] as const).map((ct) => (
+                <label key={ct} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="changeType" value={ct} checked={changeType === ct}
+                    onChange={() => setChangeType(ct)} className="accent-primary" />
+                  <span className="text-sm">{ct === "in" ? t('adjust.in') : ct === "out" ? t('adjust.out') : t('adjust.absoluteSet')}</span>
                 </label>
               ))}
             </div>
           </div>
           <div className="space-y-1">
-            <Label>수량</Label>
-            <Input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="수량 입력" />
+            <Label>{t('adjust.quantity')}</Label>
+            <Input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={t('adjust.quantityPlaceholder')} />
           </div>
           <div className="space-y-1">
-            <Label>사유 (선택)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="사유 입력..." />
+            <Label>{t('adjust.reason')}</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('adjust.reasonPlaceholder')} />
           </div>
           <div className="rounded-md bg-muted px-3 py-2 text-sm">
-            현재 <strong>{current}{item?.unit ?? ""}</strong> → 조정 후{" "}
-            <strong className={preview < 0 ? "text-destructive" : ""}>{preview}{item?.unit ?? ""}</strong>
+            {t('adjust.preview', { current, unit: item?.unit ?? "", after: preview })}
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>취소</Button>
+          <Button variant="outline" onClick={onClose}>{tc('cancel')}</Button>
           <Button onClick={handleSave} disabled={submitting} className="gradient-primary text-primary-foreground">
-            {submitting ? "처리 중..." : "적용"}
+            {submitting ? tc('processing') : tc('apply')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -378,10 +373,6 @@ function AdjustQuantityDialog({
 // DetailDialog
 // ─────────────────────────────────────────────
 
-const CHANGE_TYPE_LABELS: Record<string, string> = {
-  in: "입고", out: "출고", adjust: "조정", status_change: "상태변경",
-};
-
 function DetailDialog({
   item,
   onClose,
@@ -389,6 +380,24 @@ function DetailDialog({
   item: InventoryItem | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('inventory');
+
+  const TYPE_LABELS: Record<string, string> = {
+    reagent: t('type.reagent'), sample: t('type.sample'), equipment: t('type.equipment'),
+    consumable: t('type.consumable'), antibody: t('type.antibody'), plasmid: t('type.plasmid'),
+    cell_line: t('type.cell_line'), output: t('type.output'), license: t('type.license'),
+    infrastructure: t('type.infrastructure'), other: t('type.other'),
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    available: t('status.available'), in_use: t('status.in_use'), depleted: t('status.depleted'),
+    expired: t('status.expired'), disposed: t('status.disposed'), maintenance: t('status.maintenance'),
+  };
+
+  const CHANGE_TYPE_LABELS: Record<string, string> = {
+    in: t('changeType.in'), out: t('changeType.out'), adjust: t('changeType.adjust'), status_change: t('changeType.status_change'),
+  };
+
   const [history, setHistory] = useState<InventoryHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
@@ -413,24 +422,24 @@ function DetailDialog({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               {([
-                ["유형", TYPE_LABELS[item.type] ?? item.type],
-                ["상태", STATUS_LABELS[item.status] ?? item.status],
-                ["카테고리", item.category ?? "-"],
-                ["위치", item.location ?? "-"],
-                ["수량", item.quantity !== undefined ? `${item.quantity} ${item.unit ?? ""}` : "-"],
-                ["최소재고", item.minQuantity !== undefined ? `${item.minQuantity} ${item.unit ?? ""}` : "-"],
-                ["바코드", item.barcode ?? "-"],
-                ["만료일", item.expiryDate ? item.expiryDate.slice(0, 10) : "-"],
-                ["만료경고일수", item.expiryWarningDays !== undefined ? `${item.expiryWarningDays}일` : "-"],
-                ["태그", (item.tags ?? []).join(", ") || "-"],
-                ["등록자", item.createdBy ?? "-"],
-                ["등록일", item.createdAt ? item.createdAt.slice(0, 10) : "-"],
+                [t('detail.type'), TYPE_LABELS[item.type] ?? item.type],
+                [t('detail.status'), STATUS_LABELS[item.status] ?? item.status],
+                [t('detail.category'), item.category ?? "-"],
+                [t('detail.location'), item.location ?? "-"],
+                [t('detail.quantity'), item.quantity !== undefined ? `${item.quantity} ${item.unit ?? ""}` : "-"],
+                [t('detail.minQuantity'), item.minQuantity !== undefined ? `${item.minQuantity} ${item.unit ?? ""}` : "-"],
+                [t('detail.barcode'), item.barcode ?? "-"],
+                [t('detail.expiryDate'), item.expiryDate ? item.expiryDate.slice(0, 10) : "-"],
+                [t('detail.expiryWarningDays'), item.expiryWarningDays !== undefined ? `${item.expiryWarningDays}일` : "-"],
+                [t('detail.tags'), (item.tags ?? []).join(", ") || "-"],
+                [t('detail.createdBy'), item.createdBy ?? "-"],
+                [t('detail.createdAt'), item.createdAt ? item.createdAt.slice(0, 10) : "-"],
               ] as [string, string][]).map(([label, value]) => (
                 <div key={label}><span className="text-muted-foreground">{label}:</span> <span className="font-medium">{value}</span></div>
               ))}
               {item.metadata && Object.keys(item.metadata).length > 0 && (
                 <div className="col-span-2">
-                  <span className="text-muted-foreground">메타데이터:</span>
+                  <span className="text-muted-foreground">{t('detail.metadata')}:</span>
                   <pre className="mt-1 text-xs bg-muted p-2 rounded-md overflow-x-auto">
                     {JSON.stringify(item.metadata, null, 2)}
                   </pre>
@@ -439,23 +448,23 @@ function DetailDialog({
             </div>
 
             <div className="border-t pt-3">
-              <p className="text-sm font-medium mb-2">변경 이력</p>
+              <p className="text-sm font-medium mb-2">{t('detail.history')}</p>
               {historyLoading ? (
-                <p className="text-sm text-muted-foreground">이력 로딩 중...</p>
+                <p className="text-sm text-muted-foreground">{t('detail.historyLoading')}</p>
               ) : historyError ? (
-                <p className="text-sm text-destructive">이력을 불러오지 못했습니다.</p>
+                <p className="text-sm text-destructive">{t('detail.historyError')}</p>
               ) : history.length === 0 ? (
-                <p className="text-sm text-muted-foreground">변경 이력이 없습니다.</p>
+                <p className="text-sm text-muted-foreground">{t('detail.historyEmpty')}</p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>날짜</TableHead>
-                      <TableHead>유형</TableHead>
-                      <TableHead>전</TableHead>
-                      <TableHead>후</TableHead>
-                      <TableHead>사유</TableHead>
-                      <TableHead>처리자</TableHead>
+                      <TableHead>{t('detail.historyDate')}</TableHead>
+                      <TableHead>{t('detail.historyType')}</TableHead>
+                      <TableHead>{t('detail.historyBefore')}</TableHead>
+                      <TableHead>{t('detail.historyAfter')}</TableHead>
+                      <TableHead>{t('detail.historyReason')}</TableHead>
+                      <TableHead>{t('detail.historyPerformer')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -485,6 +494,33 @@ function DetailDialog({
 // ─────────────────────────────────────────────
 
 export default function InventoryPage() {
+  const { t } = useTranslation('inventory');
+  const { t: tc } = useTranslation('common');
+
+  const TYPE_LABELS: Record<string, string> = {
+    reagent: t('type.reagent'), sample: t('type.sample'), equipment: t('type.equipment'),
+    consumable: t('type.consumable'), antibody: t('type.antibody'), plasmid: t('type.plasmid'),
+    cell_line: t('type.cell_line'), output: t('type.output'), license: t('type.license'),
+    infrastructure: t('type.infrastructure'), other: t('type.other'),
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    available: t('status.available'), in_use: t('status.in_use'), depleted: t('status.depleted'),
+    expired: t('status.expired'), disposed: t('status.disposed'), maintenance: t('status.maintenance'),
+  };
+
+  const TAB_DEFS = [
+    { key: "all", label: t('tab.all') },
+    { key: "reagent", label: t('tab.reagent') },
+    { key: "sample", label: t('tab.sample') },
+    { key: "equipment", label: t('tab.equipment') },
+    { key: "consumable", label: t('tab.consumable') },
+    { key: "antibody", label: t('tab.antibody') },
+    { key: "plasmid", label: t('tab.plasmid') },
+    { key: "cell_line", label: t('tab.cell_line') },
+    { key: "other_group", label: t('tab.other_group') },
+  ] as const;
+
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -503,8 +539,8 @@ export default function InventoryPage() {
   const [detailItem, setDetailItem] = useState<InventoryItem | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 300);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(timer);
   }, [q]);
 
   useEffect(() => {
@@ -533,21 +569,21 @@ export default function InventoryPage() {
       setItems(data);
     } else {
       setError(true);
-      toast.error((res as { ok: false; error: string }).error || "목록을 불러오지 못했습니다.");
+      toast.error((res as { ok: false; error: string }).error || t('listLoadFailed'));
     }
     setLoading(false);
-  }, [typeTab, statusFilter, categoryFilter, debouncedQ]);
+  }, [typeTab, statusFilter, categoryFilter, debouncedQ, t]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
   const handleDelete = async (item: InventoryItem) => {
-    if (!window.confirm(`'${item.name}'을(를) 삭제하시겠습니까?`)) return;
+    if (!window.confirm(t('deleteConfirm', { name: item.name }))) return;
     const res = await deleteItem(item.id);
     if (res.ok) {
-      toast.success("삭제되었습니다.");
+      toast.success(t('deleteSuccess'));
       loadItems();
     } else {
-      toast.error((res as { ok: false; error: string }).error || "삭제에 실패했습니다.");
+      toast.error((res as { ok: false; error: string }).error || tc('deleteFailed'));
     }
   };
 
@@ -562,11 +598,11 @@ export default function InventoryPage() {
     <div className="p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">인벤토리</h1>
-          <p className="text-sm text-muted-foreground mt-1">시약 / 샘플 / 장비 / 자산 관리</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         </div>
         <Button className="gradient-primary text-primary-foreground gap-2" onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" /> 아이템 추가
+          <Plus className="h-4 w-4" /> {t('addItem')}
         </Button>
       </div>
 
@@ -578,10 +614,10 @@ export default function InventoryPage() {
       />
 
       <div className="flex gap-1.5 flex-wrap">
-        {TAB_DEFS.map((t) => (
-          <Button key={t.key} variant={typeTab === t.key ? "default" : "outline"} size="sm"
-            className="text-xs" onClick={() => setTypeTab(t.key)}>
-            {t.label}
+        {TAB_DEFS.map((tab) => (
+          <Button key={tab.key} variant={typeTab === tab.key ? "default" : "outline"} size="sm"
+            className="text-xs" onClick={() => setTypeTab(tab.key)}>
+            {tab.label}
           </Button>
         ))}
       </div>
@@ -589,22 +625,22 @@ export default function InventoryPage() {
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-10" placeholder="이름, 바코드, 위치 검색..."
+          <Input className="pl-10" placeholder={t('searchPlaceholder')}
             value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Select value={statusFilter || SENTINEL_ALL} onValueChange={(v) => setStatusFilter(v === SENTINEL_ALL ? "" : v)}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="상태 전체" /></SelectTrigger>
+          <SelectTrigger className="w-32"><SelectValue placeholder={t('statusAll')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={SENTINEL_ALL}>전체</SelectItem>
+            <SelectItem value={SENTINEL_ALL}>{tc('all')}</SelectItem>
             {Object.entries(STATUS_LABELS).map(([k, v]) => (
               <SelectItem key={k} value={k}>{v}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={categoryFilter || SENTINEL_ALL} onValueChange={(v) => setCategoryFilter(v === SENTINEL_ALL ? "" : v)} disabled={categories.length === 0}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="카테고리" /></SelectTrigger>
+          <SelectTrigger className="w-32"><SelectValue placeholder={t('categoryAll')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={SENTINEL_ALL}>전체</SelectItem>
+            <SelectItem value={SENTINEL_ALL}>{tc('all')}</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
             ))}
@@ -617,30 +653,30 @@ export default function InventoryPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>이름</TableHead>
-                <TableHead>유형</TableHead>
-                <TableHead>상태</TableHead>
-                <TableHead>수량</TableHead>
-                <TableHead>위치</TableHead>
-                <TableHead>만료일</TableHead>
-                <TableHead className="text-right">액션</TableHead>
+                <TableHead>{t('table.name')}</TableHead>
+                <TableHead>{t('table.type')}</TableHead>
+                <TableHead>{t('table.status')}</TableHead>
+                <TableHead>{t('table.quantity')}</TableHead>
+                <TableHead>{t('table.location')}</TableHead>
+                <TableHead>{t('table.expiry')}</TableHead>
+                <TableHead className="text-right">{t('table.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">로딩 중...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{tc('loading')}</TableCell></TableRow>
               ) : error ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8">
-                    <p className="text-muted-foreground mb-2">데이터를 불러오지 못했습니다.</p>
-                    <Button variant="outline" size="sm" onClick={loadItems}>다시 시도</Button>
+                    <p className="text-muted-foreground mb-2">{tc('loadFailed')}</p>
+                    <Button variant="outline" size="sm" onClick={loadItems}>{tc('retry')}</Button>
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8">
-                    <p className="text-muted-foreground mb-2">등록된 항목이 없습니다.</p>
-                    <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>아이템 추가</Button>
+                    <p className="text-muted-foreground mb-2">{t('empty')}</p>
+                    <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>{t('addItem')}</Button>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -669,7 +705,7 @@ export default function InventoryPage() {
                       <TableCell className="text-sm">
                         {expiry ? (
                           <span className={expiry.isExpired ? "text-red-600 font-medium" : expiry.isWarning ? "text-orange-500" : ""}>
-                            {expiry.isExpired ? "만료" : `${expiry.daysLeft}일`}
+                            {expiry.isExpired ? t('expired') : t('daysLeft', { count: expiry.daysLeft })}
                           </span>
                         ) : "-"}
                       </TableCell>

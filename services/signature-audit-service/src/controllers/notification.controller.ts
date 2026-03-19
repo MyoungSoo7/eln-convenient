@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
+import { redisConnection } from '../lib/queue';
 
 // ─────────────────────────────────────────────
 // 사용자 API (requireAuth 적용)
@@ -37,13 +38,28 @@ export async function listNotifications(req: Request, res: Response): Promise<vo
   }
 }
 
-/** GET /api/notifications/unread-count — 읽지 않은 알림 수 */
+/** GET /api/notifications/unread-count — 읽지 않은 알림 수 (Redis 캐시 적용) */
 export async function getUnreadCount(req: Request, res: Response): Promise<void> {
   const recipientId = req.headers['x-user-id'] as string;
+  const cacheKey = `notif-unread:${recipientId}`;
+
+  // Redis 캐시 확인
+  try {
+    const cached = await redisConnection.get(cacheKey);
+    if (cached !== null) {
+      res.json({ ok: true, data: { count: parseInt(cached, 10) } });
+      return;
+    }
+  } catch { /* Redis 오류 무시 → DB 폴백 */ }
+
   try {
     const count = await prisma.notification.count({
       where: { recipientId, isRead: false },
     });
+
+    // Redis에 캐싱 (5분 TTL)
+    try { await redisConnection.set(cacheKey, String(count), 'EX', 300); } catch { /* 무시 */ }
+
     res.json({ ok: true, data: { count } });
   } catch (err) {
     console.error('[getUnreadCount]', err);
@@ -64,6 +80,15 @@ export async function markAsRead(req: Request, res: Response): Promise<void> {
       where: { id: req.params.id },
       data: { isRead: true },
     });
+
+    // 읽지 않은 상태였던 경우만 DECR
+    if (!notification.isRead) {
+      try {
+        const exists = await redisConnection.exists(`notif-unread:${recipientId}`);
+        if (exists) await redisConnection.decr(`notif-unread:${recipientId}`);
+      } catch { /* 무시 */ }
+    }
+
     res.json({ ok: true, data: updated });
   } catch (err) {
     console.error('[markAsRead]', err);
@@ -79,6 +104,10 @@ export async function markAllAsRead(req: Request, res: Response): Promise<void> 
       where: { recipientId, isRead: false },
       data: { isRead: true },
     });
+
+    // 캐시 삭제 (0으로 리셋)
+    try { await redisConnection.del(`notif-unread:${recipientId}`); } catch { /* 무시 */ }
+
     res.json({ ok: true, data: { updated: result.count } });
   } catch (err) {
     console.error('[markAllAsRead]', err);
@@ -117,6 +146,21 @@ export async function createNotificationInternal(req: Request, res: Response): P
         actorName: actorName ?? '',
       },
     });
+
+    // Redis: 미읽음 카운트 증가 (키가 존재하면 INCR, 없으면 무시 — 다음 조회 시 DB에서 재설정)
+    try {
+      const exists = await redisConnection.exists(`notif-unread:${recipientId}`);
+      if (exists) await redisConnection.incr(`notif-unread:${recipientId}`);
+    } catch { /* 무시 */ }
+
+    // Redis Pub/Sub: 실시간 알림 푸시
+    try {
+      redisConnection.publish(`notifications:${recipientId}`, JSON.stringify({
+        id: notification.id, type, entityType, entityId, title, message, actorName: actorName ?? '',
+        createdAt: notification.createdAt,
+      }));
+    } catch { /* 무시 */ }
+
     res.status(201).json({ ok: true, data: { id: notification.id } });
   } catch (err) {
     console.error('[createNotificationInternal]', err);

@@ -209,10 +209,13 @@ services:
     environment:
       - PORT=8004
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8
+      - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       search-service:
         condition: service_started
@@ -254,9 +257,12 @@ services:
       - PORT=8006
       - OPENSEARCH_URL=http://opensearch:9200
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8
+      - REDIS_URL=redis://redis:6379
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       opensearch:
         condition: service_healthy

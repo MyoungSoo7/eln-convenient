@@ -2,8 +2,10 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import Redis from 'ioredis';
 import { registerProxies } from './routes/proxy';
 import { registerDashboard } from './routes/dashboard';
+import { registerSSE } from './routes/sse';
 import { authHook } from './middlewares/auth';
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
@@ -21,9 +23,24 @@ async function bootstrap() {
   // 미들웨어
   await app.register(helmet);
   await app.register(cors, { origin: process.env.CORS_ORIGIN || '*' });
+  // Redis 기반 분산 Rate Limiting (인스턴스 간 공유)
+  let rateLimitRedis: Redis | undefined;
+  try {
+    rateLimitRedis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      lazyConnect: true, maxRetriesPerRequest: 1,
+    });
+    rateLimitRedis.on('error', () => {});
+  } catch { rateLimitRedis = undefined; }
+
   await app.register(rateLimit, {
-    max: 1000,
-    timeWindow: '15 minutes',
+    global: true,
+    max: 200,
+    timeWindow: '1 minute',
+    redis: rateLimitRedis,
+    keyGenerator: (request) => {
+      // 인증된 사용자는 userId 기준, 미인증은 IP 기준
+      return (request.headers as any)['x-user-id'] || request.ip;
+    },
     errorResponseBuilder: () => ({
       ok: false,
       error: '요청 횟수 제한 초과. 잠시 후 다시 시도해주세요.',
@@ -41,6 +58,9 @@ async function bootstrap() {
 
   // 대시보드 집계 라우트 (프록시보다 먼저 등록)
   await registerDashboard(app);
+
+  // SSE 이벤트 스트림 (프록시보다 먼저 등록)
+  await registerSSE(app);
 
   // 프록시 라우팅
   await registerProxies(app);

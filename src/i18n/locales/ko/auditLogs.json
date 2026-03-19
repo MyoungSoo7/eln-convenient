@@ -1,0 +1,12 @@
+{
+  "title": "감사로그",
+  "titleTooltip": "시스템 내 모든 사용자 활동을 시간순으로 기록합니다. 규정 준수(GLP/GMP) 및 연구 무결성 검증에 활용됩니다.",
+  "subtitle": "모든 활동 이력 추적 및 검색 (총 {{total}}건)",
+  "searchPlaceholder": "사용자 ID 검색...",
+  "actionFilterPlaceholder": "활동 유형",
+  "allActions": "전체 활동",
+  "loadError": "감사로그를 불러올 수 없습니다. 백엔드 서비스를 확인하세요.",
+  "loadingText": "불러오는 중...",
+  "empty": "조건에 맞는 감사로그가 없습니다.",
+  "col": { "time": "시간", "action": "활동", "actionTooltip": "수행된 작업의 유형입니다 (서명, 내보내기, 잠금 등).", "user": "사용자", "target": "대상", "details": "상세", "ip": "IP", "ipTooltip": "활동이 발생한 네트워크 주소입니다. 보안 감사 시 추적에 활용됩니다." }
+}

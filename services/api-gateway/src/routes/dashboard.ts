@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import redis from '../lib/redis';
 
 const ELN_URL       = process.env.ELN_SERVICE_URL       || 'http://eln-service:8002';
 const SIG_URL       = process.env.SIGNATURE_SERVICE_URL || 'http://signature-audit-service:8003';
@@ -28,6 +29,15 @@ export async function registerDashboard(app: FastifyInstance) {
   app.get('/api/dashboard', async (request, reply) => {
     const userId      = (request.headers as any)['x-user-id']    as string;
     const userRole    = (request.headers as any)['x-user-role']  as string;
+
+    // Redis 캐시 확인 (5분 TTL, 역할 기준 캐싱)
+    const cacheKey = `cache:dashboard:${userRole || 'default'}`;
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) return reply.send(JSON.parse(cached));
+      } catch { /* Redis 오류 무시 */ }
+    }
 
     // 내부 서비스 호출용 헤더 (인증 헤더 포워딩)
     const internalHeaders: Record<string, string> = {
@@ -120,7 +130,7 @@ export async function registerDashboard(app: FastifyInstance) {
       upcomingBookingList = Array.isArray(val) ? val.slice(0, 4) : (Array.isArray((val as any).data) ? (val as any).data.slice(0, 4) : []);
     }
 
-    return reply.send({
+    const response = {
       ok: true,
       data: {
         notes,
@@ -139,6 +149,13 @@ export async function registerDashboard(app: FastifyInstance) {
         expiringItems: Array.isArray(expiringItems) ? expiringItems.slice(0, 5) : [],
         generatedAt: new Date().toISOString(),
       },
-    });
+    };
+
+    // Redis에 캐싱 (5분 TTL)
+    if (redis) {
+      try { await redis.set(cacheKey, JSON.stringify(response), 'EX', 300); } catch { /* 무시 */ }
+    }
+
+    return reply.send(response);
   });
 }

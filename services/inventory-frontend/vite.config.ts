@@ -6,8 +6,24 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
+      '/api/protocols': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/templates': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/notes': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/tags': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/inventory': {
+        target: 'http://localhost:8004',
         changeOrigin: true,
       },
     },

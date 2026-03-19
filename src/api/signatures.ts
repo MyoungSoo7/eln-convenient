@@ -111,14 +111,8 @@ export async function requestPdfExport(noteId: string): Promise<ApiResponse<Expo
   try {
     const res = await apiClient.post<{ job: ExportJob }>(`/export/pdf/${noteId}`);
     return { ok: res.ok, data: res.data?.job ?? (res.data as any), error: res.error };
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: `job-pdf-${Date.now()}`, noteId, format: 'pdf',
-        status: 'pending', createdAt: new Date().toISOString(),
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as ExportJob, error: (err as Error).message || ERR_CONN };
   }
 }
 
@@ -126,28 +120,16 @@ export async function requestZipExport(noteIds: string[]): Promise<ApiResponse<E
   try {
     const res = await apiClient.post<{ job: ExportJob }>('/export/zip', { noteIds });
     return { ok: res.ok, data: res.data?.job ?? (res.data as any), error: res.error };
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: `job-zip-${Date.now()}`, noteId: 'bulk', format: 'zip',
-        status: 'pending', createdAt: new Date().toISOString(),
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as ExportJob, error: (err as Error).message || ERR_CONN };
   }
 }
 
 export async function getExportStatus(jobId: string): Promise<ApiResponse<ExportJob>> {
   try {
     return await apiClient.get<ExportJob>(`/export/status/${jobId}`);
-  } catch {
-    return {
-      ok: true,
-      data: {
-        id: jobId, noteId: '', format: 'pdf',
-        status: 'completed', fileUrl: undefined, createdAt: new Date().toISOString(),
-      },
-    };
+  } catch (err) {
+    return { ok: false, data: null as unknown as ExportJob, error: (err as Error).message || ERR_CONN };
   }
 }
 

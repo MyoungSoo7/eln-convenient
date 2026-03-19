@@ -12,11 +12,32 @@
   "submit": "Submit",
   "download": "Download",
   "upload": "Upload",
+  "add": "Add",
+  "close": "Close",
+  "retry": "Retry",
+  "refresh": "Refresh",
+  "all": "All",
+  "previous": "Previous",
+  "next": "Next",
+  "apply": "Apply",
+  "saving": "Saving...",
+  "deleting": "Deleting...",
+  "processing": "Processing...",
+  "back": "Back",
+  "viewAll": "View All",
+  "noData": "No data available.",
+  "loadFailed": "Failed to load data.",
+  "saveFailed": "Failed to save.",
+  "deleteFailed": "Failed to delete.",
+  "items": "items",
   "status": {
     "draft": "Draft",
     "in_progress": "In Progress",
     "signed": "Signed",
-    "locked": "Locked"
+    "locked": "Locked",
+    "active": "Active",
+    "inactive": "Inactive",
+    "suspended": "Suspended"
   },
   "role": {
     "admin": "Admin",
@@ -26,18 +47,43 @@
   "nav": {
     "dashboard": "Dashboard",
     "notes": "Lab Notes",
-    "protocols": "Protocols",
+    "protocols": "Protocols / Templates",
     "inventory": "Inventory",
     "scheduler": "Scheduler",
     "signatures": "Signatures",
-    "exports": "Exports",
+    "exports": "Exports (PDF/ZIP)",
     "auditLogs": "Audit Logs",
-    "search": "Search",
+    "search": "Integrated Search",
+    "orgTeamUser": "Org / Team / Users",
+    "rolesPermissions": "Roles / Permissions",
+    "settings": "Settings",
     "ai": "AI Assistant",
     "admin": "Admin"
   },
+  "sidebar": {
+    "platformSubtitle": "Electronic Lab Notebook Platform",
+    "main": "Main",
+    "compliance": "Compliance",
+    "admin": "Admin"
+  },
+  "notification": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No notifications",
+    "noteLocked": "Locked",
+    "noteSigned": "Signed",
+    "noteUnlocked": "Unlocked",
+    "bookingApproved": "Booking Approved"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
+  },
   "error": {
     "serverError": "Failed to connect to server.",
+    "serverFallback": "Server connection failed — showing temporary data.",
     "unauthorized": "Authentication required.",
     "forbidden": "Insufficient permissions.",
     "notFound": "Not found."

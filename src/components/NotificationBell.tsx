@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Bell, Lock, Unlock, FileSignature, CalendarCheck, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,26 +18,27 @@ import {
 
 const POLL_INTERVAL = 30_000;
 
-const typeConfig: Record<Notification["type"], { icon: typeof Bell; label: string }> = {
-  NOTE_LOCKED:      { icon: Lock,           label: "잠금" },
-  NOTE_SIGNED:      { icon: FileSignature,  label: "서명" },
-  NOTE_UNLOCKED:    { icon: Unlock,         label: "잠금 해제" },
-  BOOKING_APPROVED: { icon: CalendarCheck,  label: "예약 승인" },
-};
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "방금 전";
-  if (mins < 60) return `${mins}분 전`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  return `${days}일 전`;
-}
-
 export function NotificationBell() {
   const navigate = useNavigate();
+  const { t } = useTranslation('common');
+
+  const typeConfig: Record<Notification["type"], { icon: typeof Bell; label: string }> = {
+    NOTE_LOCKED:      { icon: Lock,           label: t('notification.noteLocked') },
+    NOTE_SIGNED:      { icon: FileSignature,  label: t('notification.noteSigned') },
+    NOTE_UNLOCKED:    { icon: Unlock,         label: t('notification.noteUnlocked') },
+    BOOKING_APPROVED: { icon: CalendarCheck,  label: t('notification.bookingApproved') },
+  };
+
+  function timeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return t('time.justNow');
+    if (mins < 60) return t('time.minutesAgo', { count: mins });
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return t('time.hoursAgo', { count: hours });
+    const days = Math.floor(hours / 24);
+    return t('time.daysAgo', { count: days });
+  }
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
@@ -59,11 +61,39 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Polling for unread count
+  // SSE: 실시간 알림 수신 + 폴링 폴백
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, POLL_INTERVAL);
-    return () => clearInterval(interval);
+
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+    let es: EventSource | null = null;
+    let useSse = false;
+
+    try {
+      es = new EventSource(`${apiBase}/events/notifications`);
+      es.addEventListener('notification', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setUnreadCount((c) => c + 1);
+          setNotifications((prev) => [
+            { ...data, isRead: false, recipientId: '' } as Notification,
+            ...prev,
+          ]);
+        } catch { /* 무시 */ }
+      });
+      es.onopen = () => { useSse = true; };
+      es.onerror = () => { es?.close(); useSse = false; };
+    } catch { /* SSE 미지원 */ }
+
+    // SSE가 안되면 폴링 폴백
+    const interval = setInterval(() => {
+      if (!useSse) fetchUnreadCount();
+    }, POLL_INTERVAL);
+
+    return () => {
+      clearInterval(interval);
+      es?.close();
+    };
   }, [fetchUnreadCount]);
 
   // Fetch list when dropdown opens
@@ -118,21 +148,21 @@ export function NotificationBell() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-sm font-medium">알림</span>
+          <span className="text-sm font-medium">{t('notification.title')}</span>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
               className="text-xs text-primary hover:underline flex items-center gap-1"
             >
               <Check className="h-3 w-3" />
-              모두 읽음
+              {t('notification.markAllRead')}
             </button>
           )}
         </div>
         <DropdownMenuSeparator />
         {notifications.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-            알림이 없습니다
+            {t('notification.empty')}
           </div>
         ) : (
           notifications.map((n) => {

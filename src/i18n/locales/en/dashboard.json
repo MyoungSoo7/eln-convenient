@@ -5,15 +5,30 @@
   "stats": {
     "notes": "Lab Notes",
     "notesChange": "+3 this week",
+    "notesTooltip": "Total number of lab notes.",
     "experiments": "Active Experiments",
     "experimentsChange": "2 pending signature",
+    "experimentsTooltip": "Number of experiments currently in progress.",
     "inventory": "Inventory Items",
     "inventoryChange": "3 low stock",
+    "inventoryTooltip": "Total number of registered reagents, samples, and equipment.",
     "bookings": "Equipment Bookings",
-    "bookingsChange": "2 pending approval"
+    "bookingsChange": "2 pending approval",
+    "bookingsTooltip": "Number of pending booking approvals."
   },
-  "recentActivity": "Recent Activity",
   "recentNotes": "Recent Lab Notes",
+  "recentNotesTooltip": "Shows the 4 most recently modified lab notes.",
+  "recentActivity": "Recent Activity Log",
+  "recentActivityTooltip": "Recent activity records of all users. Tracks signing, editing, bookings, etc.",
+  "bookings_section": "Upcoming Bookings",
+  "bookingsTooltip": "Scheduled equipment and room bookings. View approval/pending status.",
+  "alerts": "Alerts",
+  "alertsTooltip": "Shows items that are low stock or expiring soon.",
+  "noAlerts": "No alerts",
+  "approved": "Approved",
+  "pending": "Pending",
+  "isExpired": "Expired",
+  "daysLeft": "{{count}}d left",
   "viewAll": "View All",
   "noActivity": "No recent activity"
 }

@@ -1,0 +1,19 @@
+{
+  "title": "전자서명",
+  "titleTooltip": "연구노트에 전자서명을 하여 시점인증을 수행합니다. 서명된 노트는 수정이 불가능하며, 법적 증거력을 확보합니다.",
+  "subtitle": "연구노트 전자서명 및 시점인증 관리",
+  "signed": "서명 완료",
+  "signedTooltip": "전자서명이 완료되어 시점인증된 노트 수입니다.",
+  "pending": "서명 대기",
+  "pendingTooltip": "아직 서명되지 않은 노트입니다. 노트를 '진행 중' 상태로 변경 후 서명할 수 있습니다.",
+  "lockedLabel": "잠금 처리",
+  "lockedTooltip": "서명 후 완전히 잠금 처리된 노트입니다. 어떠한 수정도 불가합니다.",
+  "tableTitle": "노트 서명 현황",
+  "tableTooltip": "모든 연구노트의 서명 상태를 확인합니다. 서명 대기 노트는 편집기에서 '진행 시작' 후 서명할 수 있습니다.",
+  "col": { "noteTitle": "노트 제목", "author": "작성자", "signStatus": "서명 상태", "lastModified": "최종 수정", "action": "작업" },
+  "status": { "draft": "미서명", "in_progress": "서명 대기", "signed": "서명 완료", "locked": "잠금 처리" },
+  "viewReadOnly": "보기 (읽기전용)",
+  "signAction": "서명하기",
+  "editAction": "편집",
+  "emptyNotes": "등록된 연구노트가 없습니다."
+}

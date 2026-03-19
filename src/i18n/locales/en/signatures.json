@@ -1,0 +1,19 @@
+{
+  "title": "Signatures",
+  "titleTooltip": "Sign lab notes for timestamped certification. Signed notes cannot be modified and hold legal evidential value.",
+  "subtitle": "Lab note electronic signature and certification management",
+  "signed": "Signed",
+  "signedTooltip": "Number of notes that have been signed and certified.",
+  "pending": "Pending",
+  "pendingTooltip": "Notes awaiting signature. Change note status to 'In Progress' before signing.",
+  "lockedLabel": "Locked",
+  "lockedTooltip": "Notes fully locked after signing. No modifications allowed.",
+  "tableTitle": "Note Signature Status",
+  "tableTooltip": "View signature status of all lab notes. Pending notes can be signed after clicking 'Start Progress' in the editor.",
+  "col": { "noteTitle": "Note Title", "author": "Author", "signStatus": "Sign Status", "lastModified": "Last Modified", "action": "Action" },
+  "status": { "draft": "Unsigned", "in_progress": "Pending", "signed": "Signed", "locked": "Locked" },
+  "viewReadOnly": "View (Read-only)",
+  "signAction": "Sign",
+  "editAction": "Edit",
+  "emptyNotes": "No lab notes registered."
+}
