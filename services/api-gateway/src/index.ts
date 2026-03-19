@@ -23,8 +23,22 @@ const app = Fastify({ logger: true });
 async function bootstrap() {
   // 미들웨어
   await app.register(helmet);
+  // CORS — credentials: true 시 origin '*' 불가, 명시적 origin 필요
+  // CORS_ORIGIN: 쉼표 구분 다중 origin 지원 (예: "https://app.example.com,https://admin.example.com")
+  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (origin, cb) => {
+      // origin이 없는 경우 (서버간 호출, curl 등) 허용
+      if (!origin || allowedOrigins.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(new Error('CORS 정책에 의해 차단되었습니다.'), false);
+      }
+    },
     credentials: true,
   });
   // Redis 기반 분산 Rate Limiting (인스턴스 간 공유)

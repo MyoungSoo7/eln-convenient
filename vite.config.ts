@@ -12,6 +12,11 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
+      // 세션 엔드포인트는 API Gateway로 라우팅 (httpOnly 쿠키 설정)
+      '/api/auth/session': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api/auth': {
         target: 'http://localhost:8001',
         changeOrigin: true,
