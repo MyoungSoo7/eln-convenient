@@ -23,13 +23,13 @@ export interface SearchResults {
   inventory: SearchResult[];
 }
 
-/** 백엔드 검색 API 응답 (results 배열 + type 필드로 구분) */
+/** 백엔드 검색 API 응답 (results 배열 + domainType 필드로 구분) */
 interface SearchApiResponse {
   ok: boolean;
   query?: string;
   results?: Array<{
-    id: string;
-    type: string;
+    docId: string;
+    domainType: string;
     title: string;
     snippet: string;
     score: number;
@@ -43,13 +43,21 @@ interface SearchApiResponse {
   error?: string;
 }
 
-/** 백엔드 type: notes | templates | inventory → 프론트 notes | protocols | inventory */
-function mapResult(r: SearchApiResponse['results'] extends (infer I)[] ? I : never): SearchResult {
+type ApiResult = NonNullable<SearchApiResponse['results']>[number];
+
+/** 백엔드 domainType: NOTE | TEMPLATE | INVENTORY → 프론트 note | protocol | inventory */
+function mapResult(r: ApiResult): SearchResult {
+  const typeMap: Record<string, string> = {
+    NOTE: 'note',
+    TEMPLATE: 'protocol',
+    PROTOCOL: 'protocol',
+    INVENTORY: 'inventory',
+  };
   return {
-    id: r.id,
+    id: r.docId,
     title: r.title,
     snippet: r.snippet,
-    type: r.type === 'templates' ? 'protocol' : r.type === 'notes' ? 'note' : 'inventory',
+    type: typeMap[r.domainType] ?? r.domainType,
     score: r.score,
     highlight: r.highlight,
     createdAt: r.createdAt,
@@ -70,7 +78,7 @@ export async function search(
   size = 20
 ): Promise<ApiResponse<SearchResults & { total: number; page: number; size: number; took?: number }>> {
   const params: Record<string, string> = { q: q.trim(), page: String(page), size: String(size) };
-  if (type) params.type = type;
+  if (type) params.domainTypes = type.toUpperCase();
 
   try {
     const res = await apiClient.get<SearchApiResponse>('/search', params);
@@ -90,9 +98,9 @@ export async function search(
     }
 
     const results = (res as SearchApiResponse).results ?? [];
-    const notes = results.filter((r) => r.type === 'notes').map(mapResult);
-    const protocols = results.filter((r) => r.type === 'templates').map(mapResult);
-    const inventory = results.filter((r) => r.type === 'inventory').map(mapResult);
+    const notes = results.filter((r) => r.domainType === 'NOTE').map(mapResult);
+    const protocols = results.filter((r) => r.domainType === 'TEMPLATE' || r.domainType === 'PROTOCOL').map(mapResult);
+    const inventory = results.filter((r) => r.domainType === 'INVENTORY').map(mapResult);
 
     return {
       ok: true,

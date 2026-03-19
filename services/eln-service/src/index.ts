@@ -4,15 +4,18 @@ import swaggerUi from 'swagger-ui-express';
 import noteRoutes from './routes/note.routes';
 import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
-import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-setupProcessHandlers('eln-service');
+const { logger, httpLogger } = createHttpLogger('eln-service');
+
+setupProcessHandlers('eln-service', logger);
 
 const app = express();
 const PORT = process.env.PORT || 8002;
 
 app.use(cors());
 app.use(express.json());
+app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get('/health', (_req, res) => {
@@ -22,11 +25,11 @@ app.get('/health', (_req, res) => {
 app.use('/api', noteRoutes);
 app.use('/api/templates', templateRoutes);
 
-app.use(globalErrorHandler('eln-service'));
+app.use(globalErrorHandler('eln-service', logger));
 
 app.listen(PORT, () => {
-  console.log(`[eln-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`[eln-service] Swagger: http://localhost:${PORT}/docs`);
+  logger.info({ port: PORT }, '서버 시작');
+  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
 });
 
 export default app;

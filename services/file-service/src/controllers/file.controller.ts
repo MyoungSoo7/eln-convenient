@@ -37,6 +37,9 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // multer는 originalname을 latin1로 디코딩하므로 UTF-8로 복원
+  file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
   // MIME 타입 차단
   if (BLOCKED_MIME.has(file.mimetype)) {
     res.status(400).json({ ok: false, error: `허용되지 않는 파일 형식입니다: ${file.mimetype}` });
@@ -257,8 +260,24 @@ export async function getFileMeta(req: Request, res: Response): Promise<void> {
 
 /** DELETE /api/files/:id — 파일 삭제 */
 export async function deleteFile(req: Request, res: Response): Promise<void> {
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
   try {
-    // DB에서 파일 조회
+    // 소유권 검증
+    const file = await prisma.file.findUnique({
+      where: { id: req.params.id },
+      select: { uploaderId: true, isDeleted: true },
+    });
+    if (!file || file.isDeleted) {
+      res.status(404).json({ ok: false, error: '파일을 찾을 수 없습니다.' });
+      return;
+    }
+    if (file.uploaderId !== userId && userRole !== 'admin') {
+      res.status(403).json({ ok: false, error: '권한이 없습니다.' });
+      return;
+    }
+
+    // DB에서 파일 soft delete
     const updated = await prisma.file.updateMany({
       where: { id: req.params.id, isDeleted: false },
       data: { isDeleted: true, deletedAt: new Date() },

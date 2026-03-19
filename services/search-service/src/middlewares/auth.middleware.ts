@@ -36,8 +36,11 @@ export function requirePermission(permission: string) {
 
 /** 내부 서비스 간 호출 전용 미들웨어 (x-internal-secret 헤더 검증) */
 export function requireInternalSecret(req: Request, res: Response, next: NextFunction) {
+  const expected = process.env.INTERNAL_SECRET;
+  if (!expected) {
+    return res.status(500).json({ ok: false, error: 'INTERNAL_SECRET이 설정되지 않았습니다.' });
+  }
   const secret = req.headers['x-internal-secret'];
-  const expected = process.env.INTERNAL_SECRET || 'dev-internal-secret';
   if (!secret || secret !== expected) {
     return res.status(403).json({ ok: false, error: '내부 서비스 전용 엔드포인트입니다.' });
   }

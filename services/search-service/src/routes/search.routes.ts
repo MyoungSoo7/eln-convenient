@@ -4,7 +4,7 @@ import * as historyCtrl from '../controllers/history.controller';
 import * as favoritesCtrl from '../controllers/favorites.controller';
 import * as keywordFavCtrl from '../controllers/keyword-favorites.controller';
 import { requireAuth, requirePermission, requireInternalSecret } from '../middlewares/auth.middleware';
-import { validate } from '@lab/shared';
+import { validate, Permission } from '@lab/shared';
 import {
   IndexDocBodySchema, BulkIndexBodySchema,
   SaveHistoryBodySchema,
@@ -15,8 +15,8 @@ import {
 const router = Router();
 
 // ── 통합 검색 (사용자 인증 필요) ──────────────────────────
-router.get('/',         requireAuth, requirePermission('note:read'), ctrl.search);
-router.get('/suggest',  requireAuth, requirePermission('note:read'), ctrl.suggest);
+router.get('/',         requireAuth, requirePermission(Permission.NOTE_READ), ctrl.search);
+router.get('/suggest',  requireAuth, requirePermission(Permission.NOTE_READ), ctrl.suggest);
 
 // ── 검색 히스토리 ─────────────────────────────────────────
 // 주의: DELETE /history 는 반드시 DELETE /history/:id 보다 먼저 등록

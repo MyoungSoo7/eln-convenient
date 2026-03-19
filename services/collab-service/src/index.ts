@@ -4,7 +4,10 @@ import { verify } from 'jsonwebtoken';
 import Redis from 'ioredis';
 
 const PORT = parseInt(process.env.PORT || '8009');
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET 환경변수가 설정되지 않았습니다. 서버를 시작할 수 없습니다.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
@@ -94,7 +97,7 @@ function publishToRedis(noteId: string, payload: object, sourceUserId: string) {
 // ── HTTP 서버 (healthcheck + WebSocket upgrade) ──
 const server = createServer((req, res) => {
   if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
     return;
   }

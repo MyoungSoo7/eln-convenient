@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AdminRoute } from "@/components/AdminRoute";
 import LoginPage from "./pages/LoginPage";
 import SsoCallbackPage from "./pages/SsoCallbackPage";
 import Dashboard from "./pages/Dashboard";
@@ -18,7 +19,9 @@ import SearchPage from "./pages/SearchPage";
 import SignaturesPage from "./pages/SignaturesPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import ExportsPage from "./pages/ExportsPage";
-import AdminPage from "./pages/AdminPage";
+import OrgTeamUserPage from "./pages/admin/OrgTeamUserPage";
+import RolesPage from "./pages/admin/RolesPage";
+import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -59,9 +62,9 @@ const App = () => (
                       <Route path="/signatures" element={<SignaturesPage />} />
                       <Route path="/audit-logs" element={<AuditLogsPage />} />
                       <Route path="/exports" element={<ExportsPage />} />
-                      <Route path="/admin/users" element={<AdminPage />} />
-                      <Route path="/admin/roles" element={<AdminPage />} />
-                      <Route path="/admin/settings" element={<AdminPage />} />
+                      <Route path="/admin/users" element={<AdminRoute><OrgTeamUserPage /></AdminRoute>} />
+                      <Route path="/admin/roles" element={<AdminRoute><RolesPage /></AdminRoute>} />
+                      <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </AppLayout>

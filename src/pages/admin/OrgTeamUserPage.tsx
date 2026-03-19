@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Users, Building2, Building, Shield, Plus, Settings, Loader2, MoreHorizontal, UserPlus, X } from "lucide-react";
+import { Users, Building2, Building, Plus, Loader2, MoreHorizontal, UserPlus, X } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -18,7 +18,7 @@ import {
   listTeams, createTeam, updateTeam, deleteTeam,
   listTeamMembers, addTeamMember, removeTeamMember,
   listOrgs, createOrg, updateOrg, deleteOrg,
-  listRoles, createRole, updateRolePermissions, deleteRole,
+  listRoles,
 } from "@/api/admin";
 import type {
   AdminOrg, AdminUser, AdminTeam, AdminRole, AdminTeamMember,
@@ -34,15 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
   suspended: 'bg-destructive/10 text-destructive',
 };
 
-const ALL_PERMISSIONS = [
-  'note:read','note:write','note:sign','note:delete',
-  'template:read','template:write',
-  'inventory:read','inventory:write',
-  'scheduler:read','scheduler:write',
-  'audit:read','admin',
-];
-
-export default function AdminPage() {
+export default function OrgTeamUserPage() {
   const qc = useQueryClient();
 
   // ─── 사용자 상태 ──────────────────────────────────
@@ -58,7 +50,7 @@ export default function AdminPage() {
   const [editTeam, setEditTeam] = useState<AdminTeam | null>(null);
   const [teamForm, setTeamForm] = useState({ name: '', orgId: '' });
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<AdminTeam | null>(null);
-  const [memberTeam, setMemberTeam] = useState<AdminTeam | null>(null); // 팀원 관리 대상
+  const [memberTeam, setMemberTeam] = useState<AdminTeam | null>(null);
 
   // ─── 조직 상태 ────────────────────────────────────
   const [orgDialogOpen, setOrgDialogOpen] = useState(false);
@@ -66,14 +58,7 @@ export default function AdminPage() {
   const [orgForm, setOrgForm] = useState({ name: '', slug: '' });
   const [deleteOrgTarget, setDeleteOrgTarget] = useState<AdminOrg | null>(null);
 
-  // ─── 역할 상태 ────────────────────────────────────
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [editRole, setEditRole] = useState<AdminRole | null>(null);
-  const [roleForm, setRoleForm] = useState({ name: '', permissions: [] as string[] });
-  const [deleteRoleTarget, setDeleteRoleTarget] = useState<AdminRole | null>(null);
-
   // ─── Queries ─────────────────────────────────────
-
   const usersQuery = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: async () => {
@@ -122,7 +107,6 @@ export default function AdminPage() {
   });
 
   // ─── 사용자 Mutations ─────────────────────────────
-
   const createUserMutation = useMutation({
     mutationFn: async (payload: CreateUserPayload) => {
       const res = await createUser(payload);
@@ -167,7 +151,6 @@ export default function AdminPage() {
   });
 
   // ─── 팀 Mutations ─────────────────────────────────
-
   const teamMutation = useMutation({
     mutationFn: async (values: { name: string; orgId: string }) => {
       const res = editTeam
@@ -228,7 +211,6 @@ export default function AdminPage() {
   });
 
   // ─── 조직 Mutations ───────────────────────────────
-
   const orgMutation = useMutation({
     mutationFn: async (values: { name: string; slug: string }) => {
       const res = editOrg ? await updateOrg(editOrg.id, values) : await createOrg(values);
@@ -258,59 +240,19 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: '삭제 실패', description: err.message, variant: 'destructive' }),
   });
 
-  // ─── 역할 Mutations ───────────────────────────────
-
-  const roleMutation = useMutation({
-    mutationFn: async (values: { name: string; permissions: string[] }) => {
-      if (editRole) {
-        const res = await updateRolePermissions(editRole.id!, values.permissions);
-        if (!res.ok) throw new Error(res.error ?? '권한 수정 실패');
-        return res.data;
-      }
-      const orgId = orgsQuery.data?.[0]?.id;
-      if (!orgId) throw new Error('조직이 없습니다. 먼저 조직을 생성해주세요.');
-      const res = await createRole({ orgId, name: values.name, permissions: values.permissions });
-      if (!res.ok) throw new Error(res.error ?? '역할 생성 실패');
-      return res.data;
-    },
-    onSuccess: () => {
-      toast({ title: editRole ? '권한 수정 완료' : '역할 생성 완료' });
-      setRoleDialogOpen(false);
-      setEditRole(null);
-      setRoleForm({ name: '', permissions: [] });
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-    },
-    onError: (err: Error) => toast({ title: '저장 실패', description: err.message, variant: 'destructive' }),
-  });
-
-  const deleteRoleMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await deleteRole(id);
-      if (!res.ok) throw new Error(res.error ?? '삭제 실패');
-    },
-    onSuccess: () => {
-      toast({ title: '역할 삭제 완료' });
-      setDeleteRoleTarget(null);
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-    },
-    onError: (err: Error) => toast({ title: '삭제 실패', description: err.message, variant: 'destructive' }),
-  });
-
-  // ─── 팀에 추가 가능한 사용자 (현재 팀원이 아닌 사람) ──
+  // ─── 팀에 추가 가능한 사용자 ──
   const nonMembers = (usersQuery.data ?? []).filter(
     (u) => !(teamMembersQuery.data ?? []).some((m) => m.userId === u.id)
   );
-
-  // ─── 렌더 ─────────────────────────────────────────
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          관리
-          <HelpTooltip text="조직의 사용자, 팀, 조직, 역할/권한을 관리하는 관리자 전용 화면입니다." />
+          조직 / 팀 / 사용자
+          <HelpTooltip text="조직의 사용자, 팀, 조직을 관리하는 관리자 전용 화면입니다." />
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">조직, 팀, 사용자 및 권한 관리</p>
+        <p className="text-sm text-muted-foreground mt-1">조직, 팀, 사용자 관리</p>
       </div>
 
       <Tabs defaultValue="users">
@@ -318,8 +260,6 @@ export default function AdminPage() {
           <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" /> 사용자</TabsTrigger>
           <TabsTrigger value="teams" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> 팀</TabsTrigger>
           <TabsTrigger value="orgs" className="gap-1.5"><Building className="h-3.5 w-3.5" /> 조직</TabsTrigger>
-          <TabsTrigger value="roles" className="gap-1.5"><Shield className="h-3.5 w-3.5" /> 역할/권한</TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1.5"><Settings className="h-3.5 w-3.5" /> 설정</TabsTrigger>
         </TabsList>
 
         {/* ── 사용자 탭 ── */}
@@ -521,90 +461,6 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* ── 역할/권한 탭 ── */}
-        <TabsContent value="roles" className="mt-4 space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" className="gradient-primary text-primary-foreground gap-1"
-              onClick={() => { setEditRole(null); setRoleForm({ name: '', permissions: [] }); setRoleDialogOpen(true); }}>
-              <Plus className="h-3.5 w-3.5" /> 역할 추가
-            </Button>
-          </div>
-          {rolesQuery.isLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
-          {rolesQuery.isError && (
-            <div className="text-sm text-destructive p-4">
-              {(rolesQuery.error as Error).message}
-              <Button variant="ghost" size="sm" className="ml-2" onClick={() => rolesQuery.refetch()}>다시 시도</Button>
-            </div>
-          )}
-          {(rolesQuery.data as AdminRole[] | undefined)?.map((r) => (
-            <Card key={r.id ?? r.name} className="shadow-card">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{r.name}</h3>
-                      {r.userCount != null && (
-                        <span className="text-xs text-muted-foreground">{r.userCount}명 사용 중</span>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                      {r.permissions.map((p) => <Badge key={p} variant="secondary" className="text-[10px]">{p}</Badge>)}
-                      {r.permissions.length === 0 && <span className="text-xs text-muted-foreground">권한 없음</span>}
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => {
-                        setEditRole(r);
-                        setRoleForm({ name: r.name, permissions: [...r.permissions] });
-                        setRoleDialogOpen(true);
-                      }}>권한 수정</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive" onClick={() => setDeleteRoleTarget(r)}>삭제</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        {/* ── 설정 탭 ── */}
-        <TabsContent value="settings" className="mt-4">
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                시스템 설정
-                <HelpTooltip text="조직명, SSO 연동, 언어, 저장소 등 시스템 전반의 설정을 관리합니다." />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">조직 이름</label>
-                  <Input value={orgsQuery.data?.[0]?.name ?? '—'} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">SSO 설정</label>
-                  <Input value="Keycloak (미연결)" readOnly />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">기본 언어</label>
-                  <Input value="한국어" readOnly />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">파일 저장소</label>
-                  <Input value="MinIO (내부)" readOnly />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">※ 설정 변경은 백엔드 연동 후 활성화됩니다</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* ════ 사용자 추가 ════ */}
@@ -763,7 +619,6 @@ export default function AdminPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>팀원 관리 — {memberTeam?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            {/* 현재 팀원 */}
             <div>
               <p className="text-sm font-medium mb-2">현재 팀원 ({teamMembersQuery.data?.length ?? 0}명)</p>
               {teamMembersQuery.isLoading && <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
@@ -785,7 +640,6 @@ export default function AdminPage() {
                 ))}
               </div>
             </div>
-            {/* 추가 가능한 사용자 */}
             {nonMembers.length > 0 && (
               <div>
                 <p className="text-sm font-medium mb-2">팀원 추가</p>
@@ -872,72 +726,6 @@ export default function AdminPage() {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteOrgTarget && deleteOrgMutation.mutate(deleteOrgTarget.id)}
-            >삭제</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* ════ 역할 생성/권한 수정 ════ */}
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editRole ? `권한 수정 — ${editRole.name}` : '역할 추가'}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            {!editRole && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium">역할 이름 *</label>
-                <Input value={roleForm.name} onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))} placeholder="예: Researcher" />
-              </div>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">권한 선택</label>
-              <div className="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto">
-                {ALL_PERMISSIONS.map((p) => (
-                  <label key={p} className="flex items-center gap-2 text-sm cursor-pointer select-none rounded px-2 py-1.5 hover:bg-muted/50">
-                    <input
-                      type="checkbox"
-                      className="accent-primary"
-                      checked={roleForm.permissions.includes(p)}
-                      onChange={(e) => setRoleForm((f) => ({
-                        ...f,
-                        permissions: e.target.checked
-                          ? [...f.permissions, p]
-                          : f.permissions.filter((x) => x !== p),
-                      }))}
-                    />
-                    <span className="font-mono text-xs">{p}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>취소</Button>
-            <Button
-              className="gradient-primary text-primary-foreground"
-              disabled={(!editRole && !roleForm.name) || roleMutation.isPending}
-              onClick={() => roleMutation.mutate(roleForm)}
-            >
-              {roleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : (editRole ? '저장' : '추가')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ════ 역할 삭제 ════ */}
-      <AlertDialog open={!!deleteRoleTarget} onOpenChange={(o) => !o && setDeleteRoleTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>역할 삭제</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{deleteRoleTarget?.name}</strong> 역할을 삭제하시겠습니까?
-              이 역할이 지정된 사용자가 없어야 삭제할 수 있습니다.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteRoleTarget?.id && deleteRoleMutation.mutate(deleteRoleTarget.id)}
             >삭제</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

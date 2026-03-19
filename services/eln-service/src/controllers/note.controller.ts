@@ -22,7 +22,7 @@ async function verifyAdminPassword(userId: string, password: string): Promise<bo
         path: url.pathname,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(body),
           ...(INTERNAL_SECRET && { 'x-internal-secret': INTERNAL_SECRET }),
         },
@@ -46,7 +46,7 @@ async function verifyAdminPassword(userId: string, password: string): Promise<bo
   });
 }
 import {
-  ALLOWED_STATUS_TRANSITIONS,
+  ALLOWED_STATUS_TRANSITIONS, SYSTEM_STATUS_TRANSITIONS,
   type NoteStatus,
   type NoteType,
   type ChangeStatusDto,
@@ -337,7 +337,12 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
     if (!note) { res.status(404).json({ ok: false, error: '노트를 찾을 수 없습니다.' }); return; }
 
     const { status: newStatus } = req.body as ChangeStatusDto;
-    const allowed = ALLOWED_STATUS_TRANSITIONS[note.status as NoteStatus] ?? [];
+    const userRole = req.headers['x-user-role'] as string;
+    // system 역할(서명 서비스 내부 호출)은 signed 전환 허용, 일반 사용자는 차단
+    const transitions = userRole === 'system'
+      ? SYSTEM_STATUS_TRANSITIONS
+      : ALLOWED_STATUS_TRANSITIONS;
+    const allowed = transitions[note.status as NoteStatus] ?? [];
 
     if (!allowed.includes(newStatus)) {
       res.status(400).json({
@@ -345,6 +350,17 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
         error: `상태 전환 불가: "${note.status}" → "${newStatus}". 허용: [${allowed.join(', ')}]`,
       });
       return;
+    }
+
+    // 잠금(locked) 전환은 Reviewer 또는 Admin만 가능
+    if (newStatus === 'locked') {
+      if (userRole !== 'reviewer' && userRole !== 'admin') {
+        res.status(403).json({
+          ok: false,
+          error: '노트 잠금은 검토자(Reviewer) 또는 관리자(Admin)만 수행할 수 있습니다.',
+        });
+        return;
+      }
     }
 
     const updated = await prisma.note.update({
@@ -541,14 +557,21 @@ export async function addAttachment(req: Request, res: Response): Promise<void> 
 
 /** DELETE /api/notes/:id/attachments/:attachmentId */
 export async function deleteAttachment(req: Request, res: Response): Promise<void> {
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
   try {
-    await prisma.attachment.delete({ where: { id: req.params.attachmentId } });
-    res.json({ ok: true, message: '첨부파일이 삭제되었습니다.' });
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
+    const attachment = await prisma.attachment.findUnique({ where: { id: req.params.attachmentId } });
+    if (!attachment) {
       res.status(404).json({ ok: false, error: '첨부파일을 찾을 수 없습니다.' });
       return;
     }
+    if (attachment.uploadedBy !== userId && userRole !== 'admin') {
+      res.status(403).json({ ok: false, error: '권한이 없습니다.' });
+      return;
+    }
+    await prisma.attachment.delete({ where: { id: req.params.attachmentId } });
+    res.json({ ok: true, message: '첨부파일이 삭제되었습니다.' });
+  } catch (err: any) {
     console.error('[deleteAttachment]', err);
     res.status(500).json({ ok: false, error: '첨부파일 삭제 중 오류가 발생했습니다.' });
   }

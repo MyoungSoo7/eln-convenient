@@ -22,7 +22,8 @@
     "@prisma/client": "^5.9.1",
     "fastify": "^4.27.0",
     "fastify-plugin": "^4.5.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "@lab/shared": "file:../shared"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

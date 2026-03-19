@@ -35,7 +35,7 @@ export async function callAuditLog(event: AuditEvent): Promise<void> {
         path: url.pathname,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(body),
           'x-internal-secret': INTERNAL_SECRET, // 빈 문자열 포함 항상 전송 (수신측이 미설정 여부 판단)
         },

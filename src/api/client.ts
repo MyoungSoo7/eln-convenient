@@ -31,7 +31,7 @@ class ApiClient {
     const config: RequestInit = {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...extraHeaders,
       },

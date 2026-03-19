@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/audit.controller';
 import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
-import { validate } from '@lab/shared';
+import { validate, Permission } from '@lab/shared';
 import {
   CreateAuditLogInternalSchema,
   ListAuditLogsQuerySchema,
@@ -16,8 +16,8 @@ router.post('/internal', validate({ body: CreateAuditLogInternalSchema }), ctrl.
 router.use(requireAuth);
 
 // actions는 /:id 보다 먼저 등록
-router.get('/actions', requirePermission('audit:read'), ctrl.listAuditActions);
-router.get('/',        requirePermission('audit:read'), validate({ query: ListAuditLogsQuerySchema }), ctrl.listAuditLogs);
-router.get('/:id',     requirePermission('audit:read'), validate({ params: AuditIdParamsSchema }), ctrl.getAuditLog);
+router.get('/actions', requirePermission(Permission.AUDIT_READ), ctrl.listAuditActions);
+router.get('/',        requirePermission(Permission.AUDIT_READ), validate({ query: ListAuditLogsQuerySchema }), ctrl.listAuditLogs);
+router.get('/:id',     requirePermission(Permission.AUDIT_READ), validate({ params: AuditIdParamsSchema }), ctrl.getAuditLog);
 
 export default router;

@@ -6,7 +6,7 @@ const BASE = import.meta.env.VITE_API_URL ?? '';
 
 // 개발 중 DB 없이 테스트할 수 있도록 x-user-id / x-user-permissions 헤더 고정
 const DEV_HEADERS: Record<string, string> = {
-  'Content-Type': 'application/json',
+  'Content-Type': 'application/json; charset=utf-8',
   'x-user-id': 'dev-user',
   'x-user-permissions': JSON.stringify(['*']),
 };

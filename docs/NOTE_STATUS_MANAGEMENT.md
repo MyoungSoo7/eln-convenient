@@ -38,16 +38,20 @@
 
 ### 허용 전환 매트릭스
 
-| 현재 상태 → 변경 가능 상태 | 일반 사용자 | 관리자 | 서명 서비스 |
-|---------------------------|:-----------:|:------:|:-----------:|
-| draft → in_progress | ✅ | ✅ | - |
-| in_progress → draft | ✅ | ✅ | - |
-| in_progress → locked | ✅ | ✅ | - |
-| in_progress → signed | ❌ | ❌ | ✅ (내부 호출 전용) |
-| locked → draft | ❌ | ✅ (잠금 해제) | - |
-| signed → (모든 상태) | ❌ | ❌ | ❌ |
+| 현재 상태 → 변경 가능 상태 | Researcher | Reviewer | Admin | 서명 서비스 |
+|---------------------------|:-----------:|:--------:|:-----:|:-----------:|
+| draft → in_progress | ✅ | ✅ | ✅ | - |
+| in_progress → draft | ✅ | ✅ | ✅ | - |
+| in_progress → locked | ❌ | ✅ | ✅ | - |
+| in_progress → signed | ❌ | ❌ | ❌ | ✅ (내부 호출 전용) |
+| locked → draft | ❌ | ❌ | ✅ (잠금 해제) | - |
+| signed → (모든 상태) | ❌ | ❌ | ❌ | ❌ |
 
-> `in_progress → signed` 전환은 서명 서비스가 `PATCH /api/notes/:id/status`를 내부적으로 호출하여 처리합니다. 일반 UI에서는 노출되지 않습니다.
+> **잠금(locked)**: Reviewer 또는 Admin만 수행 가능. 검토 완료 후 편집을 차단하는 행위이므로 작성자(Researcher)가 아닌 검토자가 수행합니다.
+>
+> **서명(signed)**: 서명 서비스(`POST /api/signatures/sign/:noteId`)를 통해서만 전환됩니다. 서명 서비스가 내부적으로 `x-user-role: system` 헤더로 `PATCH /api/notes/:id/status`를 호출합니다. 일반 PATCH 요청으로는 signed 전환이 불가합니다. `note:sign` 권한은 Reviewer와 Admin만 보유합니다.
+>
+> **삭제**: locked, signed 상태의 노트는 삭제할 수 없습니다.
 
 ## 4. 계층별 구현 상세
 

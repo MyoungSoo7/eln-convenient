@@ -9,7 +9,7 @@ import type {
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
 const DEV_HEADERS: Record<string, string> = {
-  'Content-Type': 'application/json',
+  'Content-Type': 'application/json; charset=utf-8',
   'x-user-id': 'dev-user',
   'x-user-permissions': JSON.stringify(['*']),
 };

@@ -8,3 +8,13 @@ export {
 } from './errors';
 
 export { validate } from './validate';
+
+export { createLogger, createHttpLogger, type Logger } from './logger';
+
+export {
+  Permission,
+  RoleName,
+  RolePermissions,
+  type PermissionValue,
+  type RoleNameValue,
+} from './permissions';

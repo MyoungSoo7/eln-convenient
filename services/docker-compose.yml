@@ -13,9 +13,12 @@ services:
     image: postgres:15-alpine
     container_name: labnote-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-labnote}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-labnote_secret_2024}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER를 설정하세요}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 설정하세요}
       POSTGRES_DB: ${POSTGRES_DB:-labnote}
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
     ports:
       - "5432:5432"
     volumes:
@@ -43,8 +46,8 @@ services:
     image: minio/minio:latest
     container_name: labnote-minio
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER를 설정하세요}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD를 설정하세요}
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -80,12 +83,12 @@ services:
     image: quay.io/keycloak/keycloak:24.0
     container_name: labnote-keycloak
     environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN을 설정하세요}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD를 설정하세요}
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://postgres:5432/labnote
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/labnote?characterEncoding=UTF-8
       - KC_DB_USERNAME=${POSTGRES_USER:-labnote}
-      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-labnote_secret_2024}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 설정하세요}
       - KC_DB_SCHEMA=keycloak
       - KC_HOSTNAME_STRICT=false
       - KC_HTTP_ENABLED=true
@@ -113,13 +116,13 @@ services:
       context: .
       dockerfile: auth-service/Dockerfile
     container_name: labnote-auth
-    ports:
-      - "${AUTH_PORT:-8001}:8001"
+    expose:
+      - "8001"
     environment:
       - PORT=8001
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=auth
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,11 +140,11 @@ services:
       context: .
       dockerfile: eln-service/Dockerfile
     container_name: labnote-eln
-    ports:
-      - "${ELN_PORT:-8002}:8002"
+    expose:
+      - "8002"
     environment:
       - PORT=8002
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=eln
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=eln&client_encoding=UTF8
       - REDIS_URL=redis://redis:6379
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
@@ -164,16 +167,16 @@ services:
       context: .
       dockerfile: signature-audit-service/Dockerfile
     container_name: labnote-signature
-    ports:
-      - "${SIGNATURE_PORT:-8003}:8003"
+    expose:
+      - "8003"
     environment:
       - PORT=8003
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=signature
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?}
       - MINIO_BUCKET=labnote-files
       - ELN_SERVICE_URL=http://eln-service:8002
       - AUTH_SERVICE_URL=http://auth-service:8001
@@ -201,11 +204,11 @@ services:
       context: .
       dockerfile: inventory-service/Dockerfile
     container_name: labnote-inventory
-    ports:
-      - "${INVENTORY_PORT:-8004}:8004"
+    expose:
+      - "8004"
     environment:
       - PORT=8004
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=inventory
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
@@ -223,11 +226,11 @@ services:
   scheduler-service:
     build: ./scheduler-service
     container_name: labnote-scheduler
-    ports:
-      - "${SCHEDULER_PORT:-8005}:8005"
+    expose:
+      - "8005"
     environment:
       - PORT=8005
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=scheduler
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8
     depends_on:
       postgres:
         condition: service_healthy
@@ -243,12 +246,12 @@ services:
       context: .
       dockerfile: search-service/Dockerfile
     container_name: labnote-search
-    ports:
-      - "${SEARCH_PORT:-8006}:8006"
+    expose:
+      - "8006"
     environment:
       - PORT=8006
       - OPENSEARCH_URL=http://opensearch:9200
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=search
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
       postgres:
@@ -267,17 +270,17 @@ services:
       context: .
       dockerfile: file-service/Dockerfile
     container_name: labnote-file
-    ports:
-      - "${FILE_PORT:-8008}:8008"
+    expose:
+      - "8008"
     environment:
       - PORT=8008
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?}
       - MINIO_BUCKET=labnote-files
       - MINIO_EXPORTS_BUCKET=labnote-exports
-      - DATABASE_URL=postgresql://labnote:labnote_secret_2024@postgres:5432/labnote?schema=file
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     depends_on:
@@ -295,11 +298,11 @@ services:
   collab-service:
     build: ./collab-service
     container_name: labnote-collab
-    ports:
-      - "${COLLAB_PORT:-8009}:8009"
+    expose:
+      - "8009"
     environment:
       - PORT=8009
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - REDIS_URL=redis://redis:6379
     depends_on:
       redis:
@@ -340,7 +343,7 @@ services:
       - SEARCH_SERVICE_URL=http://search-service:8006
       - FILE_SERVICE_URL=http://file-service:8008
       - COLLAB_SERVICE_URL=http://collab-service:8009
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
       - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/labnote/protocol/openid-connect/certs

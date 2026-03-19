@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { currentUser } from "@/lib/mockData";
+import { getStoredUser } from "@/lib/authToken";
 
 const mainItems = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
@@ -104,7 +105,9 @@ export function AppSidebar() {
       <SidebarContent className="py-2">
         <SidebarNavGroup label="메인" items={mainItems} />
         <SidebarNavGroup label="규정 준수" items={complianceItems} />
-        <SidebarNavGroup label="관리" items={adminItems} defaultOpen={false} />
+        {(getStoredUser()?.role === 'admin' || currentUser.role === 'admin') && (
+          <SidebarNavGroup label="관리" items={adminItems} defaultOpen={false} />
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-3 border-t border-sidebar-border">

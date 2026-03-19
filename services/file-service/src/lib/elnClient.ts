@@ -34,7 +34,7 @@ function request<T>(path: string): Promise<T> {
       method: 'GET',
       headers: {
         'x-internal-secret': INTERNAL_SECRET,
-        'Accept': 'application/json',
+        'Accept': 'application/json; charset=utf-8',
       },
       timeout: TIMEOUT_MS,
     };

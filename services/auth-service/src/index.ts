@@ -3,15 +3,18 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import authRoutes from './routes/auth.routes';
 import { swaggerDocument } from './swagger';
-import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-setupProcessHandlers('auth-service');
+const { logger, httpLogger } = createHttpLogger('auth-service');
+
+setupProcessHandlers('auth-service', logger);
 
 const app = express();
 const PORT = process.env.PORT || 8001;
 
 app.use(cors());
 app.use(express.json());
+app.use(httpLogger);
 
 // Swagger UI
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
@@ -24,11 +27,11 @@ app.get('/health', (_req, res) => {
 // 라우트
 app.use('/api/auth', authRoutes);
 
-app.use(globalErrorHandler('auth-service'));
+app.use(globalErrorHandler('auth-service', logger));
 
 app.listen(PORT, () => {
-  console.log(`[auth-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`[auth-service] Swagger: http://localhost:${PORT}/docs`);
+  logger.info({ port: PORT }, '서버 시작');
+  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
 });
 
 export default app;

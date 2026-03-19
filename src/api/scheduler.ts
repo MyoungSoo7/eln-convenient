@@ -8,7 +8,7 @@ import { mockBookings } from '@/lib/mockData';
 export interface Resource {
   id: string;
   name: string;
-  type: 'equipment' | 'room';
+  type: 'EQUIPMENT' | 'ROOM';
   location?: string | null;
   description?: string | null;
   capacity?: number | null;
@@ -21,9 +21,9 @@ export interface BackendBooking {
   userId: string;
   title: string;
   description?: string | null;
-  startTime: string;  // ISO datetime
-  endTime: string;    // ISO datetime
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  startAt: string;   // ISO datetime
+  endAt: string;     // ISO datetime
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
   approvedBy?: string | null;
   rejectedReason?: string | null;
   createdAt: string;
@@ -51,7 +51,7 @@ export async function listResources(): Promise<ApiResponse<Resource[]>> {
 
 export interface ListBookingsParams {
   resourceId?: string;
-  status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
   from?: string;  // ISO date or datetime
   to?: string;
   page?: number;
@@ -86,9 +86,9 @@ export async function listBookings(params?: ListBookingsParams): Promise<ApiResp
         resourceId: b.id,
         userId: b.user,
         title: `${b.resourceName} 예약`,
-        startTime: `${b.date}T${b.startTime}:00`,
-        endTime: `${b.date}T${b.endTime}:00`,
-        status: b.status,
+        startAt: `${b.date}T${b.startTime}:00`,
+        endAt: `${b.date}T${b.endTime}:00`,
+        status: b.status.toUpperCase() as BackendBooking['status'],
         createdAt: `${today}T00:00:00.000Z`,
         resource: { id: b.id, name: b.resourceName, type: b.resourceType },
       })),
@@ -104,7 +104,15 @@ export async function createBooking(data: {
   description?: string;
 }): Promise<ApiResponse<BackendBooking>> {
   try {
-    return await apiClient.post<BackendBooking>('/scheduler/bookings', data);
+    // 백엔드는 startAt/endAt 필드명을 사용
+    const payload = {
+      resourceId: data.resourceId,
+      title: data.title,
+      startAt: data.startTime,
+      endAt: data.endTime,
+      ...(data.description ? { description: data.description } : {}),
+    };
+    return await apiClient.post<BackendBooking>('/scheduler/bookings', payload);
   } catch {
     return {
       ok: true,
@@ -113,9 +121,9 @@ export async function createBooking(data: {
         resourceId: data.resourceId,
         userId: 'me',
         title: data.title,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        status: 'pending',
+        startAt: data.startTime,
+        endAt: data.endTime,
+        status: 'PENDING',
         createdAt: new Date().toISOString(),
       },
     };
@@ -132,7 +140,7 @@ export async function cancelBooking(id: string): Promise<ApiResponse<{ message: 
 
 export async function approveBooking(id: string): Promise<ApiResponse<BackendBooking>> {
   try {
-    const res = await apiClient.put<BackendBooking>(`/scheduler/bookings/${id}/approve`, {});
+    const res = await apiClient.post<BackendBooking>(`/scheduler/bookings/${id}/approve`, {});
     return res;
   } catch {
     return { ok: true, data: {} as BackendBooking };
@@ -141,7 +149,7 @@ export async function approveBooking(id: string): Promise<ApiResponse<BackendBoo
 
 export async function rejectBooking(id: string, reason?: string): Promise<ApiResponse<BackendBooking>> {
   try {
-    const res = await apiClient.put<BackendBooking>(`/scheduler/bookings/${id}/reject`, { reason });
+    const res = await apiClient.post<BackendBooking>(`/scheduler/bookings/${id}/reject`, { reason });
     return res;
   } catch {
     return { ok: true, data: {} as BackendBooking };

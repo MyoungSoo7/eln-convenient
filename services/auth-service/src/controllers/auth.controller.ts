@@ -4,8 +4,13 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import redis from '../lib/redis';
+import { writeAuditLog } from '../lib/audit';
+import { invalidateUserTokens } from '../lib/token-invalidation';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET 환경변수가 설정되지 않았습니다. 서버를 시작할 수 없습니다.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 // ─────────────────────────────────────────────
@@ -178,9 +183,11 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 // ─────────────────────────────────────────────
 
 /** GET /api/auth/users */
-export async function getUsers(_req: Request, res: Response): Promise<void> {
+export async function getUsers(req: Request, res: Response): Promise<void> {
+  const orgId = req.headers['x-user-org-id'] as string | undefined;
   try {
     const users = await prisma.user.findMany({
+      where: orgId ? { orgId } : undefined,
       include: { role: true, teamMembers: { include: { team: true } } },
       orderBy: { createdAt: 'asc' },
     });
@@ -249,7 +256,14 @@ export async function createUser(req: Request, res: Response): Promise<void> {
 /** PUT /api/auth/users/:id (admin) */
 export async function updateUser(req: Request, res: Response): Promise<void> {
   const { name, roleId, status } = req.body;
+  const actorId = req.headers['x-user-id'] as string;
   try {
+    // 변경 전 상태 캡처 (감사 로그용)
+    const before = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: { role: true },
+    });
+
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data: {
@@ -257,7 +271,48 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
         ...(roleId !== undefined && { roleId }),
         ...(status !== undefined && { status }),
       },
+      include: { role: true },
     });
+
+    // 역할 변경 감사 로그
+    if (roleId !== undefined && before && before.roleId !== roleId) {
+      writeAuditLog({
+        entityType: 'user',
+        entityId: req.params.id,
+        action: 'role_change',
+        actorId,
+        details: {
+          beforeRole: before.role?.name ?? null,
+          beforeRoleId: before.roleId,
+          afterRole: user.role?.name ?? null,
+          afterRoleId: user.roleId,
+          userEmail: user.email,
+        },
+      });
+    }
+
+    // 상태 변경 감사 로그
+    if (status !== undefined && before && before.status !== status) {
+      writeAuditLog({
+        entityType: 'user',
+        entityId: req.params.id,
+        action: 'status_change',
+        actorId,
+        details: {
+          beforeStatus: before.status,
+          afterStatus: status,
+          userEmail: user.email,
+        },
+      });
+    }
+
+    // 역할 또는 상태가 변경되면 기존 토큰 무효화 (재로그인 강제)
+    const roleChanged = roleId !== undefined && before && before.roleId !== roleId;
+    const statusChanged = status !== undefined && before && before.status !== status;
+    if (roleChanged || statusChanged) {
+      invalidateUserTokens(req.params.id);
+    }
+
     res.json({
       ok: true,
       data: {
@@ -283,8 +338,28 @@ export async function deleteUser(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: { role: true },
+    });
+
     await prisma.teamMember.deleteMany({ where: { userId: req.params.id } });
     await prisma.user.delete({ where: { id: req.params.id } });
+
+    if (target) {
+      writeAuditLog({
+        entityType: 'user',
+        entityId: req.params.id,
+        action: 'user_delete',
+        actorId: callerId,
+        details: {
+          deletedEmail: target.email,
+          deletedName: target.name,
+          deletedRole: target.role?.name ?? null,
+        },
+      });
+    }
+
     res.json({ ok: true, message: '사용자가 삭제되었습니다.' });
   } catch (err: any) {
     if (err?.code === 'P2025') {
@@ -389,9 +464,11 @@ export async function deleteOrg(req: Request, res: Response): Promise<void> {
 // ─────────────────────────────────────────────
 
 /** GET /api/auth/teams */
-export async function getTeams(_req: Request, res: Response): Promise<void> {
+export async function getTeams(req: Request, res: Response): Promise<void> {
+  const orgId = req.headers['x-user-org-id'] as string | undefined;
   try {
     const teams = await prisma.team.findMany({
+      where: orgId ? { orgId } : undefined,
       orderBy: { createdAt: 'asc' },
       include: { _count: { select: { members: true } } },
     });
@@ -525,9 +602,11 @@ export async function removeTeamMember(req: Request, res: Response): Promise<voi
 // ─────────────────────────────────────────────
 
 /** GET /api/auth/roles */
-export async function getRoles(_req: Request, res: Response): Promise<void> {
+export async function getRoles(req: Request, res: Response): Promise<void> {
+  const orgId = req.headers['x-user-org-id'] as string | undefined;
   try {
     const roles = await prisma.role.findMany({
+      where: orgId ? { orgId } : undefined,
       include: { _count: { select: { users: true } } },
     });
     res.json({
@@ -574,11 +653,29 @@ export async function createRole(req: Request, res: Response): Promise<void> {
 /** PUT /api/auth/roles/:id/permissions (admin) */
 export async function updatePermissions(req: Request, res: Response): Promise<void> {
   const { permissions } = req.body;
+  const actorId = req.headers['x-user-id'] as string;
   try {
+    const before = await prisma.role.findUnique({ where: { id: req.params.id } });
+
     const role = await prisma.role.update({
       where: { id: req.params.id },
       data: { permissions },
     });
+
+    if (before) {
+      writeAuditLog({
+        entityType: 'role',
+        entityId: req.params.id,
+        action: 'permission_update',
+        actorId,
+        details: {
+          roleName: role.name,
+          beforePermissions: before.permissions,
+          afterPermissions: role.permissions,
+        },
+      });
+    }
+
     res.json({ ok: true, data: { id: role.id, permissions: role.permissions }, message: '권한 수정 완료' });
   } catch (err: any) {
     if (err?.code === 'P2025') {
@@ -611,6 +708,50 @@ export async function deleteRole(req: Request, res: Response): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
+// 내부 서비스용 역할 권한 조회
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/auth/internal/role-permissions?role=researcher&orgId=xxx
+ * 서비스 간 내부 호출 전용 — API Gateway Keycloak 분기에서 역할→권한 매핑 시 사용
+ */
+export async function getRolePermissions(req: Request, res: Response): Promise<void> {
+  const internalSecret = process.env.INTERNAL_SECRET;
+  if (!internalSecret) {
+    res.status(500).json({ ok: false, error: 'INTERNAL_SECRET이 설정되지 않았습니다.' });
+    return;
+  }
+  const incoming = req.headers['x-internal-secret'];
+  if (incoming !== internalSecret) {
+    res.status(401).json({ ok: false, error: '내부 요청 인증 실패' });
+    return;
+  }
+
+  const roleName = req.query.role as string;
+  const orgId = req.query.orgId as string | undefined;
+
+  if (!roleName) {
+    res.status(400).json({ ok: false, error: 'role 파라미터가 필요합니다.' });
+    return;
+  }
+
+  try {
+    const where: any = { name: roleName };
+    if (orgId) where.orgId = orgId;
+
+    const role = await prisma.role.findFirst({ where });
+    if (!role) {
+      res.json({ ok: true, permissions: [] });
+      return;
+    }
+    res.json({ ok: true, permissions: role.permissions });
+  } catch (err) {
+    console.error('[getRolePermissions]', err);
+    res.status(500).json({ ok: false, error: '역할 권한 조회 중 오류가 발생했습니다.' });
+  }
+}
+
+// ─────────────────────────────────────────────
 // 내부 서비스용 비밀번호 검증
 // ─────────────────────────────────────────────
 
@@ -621,12 +762,14 @@ export async function deleteRole(req: Request, res: Response): Promise<void> {
  */
 export async function verifyPassword(req: Request, res: Response): Promise<void> {
   const internalSecret = process.env.INTERNAL_SECRET;
-  if (internalSecret) {
-    const incoming = req.headers['x-internal-secret'];
-    if (incoming !== internalSecret) {
-      res.status(401).json({ ok: false, error: '내부 요청 인증 실패' });
-      return;
-    }
+  if (!internalSecret) {
+    res.status(500).json({ ok: false, error: 'INTERNAL_SECRET이 설정되지 않았습니다.' });
+    return;
+  }
+  const incoming = req.headers['x-internal-secret'];
+  if (incoming !== internalSecret) {
+    res.status(401).json({ ok: false, error: '내부 요청 인증 실패' });
+    return;
   }
 
   const { userId, password } = req.body;
@@ -659,12 +802,14 @@ export async function verifyPassword(req: Request, res: Response): Promise<void>
  */
 export async function ssoHook(req: Request, res: Response): Promise<void> {
   const hookSecret = process.env.KEYCLOAK_HOOK_SECRET;
-  if (hookSecret) {
-    const incoming = req.headers['x-keycloak-secret'];
-    if (incoming !== hookSecret) {
-      res.status(401).json({ ok: false, error: '유효하지 않은 훅 시크릿입니다.' });
-      return;
-    }
+  if (!hookSecret) {
+    res.status(500).json({ ok: false, error: 'KEYCLOAK_HOOK_SECRET이 설정되지 않았습니다.' });
+    return;
+  }
+  const incoming = req.headers['x-keycloak-secret'];
+  if (incoming !== hookSecret) {
+    res.status(401).json({ ok: false, error: '유효하지 않은 훅 시크릿입니다.' });
+    return;
   }
 
   const { type, userId: kcUserId, details } = req.body as {

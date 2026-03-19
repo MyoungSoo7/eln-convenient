@@ -49,7 +49,7 @@
       "firstName": "관리자",
       "lastName": "",
       "credentials": [
-        { "type": "password", "value": "Admin1234!", "temporary": false }
+        { "type": "password", "value": "CHANGE_ME_ADMIN", "temporary": true }
       ],
       "realmRoles": ["admin"]
     },
@@ -61,7 +61,7 @@
       "firstName": "연구원",
       "lastName": "",
       "credentials": [
-        { "type": "password", "value": "Researcher1!", "temporary": false }
+        { "type": "password", "value": "CHANGE_ME_RESEARCHER", "temporary": true }
       ],
       "realmRoles": ["researcher"]
     }

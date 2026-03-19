@@ -5,15 +5,18 @@ import searchRoutes from './routes/search.routes';
 import { swaggerDocument } from './swagger';
 import { ensureIndices } from './lib/opensearch';
 import prisma from './lib/prisma';
-import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-setupProcessHandlers('search-service');
+const { logger, httpLogger } = createHttpLogger('search-service');
+
+setupProcessHandlers('search-service', logger);
 
 const app = express();
 const PORT = process.env.PORT || 8006;
 
 app.use(cors());
 app.use(express.json());
+app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get('/health', (_req, res) => {
@@ -22,22 +25,22 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/search', searchRoutes);
 
-app.use(globalErrorHandler('search-service'));
+app.use(globalErrorHandler('search-service', logger));
 
 app.listen(PORT, async () => {
-  console.log(`[search-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`[search-service] Swagger: http://localhost:${PORT}/docs`);
+  logger.info({ port: PORT }, '서버 시작');
+  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
   try {
     await prisma.$connect();
-    console.log('[search-service] PostgreSQL 연결 완료');
+    logger.info('PostgreSQL 연결 완료');
   } catch (err) {
-    console.error('[search-service] PostgreSQL 연결 실패:', err);
+    logger.error({ err }, 'PostgreSQL 연결 실패');
   }
   try {
     await ensureIndices();
-    console.log('[search-service] OpenSearch 인덱스 준비 완료');
+    logger.info('OpenSearch 인덱스 준비 완료');
   } catch (err) {
-    console.error('[search-service] OpenSearch 인덱스 초기화 실패:', err);
+    logger.error({ err }, 'OpenSearch 인덱스 초기화 실패');
   }
 });
 

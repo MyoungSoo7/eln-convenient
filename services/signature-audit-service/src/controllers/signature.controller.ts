@@ -13,7 +13,7 @@ async function verifyUserPassword(userId: string, password: string): Promise<boo
   const res = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
       'x-internal-secret': INTERNAL_SECRET,
     },
     body: JSON.stringify({ userId, password }),
@@ -37,7 +37,7 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
     const res = await fetch(`${ELN_SERVICE_URL}/api/notes/${noteId}/status`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
         'x-user-id': userId,
         'x-user-role': 'system',
         'x-user-permissions': JSON.stringify(['note:write']),

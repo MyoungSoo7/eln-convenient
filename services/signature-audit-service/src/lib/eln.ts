@@ -29,7 +29,7 @@ export interface NoteListResponse {
 /** 내부 시스템 호출용 공통 헤더 */
 function internalHeaders(): Record<string, string> {
   return {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
     'x-user-id': 'system',
     'x-user-role': 'admin',
     'x-user-permissions': JSON.stringify(['*']),

@@ -9,15 +9,18 @@ import { startWorker, startExpiryCleanup, registerProcessor } from './lib/jobWor
 import { processPdfJob } from './processors/pdfProcessor';
 import { processZipJob } from './processors/zipProcessor';
 import prisma from './lib/prisma';
-import { globalErrorHandler, setupProcessHandlers } from '@lab/shared';
+import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-setupProcessHandlers('file-service');
+const { logger, httpLogger } = createHttpLogger('file-service');
+
+setupProcessHandlers('file-service', logger);
 
 const app = express();
 const PORT = process.env.PORT || 8008;
 
 app.use(cors());
 app.use(express.json());
+app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get('/health', async (_req, res) => {
@@ -43,11 +46,11 @@ app.get('/health', async (_req, res) => {
 app.use('/api/files', fileRoutes);
 app.use('/api/exports', exportRoutes);
 
-app.use(globalErrorHandler('file-service'));
+app.use(globalErrorHandler('file-service', logger));
 
 app.listen(PORT, async () => {
-  console.log(`[file-service] 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`[file-service] Swagger: http://localhost:${PORT}/docs`);
+  logger.info({ port: PORT }, '서버 시작');
+  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
 
   // export job processors 등록
   registerProcessor('pdf', processPdfJob);
@@ -59,9 +62,9 @@ app.listen(PORT, async () => {
 
   try {
     await ensureBucket();
-    console.log('[file-service] MinIO 버킷 준비 완료');
+    logger.info('MinIO 버킷 준비 완료');
   } catch (err) {
-    console.error('[file-service] MinIO 버킷 초기화 실패 (나중에 재시도):', err);
+    logger.error({ err }, 'MinIO 버킷 초기화 실패 (나중에 재시도)');
   }
 });
 

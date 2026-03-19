@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { requireAuth, requireRole, requirePermission } from '../plugins/auth';
+import { Permission, RoleName } from '@lab/shared';
 
 // ─── JSON Schema ─────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /resources ────────────────────────────────────────
   fastify.get('/resources', {
-    preHandler: [requireAuth, requirePermission('scheduler:read')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: {
       tags: ['resources'],
       querystring: {
@@ -54,7 +55,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /resources/:id ────────────────────────────────────
   fastify.get<{ Params: { id: string } }>('/resources/:id', {
-    preHandler: [requireAuth, requirePermission('scheduler:read')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
     const resource = await fastify.prisma.resource.findUnique({
@@ -69,7 +70,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /resources ───────────────────────────────────────
   fastify.post('/resources', {
-    preHandler: [requireAuth, requireRole('admin', 'lab_manager')],
+    preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], body: resourceBody },
   }, async (request, reply) => {
     const body = request.body as {
@@ -93,7 +94,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── PUT /resources/:id ────────────────────────────────────
   fastify.put<{ Params: { id: string } }>('/resources/:id', {
-    preHandler: [requireAuth, requireRole('admin', 'lab_manager')],
+    preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
     const body = request.body as Record<string, unknown>;
@@ -123,7 +124,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── DELETE /resources/:id (soft delete) ──────────────────
   fastify.delete<{ Params: { id: string } }>('/resources/:id', {
-    preHandler: [requireAuth, requireRole('admin', 'lab_manager')],
+    preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
     const { id } = request.params;

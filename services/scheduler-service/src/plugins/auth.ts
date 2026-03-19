@@ -15,7 +15,7 @@ export async function requireAuth(
 
 /**
  * 역할 기반 접근 제어
- * preHandler에 함수 참조로 사용: requireRole('admin', 'lab_manager')
+ * preHandler에 함수 참조로 사용: requireRole('admin')
  */
 export function requireRole(...roles: string[]) {
   return async function roleGuard(

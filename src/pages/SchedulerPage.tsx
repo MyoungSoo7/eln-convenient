@@ -2,28 +2,33 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, RefreshCw, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "@/hooks/use-toast";
-import { listResources, listBookings, createBooking, type Resource, type BackendBooking } from "@/api/scheduler";
+import { listResources, listBookings, createBooking, approveBooking, rejectBooking, type Resource, type BackendBooking } from "@/api/scheduler";
+import { getStoredUser } from "@/lib/authToken";
+
+const APPROVE_ROLES = ["admin", "reviewer"];
 
 const days = ["월", "화", "수", "목", "금", "토", "일"];
 const hours = Array.from({ length: 10 }, (_, i) => `${(i + 8).toString().padStart(2, "0")}:00`);
 
 const statusLabels: Record<string, string> = {
-  pending: "대기", approved: "승인", rejected: "거절", cancelled: "취소",
+  PENDING: "대기", APPROVED: "승인", REJECTED: "거절", CANCELLED: "취소", COMPLETED: "완료",
 };
 const statusColors: Record<string, string> = {
-  pending: "bg-warning/10 text-warning border-warning/30",
-  approved: "bg-success/10 text-success border-success/30",
-  rejected: "bg-destructive/10 text-destructive",
-  cancelled: "bg-muted text-muted-foreground",
+  PENDING: "bg-warning/10 text-warning border-warning/30",
+  APPROVED: "bg-success/10 text-success border-success/30",
+  REJECTED: "bg-destructive/10 text-destructive",
+  CANCELLED: "bg-muted text-muted-foreground",
+  COMPLETED: "bg-muted text-muted-foreground",
 };
-const typeLabels: Record<string, string> = { equipment: "장비", room: "회의실" };
+const typeLabels: Record<string, string> = { EQUIPMENT: "장비", ROOM: "회의실" };
 
 // ISO datetime → "YYYY-MM-DD" (로컬 시간 기준)
 function toLocalDate(iso: string): string {
@@ -54,7 +59,7 @@ function formatDate(d: Date): string {
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 }
 
-type StatusFilter = "all" | "pending" | "approved";
+type StatusFilter = "all" | "PENDING" | "APPROVED";
 
 export default function SchedulerPage() {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -65,6 +70,15 @@ export default function SchedulerPage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [bookings, setBookings] = useState<BackendBooking[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 승인/반려 권한 확인
+  const storedUser = getStoredUser();
+  const userRole = (storedUser?.role as string) ?? "";
+  const canApprove = APPROVE_ROLES.includes(userRole);
+
+  // 반려 사유 다이얼로그
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   // 예약 폼
   const [formResourceId, setFormResourceId] = useState("");
@@ -133,6 +147,29 @@ export default function SchedulerPage() {
     } else {
       toast({ title: "예약 실패", description: res.error || "예약 생성에 실패했습니다.", variant: "destructive" });
     }
+  };
+
+  const handleApprove = async (id: string) => {
+    const res = await approveBooking(id);
+    if (res.ok) {
+      toast({ title: "승인 완료", description: "예약이 승인되었습니다." });
+      loadData();
+    } else {
+      toast({ title: "승인 실패", description: res.error || "승인에 실패했습니다.", variant: "destructive" });
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget) return;
+    const res = await rejectBooking(rejectTarget, rejectReason || undefined);
+    if (res.ok) {
+      toast({ title: "반려 완료", description: "예약이 반려되었습니다." });
+      loadData();
+    } else {
+      toast({ title: "반려 실패", description: res.error || "반려에 실패했습니다.", variant: "destructive" });
+    }
+    setRejectTarget(null);
+    setRejectReason("");
   };
 
   return (
@@ -276,15 +313,15 @@ export default function SchedulerPage() {
               {weekDates.map((d, i) => {
                 const dateStr = formatDate(d);
                 const booking = bookings.find((b) => {
-                  if (!["pending", "approved"].includes(b.status)) return false;
-                  const bDate = toLocalDate(b.startTime);
-                  const bStart = toLocalHHMM(b.startTime);
-                  const bEnd = toLocalHHMM(b.endTime);
+                  if (!["PENDING", "APPROVED"].includes(b.status)) return false;
+                  const bDate = toLocalDate(b.startAt);
+                  const bStart = toLocalHHMM(b.startAt);
+                  const bEnd = toLocalHHMM(b.endAt);
                   return bDate === dateStr && bStart <= hour && bEnd > hour;
                 });
                 return (
                   <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
-                    {booking && toLocalHHMM(booking.startTime) === hour && (
+                    {booking && toLocalHHMM(booking.startAt) === hour && (
                       <div className={`rounded p-1.5 text-[10px] border ${statusColors[booking.status]}`}>
                         <p className="font-medium truncate">
                           {booking.resource?.name || booking.resourceId}
@@ -314,8 +351,8 @@ export default function SchedulerPage() {
             <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-auto">
               <TabsList className="h-9">
                 <TabsTrigger value="all" className="text-xs px-3">전체</TabsTrigger>
-                <TabsTrigger value="pending" className="text-xs px-3">대기</TabsTrigger>
-                <TabsTrigger value="approved" className="text-xs px-3">승인</TabsTrigger>
+                <TabsTrigger value="PENDING" className="text-xs px-3">대기</TabsTrigger>
+                <TabsTrigger value="APPROVED" className="text-xs px-3">승인</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -325,7 +362,7 @@ export default function SchedulerPage() {
             <p className="text-sm text-muted-foreground text-center py-6">로딩 중...</p>
           ) : bookings.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              {statusFilter === "all" ? "예약이 없습니다. 새 예약을 생성해보세요." : `'${statusFilter === "pending" ? "대기" : "승인"}' 상태 예약이 없습니다.`}
+              {statusFilter === "all" ? "예약이 없습니다. 새 예약을 생성해보세요." : `'${statusFilter === "PENDING" ? "대기" : "승인"}' 상태 예약이 없습니다.`}
             </p>
           ) : (
             <div className="space-y-3">
@@ -345,18 +382,61 @@ export default function SchedulerPage() {
                     </div>
                     <p className="text-xs text-muted-foreground truncate">{b.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {toLocalDate(b.startTime)} · {toLocalHHMM(b.startTime)}–{toLocalHHMM(b.endTime)}
+                      {toLocalDate(b.startAt)} · {toLocalHHMM(b.startAt)}–{toLocalHHMM(b.endAt)}
                     </p>
                   </div>
-                  <Badge className={`text-[10px] shrink-0 ${statusColors[b.status]}`}>
-                    {statusLabels[b.status]}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canApprove && b.status === "PENDING" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-success border-success/30 hover:bg-success/10"
+                          onClick={() => handleApprove(b.id)}
+                        >
+                          <Check className="h-3 w-3 mr-1" /> 승인
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                          onClick={() => setRejectTarget(b.id)}
+                        >
+                          <X className="h-3 w-3 mr-1" /> 반려
+                        </Button>
+                      </>
+                    )}
+                    <Badge className={`text-[10px] ${statusColors[b.status]}`}>
+                      {statusLabels[b.status]}
+                    </Badge>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* 반려 사유 다이얼로그 */}
+      <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open) { setRejectTarget(null); setRejectReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>예약 반려</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <Label>반려 사유</Label>
+            <Input
+              placeholder="반려 사유를 입력해주세요 (선택)"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>취소</Button>
+            <Button variant="destructive" onClick={handleReject}>반려</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

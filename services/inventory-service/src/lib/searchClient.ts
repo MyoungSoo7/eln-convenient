@@ -2,7 +2,10 @@ import http from 'http';
 import https from 'https';
 
 const SEARCH_SERVICE_URL = process.env.SEARCH_SERVICE_URL || 'http://localhost:8006';
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'dev-internal-secret';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+if (!INTERNAL_SECRET) {
+  console.warn('[searchClient] INTERNAL_SECRET 미설정 — 검색 색인 요청이 거부될 수 있습니다.');
+}
 
 interface IndexPayload {
   id: string;
@@ -21,7 +24,7 @@ function postJSON(url: string, body: unknown): Promise<void> {
         path: parsed.pathname,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(data),
           'x-internal-secret': INTERNAL_SECRET,
         },

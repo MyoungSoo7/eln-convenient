@@ -6,6 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { RolePermissions } from '@lab/shared';
 
 const prisma = new PrismaClient();
 
@@ -32,15 +33,7 @@ async function main() {
       id: 'role-admin-001',
       orgId: org.id,
       name: 'admin',
-      permissions: [
-        'note:read', 'note:write', 'note:delete', 'note:sign', 'note:unlock',
-        'template:read', 'template:write', 'template:delete',
-        'inventory:read', 'inventory:write', 'inventory:delete',
-        'scheduler:read', 'scheduler:write',
-        'file:upload', 'file:read', 'file:delete',
-        'user:read', 'user:write', 'user:delete',
-        'audit:read', 'export:pdf',
-      ],
+      permissions: [...RolePermissions.admin],
     },
   });
 
@@ -51,14 +44,7 @@ async function main() {
       id: 'role-researcher-001',
       orgId: org.id,
       name: 'researcher',
-      permissions: [
-        'note:read', 'note:write', 'note:sign',
-        'template:read', 'template:write',
-        'inventory:read', 'inventory:write',
-        'scheduler:read', 'scheduler:write',
-        'file:upload', 'file:read',
-        'export:pdf',
-      ],
+      permissions: [...RolePermissions.researcher],
     },
   });
 
@@ -69,14 +55,7 @@ async function main() {
       id: 'role-reviewer-001',
       orgId: org.id,
       name: 'reviewer',
-      permissions: [
-        'note:read', 'note:sign',
-        'template:read',
-        'inventory:read',
-        'scheduler:read',
-        'file:read',
-        'audit:read',
-      ],
+      permissions: [...RolePermissions.reviewer],
     },
   });
 
@@ -87,13 +66,7 @@ async function main() {
       id: 'role-viewer-001',
       orgId: org.id,
       name: 'viewer',
-      permissions: [
-        'note:read',
-        'template:read',
-        'inventory:read',
-        'scheduler:read',
-        'file:read',
-      ],
+      permissions: [...RolePermissions.viewer],
     },
   });
 
@@ -112,7 +85,10 @@ async function main() {
   console.log(`✅ 팀: ${team.name}`);
 
   // 4. 관리자 계정 생성
-  const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || 'Admin1234!';
+  const adminPassword = process.env.ADMIN_INITIAL_PASSWORD;
+  if (!adminPassword) {
+    throw new Error('ADMIN_INITIAL_PASSWORD 환경변수를 설정하세요. 예: ADMIN_INITIAL_PASSWORD=MyStr0ng!Pass npm run db:seed');
+  }
   const adminHash = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
@@ -128,10 +104,13 @@ async function main() {
       status: 'active',
     },
   });
-  console.log(`✅ 관리자: ${admin.email} (비밀번호: ${adminPassword})`);
+  console.log(`✅ 관리자: ${admin.email}`);
 
   // 5. 연구원 계정 생성 (개발/테스트용)
-  const researcherPassword = 'Researcher1!';
+  const researcherPassword = process.env.RESEARCHER_INITIAL_PASSWORD;
+  if (!researcherPassword) {
+    throw new Error('RESEARCHER_INITIAL_PASSWORD 환경변수를 설정하세요.');
+  }
   const researcherHash = await bcrypt.hash(researcherPassword, 10);
 
   const researcher = await prisma.user.upsert({
@@ -147,13 +126,53 @@ async function main() {
       status: 'active',
     },
   });
-  console.log(`✅ 연구원: ${researcher.email} (비밀번호: ${researcherPassword})`);
+  console.log(`✅ 연구원: ${researcher.email}`);
+
+  // 6. 검토자 계정 생성 (개발/테스트용)
+  const reviewerPassword = process.env.REVIEWER_INITIAL_PASSWORD || researcherPassword;
+  const reviewerHash = await bcrypt.hash(reviewerPassword, 10);
+
+  const reviewerUser = await prisma.user.upsert({
+    where: { email: 'reviewer@labnote.local' },
+    update: {},
+    create: {
+      id: 'user-reviewer-001',
+      orgId: org.id,
+      email: 'reviewer@labnote.local',
+      name: '검토자',
+      passwordHash: reviewerHash,
+      roleId: reviewerRole.id,
+      status: 'active',
+    },
+  });
+  console.log(`✅ 검토자: ${reviewerUser.email}`);
+
+  // 7. 열람자 계정 생성 (개발/테스트용)
+  const viewerPassword = process.env.VIEWER_INITIAL_PASSWORD || researcherPassword;
+  const viewerHash = await bcrypt.hash(viewerPassword, 10);
+
+  const viewerUser = await prisma.user.upsert({
+    where: { email: 'viewer@labnote.local' },
+    update: {},
+    create: {
+      id: 'user-viewer-001',
+      orgId: org.id,
+      email: 'viewer@labnote.local',
+      name: '열람자',
+      passwordHash: viewerHash,
+      roleId: viewerRole.id,
+      status: 'active',
+    },
+  });
+  console.log(`✅ 열람자: ${viewerUser.email}`);
 
   console.log('\n🎉 시드 데이터 삽입 완료!');
   console.log('─────────────────────────────────────');
   console.log('로그인 계정:');
-  console.log(`  관리자:  admin@labnote.local / ${adminPassword}`);
-  console.log(`  연구원:  researcher@labnote.local / ${researcherPassword}`);
+  console.log('  관리자:  admin@labnote.local');
+  console.log('  연구원:  researcher@labnote.local');
+  console.log('  검토자:  reviewer@labnote.local');
+  console.log('  열람자:  viewer@labnote.local');
   console.log('─────────────────────────────────────');
 }
 

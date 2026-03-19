@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import type { Logger } from './logger';
 
 // ── 통일된 에러 응답 인터페이스 ─────────────────────────────
 export interface ErrorResponse {
@@ -51,18 +52,26 @@ export function asyncHandler(
 }
 
 // ── 전역 에러 핸들러 ────────────────────────────────────────
-export function globalErrorHandler(serviceName: string) {
+export function globalErrorHandler(serviceName: string, logger?: Logger) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   return (err: Error, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof AppError) {
-      console.error(`[${serviceName}]`, { code: err.code, message: err.message });
+      if (logger) {
+        logger.warn({ code: err.code, details: err.details }, err.message);
+      } else {
+        console.error(`[${serviceName}]`, { code: err.code, message: err.message });
+      }
       res.status(err.statusCode).json(
         buildErrorResponse(err.statusCode, err.message, err.code, err.details),
       );
       return;
     }
 
-    console.error(`[${serviceName}] Unhandled error:`, err.stack ?? err);
+    if (logger) {
+      logger.error({ err }, 'Unhandled error');
+    } else {
+      console.error(`[${serviceName}] Unhandled error:`, err.stack ?? err);
+    }
     res.status(500).json(
       buildErrorResponse(500, '서버 내부 오류가 발생했습니다.', 'ERR_INTERNAL'),
     );
@@ -70,13 +79,21 @@ export function globalErrorHandler(serviceName: string) {
 }
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
-export function setupProcessHandlers(serviceName: string) {
+export function setupProcessHandlers(serviceName: string, logger?: Logger) {
   process.on('unhandledRejection', (reason) => {
-    console.error(`[${serviceName}] Unhandled Rejection:`, reason);
+    if (logger) {
+      logger.fatal({ reason }, 'Unhandled Rejection');
+    } else {
+      console.error(`[${serviceName}] Unhandled Rejection:`, reason);
+    }
   });
 
   process.on('uncaughtException', (err) => {
-    console.error(`[${serviceName}] Uncaught Exception:`, err);
+    if (logger) {
+      logger.fatal({ err }, 'Uncaught Exception');
+    } else {
+      console.error(`[${serviceName}] Uncaught Exception:`, err);
+    }
     process.exit(1);
   });
 }

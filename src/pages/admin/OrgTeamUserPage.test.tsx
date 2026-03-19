@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import AdminPage from './AdminPage';
+import OrgTeamUserPage from './OrgTeamUserPage';
 import * as admin from '@/api/admin';
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -29,12 +29,12 @@ function mockAll() {
   vi.spyOn(admin, 'listRoles').mockResolvedValue({ ok: true, data: mockRoles });
 }
 
-describe('AdminPage', () => {
+describe('OrgTeamUserPage', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
   it('renders users from API', async () => {
     mockAll();
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('김연구')).toBeInTheDocument());
     expect(screen.getByText('kim@lab.kr')).toBeInTheDocument();
   });
@@ -45,16 +45,15 @@ describe('AdminPage', () => {
     vi.spyOn(admin, 'listOrgs').mockResolvedValue({ ok: true, data: [] });
     vi.spyOn(admin, 'listRoles').mockResolvedValue({ ok: true, data: [] });
 
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
     await waitFor(() => expect(screen.getByText(/사용자 목록 조회에 실패했습니다/)).toBeInTheDocument());
   });
 
   it('opens add user dialog on button click', async () => {
     mockAll();
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
     fireEvent.click(screen.getByRole('button', { name: /사용자 추가/ }));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('shows error toast when createUser returns ok:false', async () => {
@@ -65,7 +64,7 @@ describe('AdminPage', () => {
       error: '이미 존재하는 이메일입니다.',
     });
 
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
     fireEvent.click(screen.getByRole('button', { name: /사용자 추가/ }));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
@@ -75,7 +74,6 @@ describe('AdminPage', () => {
     fireEvent.change(inputs[1], { target: { value: 'hong@lab.kr' } });
     fireEvent.change(inputs[2], { target: { value: 'password123' } });
 
-    // 추가 버튼 활성화 대기 후 클릭
     const addBtn = screen.getAllByRole('button').find((b) => b.textContent === '추가');
     await waitFor(() => expect(addBtn).not.toBeDisabled());
     fireEvent.click(addBtn!);
@@ -84,7 +82,7 @@ describe('AdminPage', () => {
 
   it('renders dropdown trigger button in each user row', async () => {
     mockAll();
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('김연구')).toBeInTheDocument());
 
     const row = screen.getByText('김연구').closest('tr')!;
@@ -92,14 +90,14 @@ describe('AdminPage', () => {
     expect(moreBtn).toBeInTheDocument();
   });
 
-  it('renders all tab triggers including 조직', async () => {
+  it('renders tabs for 사용자, 팀, 조직 only', async () => {
     mockAll();
-    render(<AdminPage />, { wrapper });
+    render(<OrgTeamUserPage />, { wrapper });
 
     expect(screen.getByRole('tab', { name: /사용자/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /팀/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /조직/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /역할/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /설정/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /역할/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /설정/ })).not.toBeInTheDocument();
   });
 });

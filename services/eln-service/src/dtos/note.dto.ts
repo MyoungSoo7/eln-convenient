@@ -112,7 +112,15 @@ export const GetTagsQuerySchema = z.object({
  */
 export const ALLOWED_STATUS_TRANSITIONS: Record<NoteStatus, NoteStatus[]> = {
   draft:       ['in_progress'],
-  in_progress: ['draft', 'signed', 'locked'],
+  in_progress: ['draft', 'locked'],
   signed:      [],              // 서명 완료는 불변
   locked:      [],              // 관리자 잠금 해제는 별도 엔드포인트
+};
+
+// 서명 서비스 내부 호출 전용 전환 (x-user-role: 'system' 필요)
+export const SYSTEM_STATUS_TRANSITIONS: Record<NoteStatus, NoteStatus[]> = {
+  draft:       ['in_progress'],
+  in_progress: ['draft', 'signed', 'locked'],
+  signed:      [],
+  locked:      [],
 };

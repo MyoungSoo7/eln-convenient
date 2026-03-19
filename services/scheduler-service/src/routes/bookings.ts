@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { BookingStatus } from '@prisma/client';
 import { requireAuth, requirePermission } from '../plugins/auth';
+import { Permission, RoleName } from '@lab/shared';
 import { checkConflict } from '../lib/conflict';
 import { assertTransition, InvalidTransitionError } from '../lib/state-machine';
 
@@ -16,10 +17,10 @@ function parseDate(value: string, reply: any): Date | null {
 }
 
 /**
- * 승인/반려 권한: admin, lab_manager 역할 또는 해당 자원의 ownerId
+ * 승인/반려 권한: admin 역할 또는 해당 자원의 ownerId
  */
 function canManageBooking(role: string, userId: string, ownerId: string | null): boolean {
-  return ['admin', 'lab_manager'].includes(role) || ownerId === userId;
+  return role === RoleName.ADMIN || ownerId === userId;
 }
 
 // ─── Route Plugin ─────────────────────────────────────────────
@@ -28,7 +29,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /bookings ─────────────────────────────────────────
   fastify.get('/bookings', {
-    preHandler: [requireAuth, requirePermission('scheduler:read')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: {
       tags: ['bookings'],
       querystring: {
@@ -77,7 +78,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /bookings/:id ─────────────────────────────────────
   fastify.get<{ Params: { id: string } }>('/bookings/:id', {
-    preHandler: [requireAuth, requirePermission('scheduler:read')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
     const booking = await fastify.prisma.booking.findUnique({
@@ -93,7 +94,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
   // ── GET /calendar ─────────────────────────────────────────
   // 캘린더 뷰: 기간 내 APPROVED 예약 반환
   fastify.get('/calendar', {
-    preHandler: [requireAuth, requirePermission('scheduler:read')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: {
       tags: ['bookings'],
       querystring: {
@@ -133,7 +134,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /bookings ────────────────────────────────────────
   fastify.post('/bookings', {
-    preHandler: [requireAuth, requirePermission('scheduler:write')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: {
       tags: ['bookings'],
       body: {
@@ -202,7 +203,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── PUT /bookings/:id (내용 수정, PENDING 상태만 허용) ────
   fastify.put<{ Params: { id: string } }>('/bookings/:id', {
-    preHandler: [requireAuth, requirePermission('scheduler:write')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
     const userId = request.headers['x-user-id'] as string;
@@ -214,7 +215,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     if (!existing) {
       return reply.code(404).send({ ok: false, error: '예약을 찾을 수 없습니다.' });
     }
-    if (existing.userId !== userId && !['admin', 'lab_manager'].includes(role)) {
+    if (existing.userId !== userId && role !== RoleName.ADMIN) {
       return reply.code(403).send({ ok: false, error: '본인의 예약만 수정할 수 있습니다.' });
     }
     if (existing.status !== 'PENDING') {
@@ -276,7 +277,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
 
-        // 2. 권한 검증: admin/lab_manager 또는 자원 ownerId
+        // 2. 권한 검증: admin 또는 자원 ownerId
         if (!canManageBooking(role, approvedBy, current.resource.ownerId)) {
           throw Object.assign(new Error('승인 권한이 없습니다.'), { statusCode: 403 });
         }
@@ -382,7 +383,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /bookings/:id/cancel ─────────────────────────────
   fastify.post<{ Params: { id: string } }>('/bookings/:id/cancel', {
-    preHandler: [requireAuth, requirePermission('scheduler:write')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
     const userId = request.headers['x-user-id'] as string;
@@ -400,7 +401,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
         if (!current) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
-        if (current.userId !== userId && !['admin', 'lab_manager'].includes(role)) {
+        if (current.userId !== userId && role !== RoleName.ADMIN) {
           throw Object.assign(new Error('본인의 예약만 취소할 수 있습니다.'), { statusCode: 403 });
         }
 
@@ -426,7 +427,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /bookings/:id/complete ───────────────────────────
   fastify.post<{ Params: { id: string } }>('/bookings/:id/complete', {
-    preHandler: [requireAuth, requirePermission('scheduler:write')],
+    preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
     const userId = request.headers['x-user-id'] as string;
@@ -441,7 +442,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
         if (!current) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
-        if (current.userId !== userId && !['admin', 'lab_manager'].includes(role)) {
+        if (current.userId !== userId && role !== RoleName.ADMIN) {
           throw Object.assign(new Error('본인의 예약만 완료 처리할 수 있습니다.'), { statusCode: 403 });
         }
 
