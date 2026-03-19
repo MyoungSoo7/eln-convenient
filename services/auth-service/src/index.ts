@@ -3,11 +3,14 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import authRoutes from './routes/auth.routes';
 import { swaggerDocument } from './swagger';
+import prisma from './lib/prisma';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
 const { logger, httpLogger } = createHttpLogger('auth-service');
 
-setupProcessHandlers('auth-service', logger);
+setupProcessHandlers('auth-service', logger, {
+  onShutdown: () => prisma.$disconnect(),
+});
 
 const app = express();
 const PORT = process.env.PORT || 8001;
@@ -20,8 +23,15 @@ app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // 헬스체크
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'auth-service', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'auth-service',
+    timestamp: new Date().toISOString(),
+    db: dbOk ? 'ok' : 'error',
+  });
 });
 
 // 라우트

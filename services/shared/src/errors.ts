@@ -79,7 +79,13 @@ export function globalErrorHandler(serviceName: string, logger?: Logger) {
 }
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
-export function setupProcessHandlers(serviceName: string, logger?: Logger) {
+
+interface SetupProcessOptions {
+  /** prisma.$disconnect 등 정리 함수 — SIGTERM/SIGINT 시 호출 */
+  onShutdown?: () => Promise<void>;
+}
+
+export function setupProcessHandlers(serviceName: string, logger?: Logger, opts?: SetupProcessOptions) {
   process.on('unhandledRejection', (reason) => {
     if (logger) {
       logger.fatal({ reason }, 'Unhandled Rejection');
@@ -96,4 +102,28 @@ export function setupProcessHandlers(serviceName: string, logger?: Logger) {
     }
     process.exit(1);
   });
+
+  // ── Graceful Shutdown ──
+  if (opts?.onShutdown) {
+    const shutdown = async (signal: string) => {
+      if (logger) {
+        logger.info({ signal }, 'Graceful shutdown 시작');
+      } else {
+        console.log(`[${serviceName}] ${signal} 수신 — shutdown 시작`);
+      }
+      try {
+        await opts.onShutdown!();
+      } catch (err) {
+        if (logger) {
+          logger.error({ err }, 'Shutdown 중 오류');
+        } else {
+          console.error(`[${serviceName}] Shutdown 오류:`, err);
+        }
+      }
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  }
 }
