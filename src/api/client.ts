@@ -1,9 +1,10 @@
 /**
  * API 클라이언트 기본 설정
  * - JWT 토큰 자동 주입 (Authorization: Bearer ...)
- * - 401 응답 시 토큰 삭제 후 /login 리디렉트
+ * - 토큰 만료 임박 시 자동 갱신
+ * - 401 응답 시 refresh 시도 후 실패하면 /login 리디렉트
  */
-import { getToken, clearToken } from '@/lib/authToken';
+import { getToken, setToken, clearToken, getRefreshToken, setRefreshToken, isTokenExpiringSoon } from '@/lib/authToken';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -11,6 +12,65 @@ export interface ApiResponse<T> {
   ok: boolean;
   data: T;
   error?: string;
+}
+
+// Token refresh state (prevent concurrent refreshes)
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  const keycloakEnabled = import.meta.env.VITE_KEYCLOAK_ENABLED === 'true';
+
+  if (keycloakEnabled) {
+    // Keycloak token refresh
+    const base = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
+    const realm = import.meta.env.VITE_KEYCLOAK_REALM || 'labnote';
+    const clientId = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'labnote-frontend';
+    const tokenUrl = `${base}/realms/${realm}/protocol/openid-connect/token`;
+
+    try {
+      const res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: clientId,
+        }).toString(),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      setToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
+      return true;
+    } catch {
+      return false;
+    }
+  } else {
+    // Local JWT refresh via auth service
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data.ok && data.data?.token) {
+        setToken(data.data.token);
+        if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
 }
 
 class ApiClient {
@@ -26,6 +86,14 @@ class ApiClient {
     body?: unknown,
     extraHeaders?: Record<string, string>
   ): Promise<ApiResponse<T>> {
+    // Before making the request, check if token needs refresh
+    if (isTokenExpiringSoon() && !path.includes('/auth/')) {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+      }
+      await refreshPromise;
+    }
+
     const token = getToken();
     const url = `${this.baseURL}${path}`;
     const config: RequestInit = {
@@ -43,8 +111,28 @@ class ApiClient {
 
     const response = await fetch(url, config);
 
-    // 로그인 엔드포인트의 401은 "인증 만료"가 아닌 "잘못된 자격증명"이므로 예외 처리
-    if (response.status === 401 && !path.includes('/auth/login')) {
+    // 401 응답 시 refresh 시도 후 실패하면 로그아웃
+    if (response.status === 401 && !path.includes('/auth/login') && !path.includes('/auth/refresh')) {
+      // Try refreshing token before giving up
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+      }
+      const refreshed = await refreshPromise;
+      if (refreshed) {
+        // Retry the original request with new token
+        const newToken = getToken();
+        const retryConfig: RequestInit = {
+          ...config,
+          headers: {
+            ...(config.headers as Record<string, string>),
+            Authorization: `Bearer ${newToken}`,
+          },
+        };
+        const retryResponse = await fetch(url, retryConfig);
+        if (retryResponse.ok) {
+          return await retryResponse.json();
+        }
+      }
       clearToken();
       window.location.href = '/login';
       throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');

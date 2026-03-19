@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setToken, setStoredUser } from '@/lib/authToken';
+import { setToken, setRefreshToken, setStoredUser } from '@/lib/authToken';
 import { FlaskConical } from 'lucide-react';
 
 /**
@@ -71,26 +71,49 @@ export default function SsoCallbackPage() {
           expires_in: number;
         }>;
       })
-      .then((tokens) => {
+      .then(async (tokens) => {
         setToken(tokens.access_token);
+        if (tokens.refresh_token) setRefreshToken(tokens.refresh_token);
 
-        // JWT payload에서 사용자 정보 추출 (디코딩만, 검증은 API Gateway에서)
+        // 서버에서 검증된 사용자 정보 조회 (/api/auth/me)
         try {
-          const payload = JSON.parse(atob(tokens.access_token.split('.')[1]));
-          setStoredUser({
-            id: payload.sub ?? '',
-            email: payload.email ?? '',
-            name: payload.name ?? payload.preferred_username ?? '',
-            role: payload.realm_access?.roles?.includes('admin')
-              ? 'admin'
-              : payload.realm_access?.roles?.includes('researcher')
-                ? 'researcher'
-                : 'viewer',
-            team: payload.team ?? '',
-            org: payload.org ?? '',
+          const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+          const meRes = await fetch(`${API_BASE}/auth/me`, {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
           });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            if (meData.ok && meData.data) {
+              setStoredUser({
+                id: meData.data.id ?? '',
+                email: meData.data.email ?? '',
+                name: meData.data.name ?? '',
+                role: meData.data.role ?? 'viewer',
+                team: meData.data.team ?? '',
+                org: meData.data.org ?? '',
+              });
+            }
+          }
         } catch {
-          // 파싱 실패해도 토큰은 저장됐으므로 계속 진행
+          // /api/auth/me 실패해도 토큰은 저장됐으므로 계속 진행
+          // JWT 디코딩 폴백
+          try {
+            const payload = JSON.parse(atob(tokens.access_token.split('.')[1]));
+            setStoredUser({
+              id: payload.sub ?? '',
+              email: payload.email ?? '',
+              name: payload.name ?? payload.preferred_username ?? '',
+              role: payload.realm_access?.roles?.includes('admin')
+                ? 'admin'
+                : payload.realm_access?.roles?.includes('researcher')
+                  ? 'researcher'
+                  : 'viewer',
+              team: payload.team ?? '',
+              org: payload.org ?? '',
+            });
+          } catch {
+            // 파싱 실패해도 토큰은 저장됐으므로 계속 진행
+          }
         }
 
         navigate('/', { replace: true });

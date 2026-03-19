@@ -11,7 +11,7 @@ if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET 환경변수가 설정되지 않았습니다. 서버를 시작할 수 없습니다.');
 }
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 
 // ─────────────────────────────────────────────
 // 인증
@@ -44,10 +44,16 @@ export async function login(req: Request, res: Response): Promise<void> {
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions,
     );
+    const refreshToken = jwt.sign(
+      { sub: user.id, type: 'refresh' },
+      JWT_SECRET,
+      { expiresIn: '8h' } as jwt.SignOptions,
+    );
     res.json({
       ok: true,
       data: {
         token,
+        refreshToken,
         user: {
           id: user.id,
           orgId: user.orgId,
@@ -63,6 +69,74 @@ export async function login(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('[login]', err);
     res.status(500).json({ ok: false, error: '로그인 처리 중 오류가 발생했습니다.' });
+  }
+}
+
+/** POST /api/auth/refresh — Refresh token으로 새 access token 발급 */
+export async function refreshToken(req: Request, res: Response): Promise<void> {
+  const { refreshToken: incomingRefresh } = req.body;
+  const userId = req.headers['x-user-id'] as string;
+
+  if (!incomingRefresh) {
+    res.status(401).json({ ok: false, error: 'Refresh token이 필요합니다.' });
+    return;
+  }
+
+  try {
+    // Verify the refresh token
+    const decoded = jwt.verify(incomingRefresh, JWT_SECRET) as { sub: string; type: string };
+    if (decoded.type !== 'refresh') {
+      res.status(401).json({ ok: false, error: '유효하지 않은 refresh token입니다.' });
+      return;
+    }
+
+    const targetUserId = userId || decoded.sub;
+    if (!targetUserId) {
+      res.status(401).json({ ok: false, error: '사용자 정보를 확인할 수 없습니다.' });
+      return;
+    }
+
+    // userId가 있으면 refresh token의 sub와 일치하는지 확인
+    if (userId && decoded.sub !== userId) {
+      res.status(401).json({ ok: false, error: '유효하지 않은 refresh token입니다.' });
+      return;
+    }
+
+    // Fetch fresh user data
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { role: true },
+    });
+    if (!user || user.status !== 'active') {
+      res.status(401).json({ ok: false, error: '비활성화된 계정입니다.' });
+      return;
+    }
+
+    // Issue new tokens
+    const newAccessToken = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role?.name ?? 'viewer',
+        permissions: user.role?.permissions ?? [],
+        orgId: user.orgId,
+      },
+      JWT_SECRET,
+      { expiresIn: '15m' } as jwt.SignOptions,
+    );
+
+    const newRefreshToken = jwt.sign(
+      { sub: user.id, type: 'refresh' },
+      JWT_SECRET,
+      { expiresIn: '8h' } as jwt.SignOptions,
+    );
+
+    res.json({
+      ok: true,
+      data: { token: newAccessToken, refreshToken: newRefreshToken },
+    });
+  } catch {
+    res.status(401).json({ ok: false, error: 'Refresh token이 만료되었습니다.' });
   }
 }
 
@@ -721,7 +795,7 @@ export async function deleteRole(req: Request, res: Response): Promise<void> {
 export async function getRolePermissions(req: Request, res: Response): Promise<void> {
   const internalSecret = process.env.INTERNAL_SECRET;
   if (!internalSecret) {
-    res.status(500).json({ ok: false, error: 'INTERNAL_SECRET이 설정되지 않았습니다.' });
+    res.status(404).json({ ok: false, error: 'Not Found' });
     return;
   }
   const incoming = req.headers['x-internal-secret'];
@@ -766,7 +840,7 @@ export async function getRolePermissions(req: Request, res: Response): Promise<v
 export async function verifyPassword(req: Request, res: Response): Promise<void> {
   const internalSecret = process.env.INTERNAL_SECRET;
   if (!internalSecret) {
-    res.status(500).json({ ok: false, error: 'INTERNAL_SECRET이 설정되지 않았습니다.' });
+    res.status(404).json({ ok: false, error: 'Not Found' });
     return;
   }
   const incoming = req.headers['x-internal-secret'];
@@ -806,7 +880,8 @@ export async function verifyPassword(req: Request, res: Response): Promise<void>
 export async function ssoHook(req: Request, res: Response): Promise<void> {
   const hookSecret = process.env.KEYCLOAK_HOOK_SECRET;
   if (!hookSecret) {
-    res.status(500).json({ ok: false, error: 'KEYCLOAK_HOOK_SECRET이 설정되지 않았습니다.' });
+    // KEYCLOAK_HOOK_SECRET 미설정 시 webhook 비활성화 — 404로 응답
+    res.status(404).json({ ok: false, error: 'Not Found' });
     return;
   }
   const incoming = req.headers['x-keycloak-secret'];

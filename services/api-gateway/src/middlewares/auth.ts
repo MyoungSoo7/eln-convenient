@@ -3,7 +3,7 @@ import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
 import redis from '../lib/redis';
 
 // 공개 경로 (인증 불필요)
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook', '/api/auth/refresh'];
 
 // 내부 전용 경로 (외부 접근 차단 — 서비스 간 직접 통신으로만 접근 가능)
 const INTERNAL_PATHS = ['/api/auth/internal'];
@@ -134,10 +134,15 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply) {
       (request.headers as any)['x-user-role'] = role;
       (request.headers as any)['x-user-email'] = String((payload as any).email ?? '');
       (request.headers as any)['x-user-permissions'] = JSON.stringify(permissions);
-      (request.headers as any)['x-user-org-id'] = String((payload as any).orgId ?? '');
+      (request.headers as any)['x-user-org-id'] = String((payload as any).org_id ?? (payload as any).orgId ?? '');
       (request.headers as any)['x-sso-provider'] = 'keycloak';
       return;
-    } catch {
+    } catch (err) {
+      // JWKS fetch 오류와 토큰 검증 오류를 구분하여 로깅
+      const isJWKSError = err instanceof Error && (err.message.includes('fetch') || err.message.includes('JWKS'));
+      if (isJWKSError) {
+        console.warn('[auth] Keycloak JWKS 조회 실패 — 로컬 JWT 폴백 전환');
+      }
       // Keycloak 검증 실패 → 로컬 JWT 폴백
     }
   }

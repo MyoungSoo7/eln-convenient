@@ -23,6 +23,9 @@ router.get('/internal/role-permissions', ctrl.getRolePermissions);
 // ─── SSO 훅 (Keycloak → auth-service, 시크릿으로 보호) ───
 router.post('/sso-hook', validate({ body: SsoHookSchema }), ctrl.ssoHook);
 
+// ─── 토큰 갱신 (만료된 access token으로도 접근 가능 — API Gateway PUBLIC_PATHS) ──
+router.post('/refresh', ctrl.refreshToken);
+
 // ─── 이하 모든 라우트: 로그인 필요 ──────────────────
 router.use(requireAuth);
 
