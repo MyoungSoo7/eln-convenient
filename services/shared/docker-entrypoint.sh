@@ -10,7 +10,7 @@ if [ "$NODE_ENV" = "production" ]; then
   npx prisma migrate deploy
 else
   echo "[entrypoint] Development 환경 — prisma db push 실행"
-  npx prisma db push --accept-data-loss
+  npx prisma db push --accept-data-loss || npx prisma db push --force-reset
 fi
 
 # auth-service seed (SEED_ON_START=true 일 때만)
