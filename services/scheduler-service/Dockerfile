@@ -19,6 +19,6 @@ RUN npm run build
 
 EXPOSE 8005
 
-# DB 스키마 적용 후 서버 시작
-# --accept-data-loss: enum 변경 등 스키마 마이그레이션 허용 (dev 전용)
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
+COPY shared/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+CMD ["/docker-entrypoint.sh"]

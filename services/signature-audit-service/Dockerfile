@@ -24,5 +24,7 @@ COPY signature-audit-service/package*.json ./
 RUN npm install
 COPY signature-audit-service/ .
 RUN npx prisma generate && npm run build && cp -r src/templates dist/templates
+COPY shared/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 8003
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
+CMD ["/docker-entrypoint.sh"]

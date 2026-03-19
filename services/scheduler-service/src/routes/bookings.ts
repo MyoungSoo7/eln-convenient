@@ -309,7 +309,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           data: { status: 'APPROVED', approvedBy, approvedAt: new Date() },
           include: { resource: true },
         });
-      });
+      }, { timeout: 5000 });
 
       // 예약 승인 알림: 예약자에게 알림
       if (booking.userId && booking.userId !== approvedBy) {
@@ -382,7 +382,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           data: { status: 'REJECTED', rejectedReason: reason ?? null },
           include: { resource: true },
         });
-      });
+      }, { timeout: 5000 });
 
       // [알림 확장 포인트] await notifyBookingRejected(booking);
 
@@ -426,7 +426,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           data: { status: 'CANCELLED', cancelledAt: new Date() },
           include: { resource: true },
         });
-      });
+      }, { timeout: 5000 });
 
       // [알림 확장 포인트] await notifyBookingCancelled(booking);
 
@@ -467,7 +467,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           data: { status: 'COMPLETED', completedAt: new Date() },
           include: { resource: true },
         });
-      });
+      }, { timeout: 5000 });
 
       return { ok: true, data: booking };
     } catch (err: any) {

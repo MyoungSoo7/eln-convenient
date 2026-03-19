@@ -9,5 +9,8 @@ RUN npm install
 COPY auth-service/ .
 RUN npx prisma generate
 RUN npm run build
+COPY shared/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 8001
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx prisma db seed; npm start"]
+ENV SEED_ON_START=true
+CMD ["/docker-entrypoint.sh"]

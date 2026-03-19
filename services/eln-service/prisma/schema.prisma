@@ -37,6 +37,10 @@ model Note {
   links         NoteLink[]
   attachments   Attachment[]
   statusHistory NoteStatusHistory[]
+
+  @@index([authorId, type, status])
+  @@index([authorId, deletedAt])
+  @@index([type, status, deletedAt])
 }
 
 model NoteStatusHistory {
@@ -49,6 +53,8 @@ model NoteStatusHistory {
   isAdminAction Boolean    @default(false)
   createdAt     DateTime   @default(now())
   note          Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
 }
 
 model NoteRevision {
@@ -61,6 +67,8 @@ model NoteRevision {
   changeSummary String   @default("")
   createdAt     DateTime @default(now())
   note          Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, revision])
 }
 
 model NoteLink {
