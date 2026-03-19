@@ -1,7 +1,8 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Bell, LogOut } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
+import { LogOut } from "lucide-react";
 import { getStoredUser } from "@/lib/authToken";
 import { logout } from "@/api/auth";
 import { useNavigate } from "react-router-dom";
@@ -50,10 +51,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {i18n.language === 'ko' ? 'EN' : '한국어'}
               </Button>
               <ThemeToggle />
-              <button className="relative p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                <Bell className="h-4 w-4" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-              </button>
+              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-8 w-8 rounded-full p-0 bg-primary/10 text-xs font-medium text-primary">

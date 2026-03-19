@@ -3,7 +3,6 @@
  * 경로: /api/signatures/*, /api/audit/*, /api/export/*
  */
 import apiClient, { type ApiResponse } from './client';
-import { type AuditEntry } from '@/lib/mockData';
 
 const ERR_CONN = '서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.';
 
@@ -55,11 +54,55 @@ export async function verifySignature(noteId: string): Promise<ApiResponse<Verif
 }
 
 // ── 감사로그 API ──
-export async function listAuditLogs(params?: { entityId?: string; type?: string }): Promise<ApiResponse<AuditEntry[]>> {
+export interface AuditLogQuery {
+  entityId?: string;
+  entityType?: string;
+  actorId?: string;
+  action?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorId: string;
+  details: Record<string, unknown>;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogListResponse {
+  ok: boolean;
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+}
+
+export async function listAuditLogs(params?: AuditLogQuery): Promise<AuditLogListResponse> {
   try {
-    return await apiClient.get<AuditEntry[]>('/audit', params as Record<string, string>);
-  } catch (err) {
-    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
+    const query: Record<string, string> = {};
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== '') query[k] = String(v);
+      }
+    }
+    // apiClient.get returns parsed JSON directly: { ok, data, total, page }
+    return await apiClient.get<any>('/audit', query) as AuditLogListResponse;
+  } catch {
+    return { ok: false, data: [], total: 0, page: 1 };
+  }
+}
+
+export async function listAuditActions(): Promise<ApiResponse<string[]>> {
+  try {
+    return await apiClient.get<string[]>('/audit/actions');
+  } catch {
+    return { ok: false, data: [], error: ERR_CONN };
   }
 }
 

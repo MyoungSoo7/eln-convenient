@@ -86,6 +86,8 @@ export default function SsoCallbackPage() {
               : payload.realm_access?.roles?.includes('researcher')
                 ? 'researcher'
                 : 'viewer',
+            team: payload.team ?? '',
+            org: payload.org ?? '',
           });
         } catch {
           // 파싱 실패해도 토큰은 저장됐으므로 계속 진행

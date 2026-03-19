@@ -69,3 +69,29 @@ enum ExportStatus {
   completed
   failed
 }
+
+// ── 알림 ──
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  type        NotificationType
+  entityType  String           // "note" | "booking"
+  entityId    String
+  title       String
+  message     String
+  actorId     String
+  actorName   String           @default("")
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([recipientId, isRead])
+  @@index([recipientId, createdAt])
+}
+
+enum NotificationType {
+  NOTE_LOCKED
+  NOTE_SIGNED
+  NOTE_UNLOCKED
+  BOOKING_APPROVED
+}

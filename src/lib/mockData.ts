@@ -194,11 +194,11 @@ export const mockAuditLog: AuditEntry[] = [
 ];
 
 export const currentUser = {
-  id: 'u1',
-  name: '김연구',
-  email: 'kim@biolab.kr',
-  role: 'Researcher',
-  org: 'BioLab 연구소',
-  team: '유전체연구팀',
+  id: 'user-admin-001',
+  name: '관리자',
+  email: 'admin@labnote.local',
+  role: 'admin',
+  org: 'LabNote 연구소',
+  team: '',
   avatar: '',
 };

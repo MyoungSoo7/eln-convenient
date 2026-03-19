@@ -4,6 +4,7 @@ import https from 'https';
 import http from 'http';
 import prisma from '../lib/prisma';
 import { callAuditLog } from '../lib/audit';
+import { callNotification } from '../lib/notification';
 import { searchClient } from '../lib/searchClient';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
@@ -399,6 +400,25 @@ export async function changeNoteStatus(req: Request, res: Response): Promise<voi
         err: auditErr instanceof Error ? auditErr.message : auditErr,
       });
     });
+
+    // 잠금 알림: 노트 작성자에게 알림
+    if (newStatus === 'locked' && note.authorId && note.authorId !== actorId) {
+      callNotification({
+        recipientId: note.authorId,
+        type: 'NOTE_LOCKED',
+        entityType: 'note',
+        entityId: req.params.id,
+        title: '연구노트가 잠금되었습니다',
+        message: `'${note.title}' 노트가 잠금 처리되었습니다.`,
+        actorId,
+      }).catch((err: unknown) => {
+        console.error('[NOTIFICATION_WARN] 잠금 알림 실패', {
+          noteId: req.params.id,
+          err: err instanceof Error ? err.message : err,
+        });
+      });
+    }
+
     res.json({ ok: true, data: updated, message: `상태가 "${newStatus}"(으)로 변경되었습니다.` });
   } catch (err) {
     console.error('[changeNoteStatus]', err);
@@ -460,6 +480,25 @@ export async function adminUnlockNote(req: Request, res: Response): Promise<void
         err: auditErr instanceof Error ? auditErr.message : auditErr,
       });
     });
+
+    // 잠금 해제 알림: 노트 작성자에게 알림
+    if (note.authorId && note.authorId !== adminId) {
+      callNotification({
+        recipientId: note.authorId,
+        type: 'NOTE_UNLOCKED',
+        entityType: 'note',
+        entityId: req.params.id,
+        title: '연구노트 잠금이 해제되었습니다',
+        message: `'${note.title}' 노트의 잠금이 관리자에 의해 해제되었습니다.`,
+        actorId: adminId,
+      }).catch((err: unknown) => {
+        console.error('[NOTIFICATION_WARN] 잠금해제 알림 실패', {
+          noteId: req.params.id,
+          err: err instanceof Error ? err.message : err,
+        });
+      });
+    }
+
     res.json({
       ok: true,
       data: updated,

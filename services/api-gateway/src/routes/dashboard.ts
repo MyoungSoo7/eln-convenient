@@ -6,12 +6,13 @@ const INV_URL       = process.env.INVENTORY_SERVICE_URL || 'http://inventory-ser
 const SCH_URL       = process.env.SCHEDULER_SERVICE_URL || 'http://scheduler-service:8005';
 
 /** 내부 서비스 호출 — 실패 시 null 반환 */
-async function safeGet<T>(url: string, headers: Record<string, string> = {}): Promise<T | null> {
+async function safeGet<T>(url: string, headers: Record<string, string> = {}, raw = false): Promise<T | null> {
   try {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const body = await res.json() as any;
-    return body.ok ? (body.data ?? body) : null;
+    if (!body.ok) return null;
+    return raw ? body : (body.data ?? body);
   } catch {
     return null;
   }
@@ -35,32 +36,43 @@ export async function registerDashboard(app: FastifyInstance) {
       'x-user-permissions': JSON.stringify(['*']),
     };
 
+    const today = new Date().toISOString().slice(0, 10);
+
     // 모든 서비스 병렬 호출
     const [
       noteStats,
       complianceStats,
       invStats,
       invLowStock,
+      invExpiring,
       bookingPending,
       recentAudit,
+      recentNotes,
+      upcomingBookings,
     ] = await Promise.allSettled([
-      // 1) 노트 상태별 카운트 (status별 4번 호출)
+      // 1) 노트 상태별 카운트 (raw=true: total 필드 포함된 전체 body 필요)
       Promise.all([
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=draft&limit=1`, internalHeaders),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=in_progress&limit=1`, internalHeaders),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=signed&limit=1`, internalHeaders),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=locked&limit=1`, internalHeaders),
+        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=draft&limit=1`, internalHeaders, true),
+        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=in_progress&limit=1`, internalHeaders, true),
+        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=signed&limit=1`, internalHeaders, true),
+        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=locked&limit=1`, internalHeaders, true),
       ]),
       // 2) 규정준수 통계 (서명완료/대기/잠금 카운트)
       safeGet<any>(`${SIG_URL}/api/signatures/compliance/stats`, internalHeaders),
-      // 3) 인벤토리 전체 카운트
-      safeGet<any>(`${INV_URL}/api/inventory/items?limit=1`, internalHeaders),
-      // 4) 재고 부족 아이템
+      // 3) 인벤토리 전체 카운트 (raw=true: total 필드 포함된 전체 body 필요)
+      safeGet<any>(`${INV_URL}/api/inventory/items?limit=1`, internalHeaders, true),
+      // 4) 재고 부족 아이템 (목록)
       safeGet<any>(`${INV_URL}/api/inventory/alerts/low-stock`, internalHeaders),
-      // 5) 승인 대기 예약 카운트
-      safeGet<any>(`${SCH_URL}/api/scheduler/bookings?status=pending&limit=1`, internalHeaders),
-      // 6) 최근 감사로그 5건
+      // 5) 만료 임박 아이템 (목록)
+      safeGet<any>(`${INV_URL}/api/inventory/alerts/expiring?days=30`, internalHeaders),
+      // 6) 승인 대기 예약 카운트 (raw=true: total 필드 필요)
+      safeGet<any>(`${SCH_URL}/api/scheduler/bookings?status=PENDING&limit=1`, internalHeaders, true),
+      // 7) 최근 감사로그 5건
       safeGet<any>(`${SIG_URL}/api/audit?limit=5`, internalHeaders),
+      // 8) 최근 수정 노트 4건
+      safeGet<any>(`${ELN_URL}/api/notes?type=note&limit=4`, internalHeaders),
+      // 9) 오늘 이후 예약 4건
+      safeGet<any>(`${SCH_URL}/api/scheduler/bookings?from=${today}&limit=4`, internalHeaders),
     ]);
 
     // ── 노트 통계 조합 ──
@@ -81,7 +93,9 @@ export async function registerDashboard(app: FastifyInstance) {
 
     // ── 인벤토리 ──
     const inventoryTotal   = (invStats.status === 'fulfilled'    ? (invStats.value as any)?.total    : null) ?? null;
-    const lowStockCount    = (invLowStock.status === 'fulfilled' ? (invLowStock.value as any)?.total : null) ?? null;
+    const lowStockItems    = invLowStock.status === 'fulfilled' && invLowStock.value ? invLowStock.value : [];
+    const lowStockCount    = Array.isArray(lowStockItems) ? lowStockItems.length : (lowStockItems as any)?.total ?? null;
+    const expiringItems    = invExpiring.status === 'fulfilled' && invExpiring.value ? invExpiring.value : [];
 
     // ── 스케줄러 ──
     const pendingBookings  = (bookingPending.status === 'fulfilled' ? (bookingPending.value as any)?.total : null) ?? null;
@@ -90,6 +104,20 @@ export async function registerDashboard(app: FastifyInstance) {
     let auditLogs: unknown[] = [];
     if (recentAudit.status === 'fulfilled' && Array.isArray(recentAudit.value)) {
       auditLogs = recentAudit.value.slice(0, 5);
+    }
+
+    // ── 최근 노트 ──
+    let recentNoteList: unknown[] = [];
+    if (recentNotes.status === 'fulfilled' && recentNotes.value) {
+      const val = recentNotes.value;
+      recentNoteList = Array.isArray(val) ? val.slice(0, 4) : (Array.isArray((val as any).data) ? (val as any).data.slice(0, 4) : []);
+    }
+
+    // ── 예정 예약 ──
+    let upcomingBookingList: unknown[] = [];
+    if (upcomingBookings.status === 'fulfilled' && upcomingBookings.value) {
+      const val = upcomingBookings.value;
+      upcomingBookingList = Array.isArray(val) ? val.slice(0, 4) : (Array.isArray((val as any).data) ? (val as any).data.slice(0, 4) : []);
     }
 
     return reply.send({
@@ -105,6 +133,10 @@ export async function registerDashboard(app: FastifyInstance) {
           pendingBookings,
         },
         recentActivity: auditLogs,
+        recentNotes: recentNoteList,
+        upcomingBookings: upcomingBookingList,
+        lowStockItems: Array.isArray(lowStockItems) ? lowStockItems.slice(0, 5) : [],
+        expiringItems: Array.isArray(expiringItems) ? expiringItems.slice(0, 5) : [],
         generatedAt: new Date().toISOString(),
       },
     });

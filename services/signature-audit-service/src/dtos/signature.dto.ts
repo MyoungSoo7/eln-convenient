@@ -67,6 +67,29 @@ export const ExportStatusParamsSchema = z.object({
   jobId: z.string().min(1, 'jobId is required'),
 });
 
+// ── Notification schemas ──
+
+export const ListNotificationsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  isRead: z.enum(['true', 'false']).optional(),
+});
+
+export const NotificationIdParamsSchema = z.object({
+  id: z.string().uuid('id must be a valid UUID'),
+});
+
+export const CreateNotificationInternalSchema = z.object({
+  recipientId: z.string().min(1, 'recipientId is required'),
+  type: z.enum(['NOTE_LOCKED', 'NOTE_SIGNED', 'NOTE_UNLOCKED', 'BOOKING_APPROVED']),
+  entityType: z.string().min(1, 'entityType is required'),
+  entityId: z.string().min(1, 'entityId is required'),
+  title: z.string().min(1, 'title is required'),
+  message: z.string().min(1, 'message is required'),
+  actorId: z.string().min(1, 'actorId is required'),
+  actorName: z.string().optional(),
+});
+
 // ── Compliance schemas ──
 
 export const ComplianceListQuerySchema = z.object({

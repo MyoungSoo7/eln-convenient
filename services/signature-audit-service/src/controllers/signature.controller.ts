@@ -122,6 +122,27 @@ export async function signNote(req: Request, res: Response): Promise<void> {
     // ELN 서비스 노트 상태 → signed
     await patchNoteStatus(noteId, 'signed', signerId);
 
+    // 서명 알림: 노트 작성자에게 알림
+    try {
+      const note = await fetchNote(noteId);
+      if (note && note.authorId && note.authorId !== signerId) {
+        await prisma.notification.create({
+          data: {
+            id: uuidv4(),
+            recipientId: note.authorId,
+            type: 'NOTE_SIGNED',
+            entityType: 'note',
+            entityId: noteId,
+            title: '연구노트가 서명되었습니다',
+            message: `'${note.title}' 노트가 서명 처리되었습니다.`,
+            actorId: signerId,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.error('[NOTIFICATION_WARN] 서명 알림 실패', { noteId, err: notifErr });
+    }
+
     res.status(201).json({
       ok: true,
       data: signature,

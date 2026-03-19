@@ -14,6 +14,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { currentUser } from "@/lib/mockData";
 import { getStoredUser } from "@/lib/authToken";
 
+function useCurrentUser() {
+  const stored = getStoredUser();
+  return {
+    name: (stored?.name as string) || currentUser.name,
+    team: (stored?.team as string) || '',
+    org: (stored?.org as string) || '',
+    role: (stored?.role as string) || currentUser.role,
+  };
+}
+
 const mainItems = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
   { title: "연구노트", url: "/notes", icon: FileText },
@@ -85,6 +95,8 @@ function SidebarNavGroup({ label, items, defaultOpen = true }: {
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const user = useCurrentUser();
+  const subLabel = user.team || user.org;
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -105,7 +117,7 @@ export function AppSidebar() {
       <SidebarContent className="py-2">
         <SidebarNavGroup label="메인" items={mainItems} />
         <SidebarNavGroup label="규정 준수" items={complianceItems} />
-        {(getStoredUser()?.role === 'admin' || currentUser.role === 'admin') && (
+        {user.role === 'admin' && (
           <SidebarNavGroup label="관리" items={adminItems} defaultOpen={false} />
         )}
       </SidebarContent>
@@ -114,11 +126,13 @@ export function AppSidebar() {
         {!collapsed && (
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-sidebar-accent flex items-center justify-center text-xs font-medium text-sidebar-primary">
-              {currentUser.name[0]}
+              {user.name[0]}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-sidebar-foreground truncate">{currentUser.name}</p>
-              <p className="text-[10px] text-sidebar-foreground/50 truncate">{currentUser.team}</p>
+              <p className="text-xs font-medium text-sidebar-foreground truncate">{user.name}</p>
+              {subLabel && (
+                <p className="text-[10px] text-sidebar-foreground/50 truncate">{subLabel}</p>
+              )}
             </div>
           </div>
         )}

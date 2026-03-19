@@ -13,6 +13,8 @@ export interface User {
   role: string;
   orgId?: string;
   teamId?: string;
+  team?: string;
+  org?: string;
 }
 
 export interface LoginResponse {
@@ -32,6 +34,8 @@ const mockFallback = {
         email: currentUser.email,
         role: currentUser.role,
         orgId: 'org-001',
+        team: currentUser.team,
+        org: currentUser.org,
       },
     },
   }),
@@ -44,6 +48,8 @@ const mockFallback = {
       role: currentUser.role,
       orgId: 'org-001',
       teamId: 'team-001',
+      team: currentUser.team,
+      org: currentUser.org,
     },
   }),
 };
@@ -55,13 +61,21 @@ export async function login(email: string, password: string): Promise<ApiRespons
     const result = await apiClient.post<LoginResponse>('/auth/login', { email, password });
     if (result.ok && result.data.token) {
       setToken(result.data.token);
-      setStoredUser(result.data.user as unknown as Record<string, unknown>);
+      setStoredUser({
+        ...result.data.user,
+        team: (result.data.user as Record<string, unknown>).team ?? '',
+        org: (result.data.user as Record<string, unknown>).org ?? '',
+      } as unknown as Record<string, unknown>);
     }
     return result;
   } catch {
     const mock = mockFallback.login();
     setToken(mock.data.token);
-    setStoredUser(mock.data.user as unknown as Record<string, unknown>);
+    setStoredUser({
+      ...mock.data.user,
+      team: mock.data.user.team ?? '',
+      org: mock.data.user.org ?? '',
+    } as unknown as Record<string, unknown>);
     return mock;
   }
 }

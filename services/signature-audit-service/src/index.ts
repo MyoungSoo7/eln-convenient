@@ -4,6 +4,7 @@ import swaggerUi from 'swagger-ui-express';
 import signatureRoutes from './routes/signature.routes';
 import auditRoutes from './routes/audit.routes';
 import exportRoutes from './routes/export.routes';
+import notificationRoutes from './routes/notification.routes';
 import { swaggerDocument } from './swagger';
 import './workers/export.worker'; // BullMQ 워커 자동 시작
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
@@ -28,6 +29,7 @@ app.get('/health', (_req, res) => {
 // signatureRoutes의 requireAuth에 의해 차단되지 않도록 순서 보장
 app.use('/api/audit', auditRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api', signatureRoutes);
 
 app.use(globalErrorHandler('signature-audit-service', logger));

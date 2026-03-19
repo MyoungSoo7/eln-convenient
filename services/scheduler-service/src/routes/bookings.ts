@@ -4,6 +4,7 @@ import { requireAuth, requirePermission } from '../plugins/auth';
 import { Permission, RoleName } from '@lab/shared';
 import { checkConflict } from '../lib/conflict';
 import { assertTransition, InvalidTransitionError } from '../lib/state-machine';
+import { callNotification } from '../lib/notification';
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 
@@ -310,7 +311,20 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
         });
       });
 
-      // [알림 확장 포인트] await notifyBookingApproved(booking);
+      // 예약 승인 알림: 예약자에게 알림
+      if (booking.userId && booking.userId !== approvedBy) {
+        callNotification({
+          recipientId: booking.userId,
+          type: 'BOOKING_APPROVED',
+          entityType: 'booking',
+          entityId: booking.id,
+          title: '장비 예약이 승인되었습니다',
+          message: `'${booking.resource?.name ?? ''}' 예약이 승인되었습니다.`,
+          actorId: approvedBy,
+        }).catch((err: any) => {
+          request.log.error({ err: err.message, bookingId: booking.id }, '[NOTIFICATION_WARN] 승인 알림 실패');
+        });
+      }
 
       return { ok: true, data: booking };
     } catch (err: any) {

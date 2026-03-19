@@ -13,6 +13,7 @@ const PROXY_TABLE: Record<string, string> = {
   '/api/signatures': process.env.SIGNATURE_SERVICE_URL  || 'http://signature-audit-service:8003',
   '/api/audit':      process.env.SIGNATURE_SERVICE_URL  || 'http://signature-audit-service:8003',
   '/api/export':     process.env.SIGNATURE_SERVICE_URL  || 'http://signature-audit-service:8003',
+  '/api/notifications': process.env.SIGNATURE_SERVICE_URL || 'http://signature-audit-service:8003',
   '/api/inventory':  process.env.INVENTORY_SERVICE_URL  || 'http://inventory-service:8004',
   '/api/scheduler':  process.env.SCHEDULER_SERVICE_URL  || 'http://scheduler-service:8005',
   '/api/search':     process.env.SEARCH_SERVICE_URL     || 'http://search-service:8006',
