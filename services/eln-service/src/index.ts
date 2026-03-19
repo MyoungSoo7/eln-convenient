@@ -4,12 +4,18 @@ import swaggerUi from 'swagger-ui-express';
 import noteRoutes from './routes/note.routes';
 import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
+import prisma from './lib/prisma';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 import { startEventConsumer, stopEventConsumer } from './lib/eventConsumer';
 
 const { logger, httpLogger } = createHttpLogger('eln-service');
 
-setupProcessHandlers('eln-service', logger);
+setupProcessHandlers('eln-service', logger, {
+  onShutdown: async () => {
+    await stopEventConsumer();
+    await prisma.$disconnect();
+  },
+});
 
 const app = express();
 const PORT = process.env.PORT || 8002;
@@ -19,8 +25,15 @@ app.use(express.json());
 app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'eln-service', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'eln-service',
+    timestamp: new Date().toISOString(),
+    db: dbOk ? 'ok' : 'error',
+  });
 });
 
 app.use('/api', noteRoutes);
@@ -36,14 +49,6 @@ app.listen(PORT, () => {
   startEventConsumer().catch((err) => {
     logger.warn({ err }, 'Event Consumer 시작 실패 — HTTP 폴백으로 운영');
   });
-});
-
-// Graceful Shutdown
-process.on('SIGTERM', async () => {
-  await stopEventConsumer();
-});
-process.on('SIGINT', async () => {
-  await stopEventConsumer();
 });
 
 export default app;

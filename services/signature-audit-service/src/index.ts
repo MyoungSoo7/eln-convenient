@@ -7,11 +7,14 @@ import exportRoutes from './routes/export.routes';
 import notificationRoutes from './routes/notification.routes';
 import { swaggerDocument } from './swagger';
 import './workers/export.worker'; // BullMQ 워커 자동 시작
+import prisma from './lib/prisma';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
 const { logger, httpLogger } = createHttpLogger('signature-audit-service');
 
-setupProcessHandlers('signature-audit-service', logger);
+setupProcessHandlers('signature-audit-service', logger, {
+  onShutdown: () => prisma.$disconnect(),
+});
 
 const app = express();
 const PORT = process.env.PORT || 8003;
@@ -21,8 +24,15 @@ app.use(express.json());
 app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'signature-audit-service', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'signature-audit-service',
+    timestamp: new Date().toISOString(),
+    db: dbOk ? 'ok' : 'error',
+  });
 });
 
 // audit/export를 먼저 등록 — /api/audit/internal 등 인증 없는 내부 라우트가
