@@ -3,7 +3,7 @@
  * 경로: /api/auth/*
  */
 import apiClient, { type ApiResponse } from './client';
-import { setToken, clearToken, setStoredUser, setRefreshToken } from '@/lib/authToken';
+import { setToken, clearToken, setStoredUser, storeRefreshToken } from '@/lib/authToken';
 import { currentUser } from '@/lib/mockData';
 
 export interface User {
@@ -62,7 +62,7 @@ export async function login(email: string, password: string): Promise<ApiRespons
     if (result.ok && result.data.token) {
       setToken(result.data.token);
       if ((result.data as any).refreshToken) {
-        setRefreshToken((result.data as any).refreshToken);
+        storeRefreshToken((result.data as any).refreshToken);
       }
       setStoredUser({
         ...result.data.user,

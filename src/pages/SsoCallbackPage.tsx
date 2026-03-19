@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setToken, setRefreshToken, setStoredUser } from '@/lib/authToken';
+import { setToken, storeRefreshToken, setStoredUser } from '@/lib/authToken';
 import { FlaskConical } from 'lucide-react';
 
 /**
@@ -73,7 +73,7 @@ export default function SsoCallbackPage() {
       })
       .then(async (tokens) => {
         setToken(tokens.access_token);
-        if (tokens.refresh_token) setRefreshToken(tokens.refresh_token);
+        if (tokens.refresh_token) await storeRefreshToken(tokens.refresh_token);
 
         // 서버에서 검증된 사용자 정보 조회 (/api/auth/me)
         try {

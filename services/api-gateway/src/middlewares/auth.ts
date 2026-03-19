@@ -3,7 +3,7 @@ import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
 import redis from '../lib/redis';
 
 // 공개 경로 (인증 불필요)
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook', '/api/auth/refresh'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/sso-hook', '/api/auth/refresh', '/api/auth/session'];
 
 // 내부 전용 경로 (외부 접근 차단 — 서비스 간 직접 통신으로만 접근 가능)
 const INTERNAL_PATHS = ['/api/auth/internal'];

@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import { registerProxies } from './routes/proxy';
 import { registerDashboard } from './routes/dashboard';
 import { registerSSE } from './routes/sse';
+import { registerSession } from './routes/session';
 import { authHook } from './middlewares/auth';
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
@@ -22,7 +23,10 @@ const app = Fastify({ logger: true });
 async function bootstrap() {
   // 미들웨어
   await app.register(helmet);
-  await app.register(cors, { origin: process.env.CORS_ORIGIN || '*' });
+  await app.register(cors, {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    credentials: true,
+  });
   // Redis 기반 분산 Rate Limiting (인스턴스 간 공유)
   let rateLimitRedis: Redis | undefined;
   try {
@@ -55,6 +59,9 @@ async function bootstrap() {
 
   // JWT 검증 훅 (로그인/헬스체크 제외)
   app.addHook('onRequest', authHook);
+
+  // 세션 관리 라우트 (httpOnly 쿠키 기반 refresh token)
+  await registerSession(app);
 
   // 대시보드 집계 라우트 (프록시보다 먼저 등록)
   await registerDashboard(app);

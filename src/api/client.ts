@@ -4,7 +4,7 @@
  * - 토큰 만료 임박 시 자동 갱신
  * - 401 응답 시 refresh 시도 후 실패하면 /login 리디렉트
  */
-import { getToken, setToken, clearToken, getRefreshToken, setRefreshToken, isTokenExpiringSoon } from '@/lib/authToken';
+import { getToken, setToken, clearToken, isTokenExpiringSoon } from '@/lib/authToken';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -18,58 +18,20 @@ export interface ApiResponse<T> {
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
-  const keycloakEnabled = import.meta.env.VITE_KEYCLOAK_ENABLED === 'true';
-
-  if (keycloakEnabled) {
-    // Keycloak token refresh
-    const base = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
-    const realm = import.meta.env.VITE_KEYCLOAK_REALM || 'labnote';
-    const clientId = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'labnote-frontend';
-    const tokenUrl = `${base}/realms/${realm}/protocol/openid-connect/token`;
-
-    try {
-      const res = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId,
-        }).toString(),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      setToken(data.access_token);
-      if (data.refresh_token) setRefreshToken(data.refresh_token);
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/session/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data.ok && data.data?.token) {
+      setToken(data.data.token);
       return true;
-    } catch {
-      return false;
     }
-  } else {
-    // Local JWT refresh via auth service
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (data.ok && data.data?.token) {
-        setToken(data.data.token);
-        if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -98,6 +60,7 @@ class ApiClient {
     const url = `${this.baseURL}${path}`;
     const config: RequestInit = {
       method,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
