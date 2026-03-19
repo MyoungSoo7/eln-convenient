@@ -13,7 +13,9 @@ import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab
 
 const { logger, httpLogger } = createHttpLogger('file-service');
 
-setupProcessHandlers('file-service', logger);
+setupProcessHandlers('file-service', logger, {
+  onShutdown: () => prisma.$disconnect(),
+});
 
 const app = express();
 const PORT = process.env.PORT || 8008;

@@ -9,7 +9,9 @@ import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab
 
 const { logger, httpLogger } = createHttpLogger('search-service');
 
-setupProcessHandlers('search-service', logger);
+setupProcessHandlers('search-service', logger, {
+  onShutdown: () => prisma.$disconnect(),
+});
 
 const app = express();
 const PORT = process.env.PORT || 8006;
@@ -19,8 +21,15 @@ app.use(express.json());
 app.use(httpLogger);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'search-service', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'search-service',
+    timestamp: new Date().toISOString(),
+    db: dbOk ? 'ok' : 'error',
+  });
 });
 
 app.use('/api/search', searchRoutes);
