@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /shared
 COPY shared/ ./
+RUN npm install && npx tsc
 WORKDIR /app
 COPY file-service/package*.json ./
 RUN npm install

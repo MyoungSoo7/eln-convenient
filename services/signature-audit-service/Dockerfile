@@ -18,6 +18,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /shared
 COPY shared/ ./
+RUN npm install && npx tsc
 WORKDIR /app
 COPY signature-audit-service/package*.json ./
 RUN npm install
