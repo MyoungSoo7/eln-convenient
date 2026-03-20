@@ -574,9 +574,10 @@ export const deleteOrg = asyncHandler(async (req: Request, res: Response) => {
 
 /** GET /api/auth/teams */
 export const getTeams = asyncHandler(async (req: Request, res: Response) => {
+  const userRole = req.headers['x-user-role'] as string;
   const orgId = req.headers['x-user-org-id'] as string | undefined;
   const teams = await prisma.team.findMany({
-    where: orgId ? { orgId } : undefined,
+    where: userRole === 'admin' ? undefined : (orgId ? { orgId } : undefined),
     orderBy: { createdAt: 'asc' },
     include: { _count: { select: { members: true } } },
   });

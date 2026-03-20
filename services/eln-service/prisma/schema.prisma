@@ -95,6 +95,21 @@ model Attachment {
   note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
 }
 
+model Code {
+  id        String   @id @default(uuid())
+  group     String                 // 코드 그룹: "TEMPLATE_CATEGORY" 등
+  value     String                 // 실제 값
+  label     String?                // 표시명 (null이면 value 사용)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  orgId     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, group, value])
+  @@index([orgId, group])
+}
+
 model Template {
   id          String   @id @default(uuid())
   title       String

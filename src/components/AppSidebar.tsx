@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, FileText, FlaskConical, Package, CalendarDays,
   Search, ShieldCheck, ClipboardList, FileDown, Settings,
-  Users, Building2, BookOpen, ChevronDown,
+  Users, Building2, BookOpen, ChevronDown, Tag,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -98,6 +98,7 @@ export function AppSidebar() {
   const adminItems = [
     { title: t('nav.orgTeamUser'), url: "/admin/users", icon: Users },
     { title: t('nav.rolesPermissions'), url: "/admin/roles", icon: Building2 },
+    { title: t('nav.codes'), url: "/admin/codes", icon: Tag },
     { title: t('nav.settings'), url: "/admin/settings", icon: Settings },
   ];
 

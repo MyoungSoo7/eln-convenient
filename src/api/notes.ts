@@ -300,3 +300,56 @@ export async function deleteTemplate(id: string): Promise<ApiResponse<{ message:
     return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
   }
 }
+
+// ── 공통코드 API ──
+export interface CodeRecord {
+  id: string;
+  group: string;
+  value: string;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export async function listCodes(group: string): Promise<ApiResponse<CodeRecord[]>> {
+  try {
+    const res = await apiClient.get<{ data: CodeRecord[] }>('/codes', { group });
+    if (!res.ok) return { ok: false, data: [], error: res.error };
+    const data = (res as unknown as { data?: CodeRecord[] }).data;
+    return { ok: true, data: Array.isArray(data) ? data : [] };
+  } catch (err) {
+    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
+  }
+}
+
+export async function createCode(data: {
+  group: string;
+  value: string;
+  label?: string;
+  sortOrder?: number;
+}): Promise<ApiResponse<CodeRecord>> {
+  try {
+    return await apiClient.post<CodeRecord>('/codes', data);
+  } catch (err) {
+    return { ok: false, data: null as unknown as CodeRecord, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+export async function updateCode(
+  id: string,
+  data: { value?: string; label?: string; sortOrder?: number; isActive?: boolean },
+): Promise<ApiResponse<CodeRecord>> {
+  try {
+    return await apiClient.put<CodeRecord>(`/codes/${id}`, data);
+  } catch (err) {
+    return { ok: false, data: null as unknown as CodeRecord, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+export async function deleteCode(id: string): Promise<ApiResponse<{ message: string }>> {
+  try {
+    return await apiClient.delete<{ message: string }>(`/codes/${id}`);
+  } catch (err) {
+    return { ok: false, data: { message: '' }, error: (err as Error).message || ERR_CONN };
+  }
+}

@@ -22,6 +22,7 @@ import ExportsPage from "./pages/ExportsPage";
 import OrgTeamUserPage from "./pages/admin/OrgTeamUserPage";
 import RolesPage from "./pages/admin/RolesPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
+import CodeManagePage from "./pages/admin/CodeManagePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -65,6 +66,7 @@ const App = () => (
                       <Route path="/admin/users" element={<AdminRoute><OrgTeamUserPage /></AdminRoute>} />
                       <Route path="/admin/roles" element={<AdminRoute><RolesPage /></AdminRoute>} />
                       <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
+                      <Route path="/admin/codes" element={<AdminRoute><CodeManagePage /></AdminRoute>} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </AppLayout>

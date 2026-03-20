@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,11 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, GripVertical } from "lucide-react";
+import { Plus, X, GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { updateTemplate, type TemplateRecord } from "@/api/notes";
-
-const CATEGORIES = ["기본", "분자생물학", "세포생물학", "생화학", "미생물학", "분석화학", "일반", "기타"];
+import { updateTemplate, listCodes, type TemplateRecord } from "@/api/notes";
 
 /** DB에 저장된 섹션에서 표시용 제목 문자열 배열을 추출 */
 function extractSectionTitles(raw: unknown): string[] {
@@ -40,6 +39,15 @@ export default function EditProtocolDialog({ open, onOpenChange, template, onUpd
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>(template.tags ?? []);
   const [submitting, setSubmitting] = useState(false);
+
+  const categoriesQuery = useQuery({
+    queryKey: ['codes', 'TEMPLATE_CATEGORY'],
+    queryFn: async () => {
+      const res = await listCodes('TEMPLATE_CATEGORY');
+      return res.ok ? res.data : [];
+    },
+  });
+  const categories = categoriesQuery.data ?? [];
 
   // 다이얼로그가 열릴 때마다 폼을 현재 template으로 재초기화
   useEffect(() => {
@@ -114,9 +122,11 @@ export default function EditProtocolDialog({ open, onOpenChange, template, onUpd
           <div className="space-y-2">
             <Label>카테고리 <span className="text-destructive">*</span></Label>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger><SelectValue placeholder="카테고리 선택" /></SelectTrigger>
+              <SelectTrigger>
+                {categoriesQuery.isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SelectValue placeholder="카테고리 선택" />}
+              </SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                {categories.map((c) => <SelectItem key={c.id} value={c.value}>{c.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

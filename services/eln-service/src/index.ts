@@ -3,6 +3,7 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import noteRoutes from './routes/note.routes';
 import templateRoutes from './routes/template.routes';
+import codeRoutes from './routes/code.routes';
 import { swaggerDocument } from './swagger';
 import prisma from './lib/prisma';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
@@ -41,6 +42,7 @@ app.get('/health', async (_req, res) => {
 
 app.use('/api', noteRoutes);
 app.use('/api/templates', templateRoutes);
+app.use('/api/codes', codeRoutes);
 
 app.use(globalErrorHandler('eln-service', logger));
 
