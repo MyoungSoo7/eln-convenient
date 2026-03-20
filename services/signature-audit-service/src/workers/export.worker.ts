@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer';
 import Handlebars from 'handlebars';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,7 +11,7 @@ import { uploadExportFile } from '../lib/fileServiceClient';
 import prisma from '../lib/prisma';
 
 const ELN_URL = process.env.ELN_SERVICE_URL || 'http://localhost:8002';
-const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
 // 템플릿 캐싱
 const templateSrc = fs.readFileSync(
@@ -26,9 +26,30 @@ const reportTemplateSrc = fs.readFileSync(
 );
 const reportTemplate = Handlebars.compile(reportTemplateSrc);
 
-/** eln-service에서 노트 전체 정보 조회 */
-async function fetchNote(noteId: string): Promise<any> {
-  const res = await fetch(`${ELN_URL}/api/notes/${noteId}`);
+/** Chromium 브라우저 실행 (Puppeteer 번들 Chrome 사용) */
+async function launchBrowser() {
+  return puppeteer.launch({
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ],
+    headless: true,
+  });
+}
+
+/** eln-service에서 노트 전체 정보 조회 (서비스 간 내부 호출) */
+async function fetchNote(noteId: string, requestedBy: string, orgId: string): Promise<any> {
+  const res = await fetch(`${ELN_URL}/api/notes/${noteId}`, {
+    headers: {
+      'x-user-id': requestedBy,
+      'x-user-role': 'admin',
+      'x-user-org-id': orgId,
+      'x-user-permissions': '["*"]',
+      'x-internal-secret': INTERNAL_SECRET,
+    },
+  });
   if (!res.ok) throw new Error(`노트 조회 실패: ${noteId} (${res.status})`);
   const body = await res.json() as any;
   return body.data ?? body;
@@ -70,9 +91,9 @@ function parseSections(content: string): { title: string; content: string }[] {
 }
 
 /** 단일 노트 → PDF Buffer */
-async function renderNoteToPdf(noteId: string): Promise<Buffer> {
+async function renderNoteToPdf(noteId: string, requestedBy: string, orgId: string): Promise<Buffer> {
   const [note, signature] = await Promise.all([
-    fetchNote(noteId),
+    fetchNote(noteId, requestedBy, orgId),
     fetchSignature(noteId),
   ]);
 
@@ -94,11 +115,7 @@ async function renderNoteToPdf(noteId: string): Promise<Buffer> {
     printedAt: formatDate(new Date().toISOString()),
   });
 
-  const browser = await puppeteer.launch({
-    executablePath: CHROMIUM_PATH,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    headless: true,
-  });
+  const browser = await launchBrowser();
 
   try {
     const page = await browser.newPage();
@@ -116,10 +133,10 @@ async function renderNoteToPdf(noteId: string): Promise<Buffer> {
 }
 
 /** 프로젝트 보고서: 복수 노트 → 단일 PDF */
-async function renderReportToPdf(noteIds: string[]): Promise<Buffer> {
+async function renderReportToPdf(noteIds: string[], requestedBy: string, orgId: string): Promise<Buffer> {
   const notesData = await Promise.all(
     noteIds.map(async (noteId) => {
-      const note = await fetchNote(noteId);
+      const note = await fetchNote(noteId, requestedBy, orgId);
       let sections = note.content ? parseSections(note.content) : [];
       if (sections.length === 0) {
         sections = [{ title: '내용', content: note.content || '(내용 없음)' }];
@@ -142,11 +159,7 @@ async function renderReportToPdf(noteIds: string[]): Promise<Buffer> {
     notes: notesData,
   });
 
-  const browser = await puppeteer.launch({
-    executablePath: CHROMIUM_PATH,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    headless: true,
-  });
+  const browser = await launchBrowser();
 
   try {
     const page = await browser.newPage();
@@ -185,7 +198,7 @@ async function buildZip(pdfMap: Map<string, Buffer>): Promise<Buffer> {
 
 /** 잡 처리 메인 로직 */
 async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
-  const { jobId, noteId, format, noteIds, requestedBy } = job.data;
+  const { jobId, noteId, format, noteIds, requestedBy, orgId } = job.data;
 
   console.log(`[export-worker] 잡 시작: ${format} / jobId=${jobId} / noteId=${noteId}`);
 
@@ -197,7 +210,7 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
 
   if (format === 'pdf') {
     await job.updateProgress(10);
-    const pdfBuffer = await renderNoteToPdf(noteId);
+    const pdfBuffer = await renderNoteToPdf(noteId, requestedBy, orgId);
     await job.updateProgress(80);
 
     const result = await uploadExportFile({
@@ -211,7 +224,7 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     const targets = noteIds ?? [];
     if (targets.length === 0) throw new Error('report requires noteIds');
     await job.updateProgress(10);
-    const pdfBuffer = await renderReportToPdf(targets);
+    const pdfBuffer = await renderReportToPdf(targets, requestedBy, orgId);
     await job.updateProgress(85);
 
     const result = await uploadExportFile({
@@ -227,7 +240,7 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
     const pdfMap = new Map<string, Buffer>();
 
     for (let i = 0; i < targets.length; i++) {
-      pdfMap.set(targets[i], await renderNoteToPdf(targets[i]));
+      pdfMap.set(targets[i], await renderNoteToPdf(targets[i], requestedBy, orgId));
       await job.updateProgress(Math.floor(((i + 1) / targets.length) * 75));
     }
 

@@ -11,7 +11,8 @@
     "langValue": "한국어",
     "fileStorage": "파일 저장소",
     "fileStorageValue": "MinIO (내부)",
-    "settingsNote": "※ 설정 변경은 백엔드 연동 후 활성화됩니다"
+    "settingsNote": "※ 설정 변경은 백엔드 연동 후 활성화됩니다",
+    "loadError": "설정을 불러오지 못했습니다."
   },
   "orgTeamUser": {
     "title": "조직 / 팀 / 사용자",
@@ -23,7 +24,7 @@
     "userList": "사용자 목록",
     "userListTooltip": "조직에 등록된 모든 사용자를 관리합니다. 사용자 추가, 역할·상태 변경, 삭제가 가능합니다.",
     "addUser": "사용자 추가",
-    "col": { "name": "이름", "email": "이메일", "role": "역할", "team": "팀", "status": "상태" },
+    "col": { "name": "이름", "email": "이메일", "role": "역할", "team": "팀", "status": "상태", "orgName": "이름", "slug": "슬러그" },
     "noUsers": "사용자가 없습니다.",
     "addUserTitle": "사용자 추가",
     "editUserTitle": "사용자 수정 — {{name}}",
@@ -57,6 +58,7 @@
     "teamUpdated": "팀 수정 완료",
     "teamDeleted": "팀 삭제 완료",
     "memberManageTitle": "팀원 관리 — {{name}}",
+    "manageMembersTitle": "팀원 관리 — {{name}}",
     "currentMembers": "현재 팀원 ({{count}}명)",
     "noMembers": "팀원이 없습니다.",
     "addMember": "팀원 추가",
@@ -76,7 +78,24 @@
     "deleteOrgDesc": "{{name}} 조직을 삭제하시겠습니까? 소속 사용자가 없어야 삭제할 수 있습니다.",
     "orgAdded": "조직 추가 완료",
     "orgUpdated": "조직 수정 완료",
-    "orgDeleted": "조직 삭제 완료"
+    "orgDeleted": "조직 삭제 완료",
+    "loadUsersFailed": "사용자 목록을 불러오지 못했습니다.",
+    "loadTeamsFailed": "팀 목록을 불러오지 못했습니다.",
+    "loadOrgsFailed": "조직 목록을 불러오지 못했습니다.",
+    "loadRolesFailed": "역할 목록을 불러오지 못했습니다.",
+    "loadMembersFailed": "팀원 목록을 불러오지 못했습니다.",
+    "addUserFailed": "사용자 추가에 실패했습니다.",
+    "updateUserFailed": "사용자 수정에 실패했습니다.",
+    "deleteUserFailed": "사용자 삭제에 실패했습니다.",
+    "saveTeamFailed": "팀 저장에 실패했습니다.",
+    "deleteTeamFailed": "팀 삭제에 실패했습니다.",
+    "addMemberFailed": "팀원 추가에 실패했습니다.",
+    "removeMemberFailed": "팀원 제거에 실패했습니다.",
+    "saveOrgFailed": "조직 저장에 실패했습니다.",
+    "deleteOrgFailed": "조직 삭제에 실패했습니다.",
+    "roleSelectPlaceholder": "역할 선택",
+    "orgSelectPlaceholder": "조직 선택",
+    "statusSelectPlaceholder": "상태 선택"
   },
   "roles": {
     "title": "역할 / 권한",
@@ -95,6 +114,13 @@
     "deleteRoleDesc": "{{name}} 역할을 삭제하시겠습니까? 이 역할이 지정된 사용자가 없어야 삭제할 수 있습니다.",
     "roleCreated": "역할 생성 완료",
     "permissionsUpdated": "권한 수정 완료",
-    "roleDeleted": "역할 삭제 완료"
+    "roleDeleted": "역할 삭제 완료",
+    "createFailed": "역할 생성에 실패했습니다.",
+    "saveFailed": "저장에 실패했습니다.",
+    "deleteFailed": "역할 삭제에 실패했습니다.",
+    "loadFailed": "역할 목록을 불러오지 못했습니다.",
+    "loadOrgsFailed": "조직 목록을 불러오지 못했습니다.",
+    "noOrgError": "조직 정보를 찾을 수 없습니다.",
+    "updatePermissionsFailed": "권한 수정에 실패했습니다."
   }
 }

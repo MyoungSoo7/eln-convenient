@@ -52,6 +52,7 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
     noteId,
     format: 'pdf',
     requestedBy,
+    orgId,
   });
 
   await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, orgId, req.ip);
@@ -133,6 +134,7 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
     noteIds,
     format: 'zip',
     requestedBy,
+    orgId,
   });
 
   await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, orgId, req.ip);
@@ -181,6 +183,7 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
     noteIds,
     format: 'report',
     requestedBy,
+    orgId,
   });
 
   await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, orgId, req.ip);

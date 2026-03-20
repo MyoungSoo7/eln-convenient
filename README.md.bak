@@ -1,7 +1,7 @@
   Keycloak 관리 콘솔                                                                                                                                                                                                               
   - URL: http://localhost:8080                                                                                                                                                                                                   
   - ID: admin                                               
-  - PW: admin_secret_2024                                                                                                                                                                                                                  
+  - PW: admin_secret_2024      Keycloak 관리 콘솔                                                                                                                                                                                                             
   
    MinIO 콘솔                                                                                                                                                                                                                     
   - URL: http://localhost:9001                                                                                                                                                                                                   

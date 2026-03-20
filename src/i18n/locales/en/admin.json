@@ -11,7 +11,8 @@
     "langValue": "Korean",
     "fileStorage": "File Storage",
     "fileStorageValue": "MinIO (Internal)",
-    "settingsNote": "※ Settings changes will be enabled after backend integration"
+    "settingsNote": "※ Settings changes will be enabled after backend integration",
+    "loadError": "Failed to load settings."
   },
   "orgTeamUser": {
     "title": "Org / Team / Users",
@@ -23,7 +24,7 @@
     "userList": "User List",
     "userListTooltip": "Manage all users in the organization. Add users, change roles/status, or delete.",
     "addUser": "Add User",
-    "col": { "name": "Name", "email": "Email", "role": "Role", "team": "Team", "status": "Status" },
+    "col": { "name": "Name", "email": "Email", "role": "Role", "team": "Team", "status": "Status", "orgName": "Name", "slug": "Slug" },
     "noUsers": "No users.",
     "addUserTitle": "Add User",
     "editUserTitle": "Edit User — {{name}}",
@@ -57,6 +58,7 @@
     "teamUpdated": "Team updated",
     "teamDeleted": "Team deleted",
     "memberManageTitle": "Manage Members — {{name}}",
+    "manageMembersTitle": "Manage Members — {{name}}",
     "currentMembers": "Current Members ({{count}})",
     "noMembers": "No members.",
     "addMember": "Add Member",
@@ -76,7 +78,24 @@
     "deleteOrgDesc": "Delete organization {{name}}? Organization must have no members to delete.",
     "orgAdded": "Organization added",
     "orgUpdated": "Organization updated",
-    "orgDeleted": "Organization deleted"
+    "orgDeleted": "Organization deleted",
+    "loadUsersFailed": "Failed to load users.",
+    "loadTeamsFailed": "Failed to load teams.",
+    "loadOrgsFailed": "Failed to load organizations.",
+    "loadRolesFailed": "Failed to load roles.",
+    "loadMembersFailed": "Failed to load members.",
+    "addUserFailed": "Failed to add user.",
+    "updateUserFailed": "Failed to update user.",
+    "deleteUserFailed": "Failed to delete user.",
+    "saveTeamFailed": "Failed to save team.",
+    "deleteTeamFailed": "Failed to delete team.",
+    "addMemberFailed": "Failed to add member.",
+    "removeMemberFailed": "Failed to remove member.",
+    "saveOrgFailed": "Failed to save organization.",
+    "deleteOrgFailed": "Failed to delete organization.",
+    "roleSelectPlaceholder": "Select role",
+    "orgSelectPlaceholder": "Select organization",
+    "statusSelectPlaceholder": "Select status"
   },
   "roles": {
     "title": "Roles / Permissions",
@@ -95,6 +114,13 @@
     "deleteRoleDesc": "Delete role {{name}}? No users should be assigned this role.",
     "roleCreated": "Role created",
     "permissionsUpdated": "Permissions updated",
-    "roleDeleted": "Role deleted"
+    "roleDeleted": "Role deleted",
+    "createFailed": "Failed to create role.",
+    "saveFailed": "Failed to save.",
+    "deleteFailed": "Failed to delete role.",
+    "loadFailed": "Failed to load roles.",
+    "loadOrgsFailed": "Failed to load organizations.",
+    "noOrgError": "Organization not found.",
+    "updatePermissionsFailed": "Failed to update permissions."
   }
 }

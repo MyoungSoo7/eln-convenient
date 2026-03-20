@@ -177,6 +177,7 @@ services:
       context: .
       dockerfile: signature-audit-service/Dockerfile
     container_name: labnote-signature
+    shm_size: '256m'
     expose:
       - "8003"
     environment:
@@ -295,6 +296,7 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?}
       - MINIO_BUCKET=labnote-files
       - MINIO_EXPORTS_BUCKET=labnote-exports
+      - MINIO_PUBLIC_URL=http://localhost:9000
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}

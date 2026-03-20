@@ -366,8 +366,8 @@ export default function OrgTeamUserPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t('orgTeamUser.col.teamName')}</TableHead>
-                      <TableHead>{t('orgTeamUser.col.members')}</TableHead>
+                      <TableHead>{t('orgTeamUser.teamCol.name')}</TableHead>
+                      <TableHead>{t('orgTeamUser.teamCol.count')}</TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>

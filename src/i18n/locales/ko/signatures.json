@@ -15,5 +15,6 @@
   "viewReadOnly": "보기 (읽기전용)",
   "signAction": "서명하기",
   "editAction": "편집",
-  "emptyNotes": "등록된 연구노트가 없습니다."
+  "emptyNotes": "등록된 연구노트가 없습니다.",
+  "count": "{{count}}건"
 }

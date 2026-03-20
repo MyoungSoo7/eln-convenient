@@ -12,6 +12,18 @@ import { updateTemplate, type TemplateRecord } from "@/api/notes";
 
 const CATEGORIES = ["기본", "분자생물학", "세포생물학", "생화학", "미생물학", "분석화학", "일반", "기타"];
 
+/** DB에 저장된 섹션에서 표시용 제목 문자열 배열을 추출 */
+function extractSectionTitles(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) return ["목적", "재료", "방법", "결과", "고찰"];
+  // { type, title, content } 객체 배열인 경우 title만 추출
+  if (typeof raw[0] === 'object' && raw[0] !== null && 'title' in raw[0]) {
+    return raw.map((s: { title: string }) => s.title);
+  }
+  // 이미 문자열 배열인 경우 그대로 반환
+  if (typeof raw[0] === 'string') return raw as string[];
+  return ["목적", "재료", "방법", "결과", "고찰"];
+}
+
 interface EditProtocolDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -23,10 +35,7 @@ export default function EditProtocolDialog({ open, onOpenChange, template, onUpd
   const [title, setTitle] = useState(template.title);
   const [category, setCategory] = useState(template.category ?? "기본");
   const [description, setDescription] = useState(template.description ?? "");
-  const [sections, setSections] = useState<string[]>(() => {
-    const s = template.sections;
-    return Array.isArray(s) && s.length > 0 ? (s as string[]) : ["목적", "재료", "방법", "결과", "고찰"];
-  });
+  const [sections, setSections] = useState<string[]>(() => extractSectionTitles(template.sections));
   const [newSection, setNewSection] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>(template.tags ?? []);
@@ -38,8 +47,7 @@ export default function EditProtocolDialog({ open, onOpenChange, template, onUpd
       setTitle(template.title);
       setCategory(template.category ?? "기본");
       setDescription(template.description ?? "");
-      const s = template.sections;
-      setSections(Array.isArray(s) && s.length > 0 ? (s as string[]) : ["목적", "재료", "방법", "결과", "고찰"]);
+      setSections(extractSectionTitles(template.sections));
       setTags(template.tags ?? []);
       setTagInput("");
       setNewSection("");
@@ -74,7 +82,7 @@ export default function EditProtocolDialog({ open, onOpenChange, template, onUpd
       title: title.trim(),
       description: description.trim() || undefined,
       category,
-      sections,
+      sections: sections.map((s, i) => ({ type: 'text', title: s, content: '', order: i })),
       tags,
     });
     setSubmitting(false);

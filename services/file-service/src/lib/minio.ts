@@ -23,6 +23,8 @@ if (!process.env.MINIO_ACCESS_KEY || !process.env.MINIO_SECRET_KEY) {
 }
 const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY;
 const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY;
+const MINIO_PUBLIC_URL = process.env.MINIO_PUBLIC_URL || '';
+const INTERNAL_ORIGIN = `http://${MINIO_ENDPOINT}:${MINIO_PORT}`;
 export const BUCKET = process.env.MINIO_BUCKET || 'labnote-files';
 export const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || 'labnote-exports';
 
@@ -34,7 +36,7 @@ export const EXPIRY = {
 } as const;
 
 export const s3 = new S3Client({
-  endpoint: `http://${MINIO_ENDPOINT}:${MINIO_PORT}`,
+  endpoint: INTERNAL_ORIGIN,
   region: 'us-east-1',
   credentials: {
     accessKeyId: MINIO_ACCESS_KEY,
@@ -42,6 +44,16 @@ export const s3 = new S3Client({
   },
   forcePathStyle: true,
 });
+
+/** presigned URL 전용 S3 클라이언트 (브라우저 접근 가능 endpoint 사용) */
+const s3Public = MINIO_PUBLIC_URL
+  ? new S3Client({
+      endpoint: MINIO_PUBLIC_URL,
+      region: 'us-east-1',
+      credentials: { accessKeyId: MINIO_ACCESS_KEY, secretAccessKey: MINIO_SECRET_KEY },
+      forcePathStyle: true,
+    })
+  : s3;
 
 /** 두 버킷 모두 존재 확인 / 생성 */
 export async function ensureBuckets(): Promise<void> {
@@ -109,7 +121,7 @@ export async function findKeyByPrefix(prefix: string): Promise<string | null> {
 /** presigned 다운로드 URL 생성 */
 export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
+  return getSignedUrl(s3Public, command, { expiresIn });
 }
 
 /** presigned 업로드 URL 생성 */
@@ -123,7 +135,7 @@ export async function getPresignedUploadUrl(
     Key: key,
     ContentType: contentType,
   });
-  return getSignedUrl(s3, command, { expiresIn });
+  return getSignedUrl(s3Public, command, { expiresIn });
 }
 
 /** 파일 스트림 다운로드 */
@@ -206,7 +218,7 @@ export async function getPresignedUrlFromBucket(
   bucket: string, key: string, expiresIn: number = EXPIRY.FILE_DOWNLOAD
 ): Promise<string> {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
+  return getSignedUrl(s3Public, command, { expiresIn });
 }
 
 /** 임의 버킷 오브젝트 삭제 */

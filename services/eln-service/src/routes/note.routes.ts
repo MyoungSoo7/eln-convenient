@@ -74,7 +74,7 @@ router.post('/protocols', requirePermission(Permission.NOTE_WRITE), (req, res, n
   return ctrl.createNote(req, res, next);
 });
 router.get('/protocols/:id',    requirePermission(Permission.NOTE_READ),    ctrl.getNoteById);
-router.put('/protocols/:id',    requirePermission(Permission.NOTE_WRITE),   ctrl.updateNote);
+router.put('/protocols/:id',    requirePermission(Permission.NOTE_WRITE),   validate({ body: UpdateNoteSchema }), ctrl.updateNote);
 router.delete('/protocols/:id', requirePermission(Permission.NOTE_DELETE),  ctrl.deleteNote);
 router.patch('/protocols/:id/status',  requirePermission(Permission.NOTE_STATUS),  ctrl.changeNoteStatus);
 router.get('/protocols/:id/revisions', requirePermission(Permission.NOTE_READ),   ctrl.getRevisions);

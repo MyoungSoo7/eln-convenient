@@ -15,5 +15,6 @@
   "viewReadOnly": "View (Read-only)",
   "signAction": "Sign",
   "editAction": "Edit",
-  "emptyNotes": "No lab notes registered."
+  "emptyNotes": "No lab notes registered.",
+  "count": "{{count}}"
 }

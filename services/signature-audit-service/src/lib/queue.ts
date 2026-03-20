@@ -26,6 +26,7 @@ export interface ExportJobPayload {
   format: 'pdf' | 'zip' | 'report';
   noteIds?: string[]; // zip / report 일 때 복수 노트
   requestedBy: string;
+  orgId: string;    // 워커→ELN 호출 시 x-user-org-id 헤더용
 }
 
 // ── 이벤트 버스 (Redis Streams) ──
