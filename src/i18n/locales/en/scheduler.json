@@ -44,5 +44,37 @@
   "rejectFailedDesc": "Failed to reject.",
   "approve": "Approve",
   "emptyAll": "No bookings. Create a new booking to get started.",
-  "emptyFiltered": "No '{{status}}' bookings found."
+  "emptyFiltered": "No '{{status}}' bookings found.",
+
+  "resource": {
+    "manage": "Resources",
+    "manageTooltip": "Register, edit, and deactivate bookable resources such as equipment and meeting rooms. Admin only.",
+    "create": "New Resource",
+    "edit": "Edit Resource",
+    "name": "Name",
+    "namePlaceholder": "e.g., Conference Room, Electron Microscope",
+    "typePlaceholder": "Select type",
+    "location": "Location",
+    "locationPlaceholder": "e.g., Bldg B Room 201",
+    "description": "Description",
+    "descriptionPlaceholder": "Brief description of the resource",
+    "capacity": "Capacity",
+    "capacityPlaceholder": "Max persons",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "deactivateConfirm": "Deactivate this resource? Deactivated resources cannot be selected for new bookings.",
+    "hasActiveBookings": "Cannot deactivate: active bookings exist.",
+    "createSuccess": "Resource Created",
+    "createSuccessDesc": "{{name}} has been registered.",
+    "updateSuccess": "Resource Updated",
+    "updateSuccessDesc": "{{name}} has been updated.",
+    "deleteSuccess": "Deactivated",
+    "deleteSuccessDesc": "Resource has been deactivated.",
+    "deleteFailed": "Deactivation Failed",
+    "saveFailed": "Save Failed",
+    "empty": "No resources registered.",
+    "filterAll": "All",
+    "persons": "{{count}} persons"
+  }
 }

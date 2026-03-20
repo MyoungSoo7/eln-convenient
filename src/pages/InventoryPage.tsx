@@ -16,6 +16,7 @@ import {
   getExpiringItems, getLowStockItems,
   type InventoryItem, type InventoryHistory,
 } from "@/api/inventory";
+import { listCodes, type CodeRecord } from "@/api/notes";
 
 // ─────────────────────────────────────────────
 // 상수 (non-translatable)
@@ -82,23 +83,22 @@ function AddEditDialog({
   onOpenChange,
   editItem,
   categories,
+  itemTypes,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editItem: InventoryItem | null;
   categories: { id: string; name: string }[];
+  itemTypes: CodeRecord[];
   onSaved: () => void;
 }) {
   const { t } = useTranslation('inventory');
   const { t: tc } = useTranslation('common');
 
-  const TYPE_LABELS: Record<string, string> = {
-    reagent: t('type.reagent'), sample: t('type.sample'), equipment: t('type.equipment'),
-    consumable: t('type.consumable'), antibody: t('type.antibody'), plasmid: t('type.plasmid'),
-    cell_line: t('type.cell_line'), output: t('type.output'), license: t('type.license'),
-    infrastructure: t('type.infrastructure'), other: t('type.other'),
-  };
+  const TYPE_LABELS: Record<string, string> = Object.fromEntries(
+    itemTypes.map((c) => [c.value, c.label])
+  );
 
   const STATUS_LABELS: Record<string, string> = {
     available: t('status.available'), in_use: t('status.in_use'), depleted: t('status.depleted'),
@@ -497,12 +497,17 @@ export default function InventoryPage() {
   const { t } = useTranslation('inventory');
   const { t: tc } = useTranslation('common');
 
-  const TYPE_LABELS: Record<string, string> = {
-    reagent: t('type.reagent'), sample: t('type.sample'), equipment: t('type.equipment'),
-    consumable: t('type.consumable'), antibody: t('type.antibody'), plasmid: t('type.plasmid'),
-    cell_line: t('type.cell_line'), output: t('type.output'), license: t('type.license'),
-    infrastructure: t('type.infrastructure'), other: t('type.other'),
-  };
+  // 인벤토리 유형을 Code 테이블에서 로드
+  const [itemTypes, setItemTypes] = useState<CodeRecord[]>([]);
+  useEffect(() => {
+    listCodes('INVENTORY_ITEM_TYPE').then((res) => {
+      if (res.ok) setItemTypes(res.data);
+    });
+  }, []);
+
+  const TYPE_LABELS: Record<string, string> = Object.fromEntries(
+    itemTypes.map((c) => [c.value, c.label])
+  );
 
   const STATUS_LABELS: Record<string, string> = {
     available: t('status.available'), in_use: t('status.in_use'), depleted: t('status.depleted'),
@@ -511,15 +516,8 @@ export default function InventoryPage() {
 
   const TAB_DEFS = [
     { key: "all", label: t('tab.all') },
-    { key: "reagent", label: t('tab.reagent') },
-    { key: "sample", label: t('tab.sample') },
-    { key: "equipment", label: t('tab.equipment') },
-    { key: "consumable", label: t('tab.consumable') },
-    { key: "antibody", label: t('tab.antibody') },
-    { key: "plasmid", label: t('tab.plasmid') },
-    { key: "cell_line", label: t('tab.cell_line') },
-    { key: "other_group", label: t('tab.other_group') },
-  ] as const;
+    ...itemTypes.map((c) => ({ key: c.value, label: c.label })),
+  ];
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -731,6 +729,7 @@ export default function InventoryPage() {
         onOpenChange={(v) => { if (!v) { setAddOpen(false); setEditItem(null); } }}
         editItem={editItem}
         categories={categories}
+        itemTypes={itemTypes}
         onSaved={loadItems}
       />
       <AdjustQuantityDialog

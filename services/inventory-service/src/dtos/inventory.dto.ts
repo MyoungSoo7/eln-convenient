@@ -1,14 +1,9 @@
 import { z } from 'zod';
 
 // ─── Enums ───────────────────────────────────────
-export const ItemTypeEnum = z.enum([
-  'reagent', 'sample', 'equipment', 'consumable',
-  'antibody', 'plasmid', 'cell_line',
-  'output', 'license', 'infrastructure', 'other',
-]);
-export type ItemType = z.infer<typeof ItemTypeEnum>;
-/** @deprecated Use ItemTypeEnum.options instead */
-export const VALID_ITEM_TYPES = ItemTypeEnum.options;
+// ItemType은 Code 테이블(INVENTORY_ITEM_TYPE)에서 관리 — 자유 문자열
+export const ItemTypeEnum = z.string().min(1, 'type은 필수입니다.');
+export type ItemType = string;
 
 export const ItemStatusEnum = z.enum(['available', 'in_use', 'depleted', 'expired', 'disposed', 'maintenance']);
 export type ItemStatus = z.infer<typeof ItemStatusEnum>;
@@ -77,7 +72,7 @@ export const UuidParamsSchema = z.object({
 });
 
 export const GetItemsQuerySchema = z.object({
-  type: ItemTypeEnum.optional(),
+  type: z.string().optional(),
   status: ItemStatusEnum.optional(),
   category: z.string().optional(),
   q: z.string().optional(),

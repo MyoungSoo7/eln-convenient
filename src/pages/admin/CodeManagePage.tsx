@@ -18,6 +18,7 @@ import { listCodes, createCode, updateCode, deleteCode, type CodeRecord } from "
 
 const CODE_GROUPS = [
   { value: "TEMPLATE_CATEGORY", label: "프로토콜 카테고리" },
+  { value: "INVENTORY_ITEM_TYPE", label: "인벤토리 유형" },
 ];
 
 export default function CodeManagePage() {

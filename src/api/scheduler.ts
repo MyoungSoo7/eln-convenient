@@ -155,3 +155,26 @@ export async function rejectBooking(id: string, reason?: string): Promise<ApiRes
     return { ok: true, data: {} as BackendBooking };
   }
 }
+
+// ─── Resource CRUD ─────────────────────────────────────────
+
+export interface CreateResourceData {
+  name: string;
+  type: 'EQUIPMENT' | 'ROOM';
+  location?: string;
+  description?: string;
+  capacity?: number;
+  ownerId?: string;
+}
+
+export async function createResource(data: CreateResourceData): Promise<ApiResponse<Resource>> {
+  return apiClient.post<Resource>('/scheduler/resources', data);
+}
+
+export async function updateResource(id: string, data: Partial<CreateResourceData & { isActive: boolean }>): Promise<ApiResponse<Resource>> {
+  return apiClient.put<Resource>(`/scheduler/resources/${id}`, data);
+}
+
+export async function deleteResource(id: string): Promise<ApiResponse<{ id: string; message: string }>> {
+  return apiClient.delete<{ id: string; message: string }>(`/scheduler/resources/${id}`);
+}
