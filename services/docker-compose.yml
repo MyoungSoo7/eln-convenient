@@ -160,6 +160,7 @@ services:
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
       - SEARCH_SERVICE_URL=http://search-service:8006
+      - SEED_ON_START=true
     depends_on:
       postgres:
         condition: service_healthy
