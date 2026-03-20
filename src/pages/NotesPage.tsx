@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { listNotes, changeNoteStatus, adminUnlockNote, deleteNote } from "@/api/notes";
+import { getStoredUser } from "@/lib/authToken";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -43,12 +44,17 @@ const statusColors: Record<string, string> = {
   signed: "bg-success/10 text-success",
   locked: "bg-destructive/10 text-destructive",
 };
-const statusTransitions: Record<string, string[]> = {
-  draft: ["in_progress"],
-  in_progress: ["draft", "locked"],
-  signed: [],
-  locked: [],
-};
+// 역할 기반 상태 전환 맵: locked 전환은 reviewer/admin만 허용 (백엔드 규칙과 일치)
+function getStatusTransitions(status: string, role: string): string[] {
+  const isReviewerOrAdmin = role === "reviewer" || role === "admin";
+  switch (status) {
+    case "draft": return ["in_progress"];
+    case "in_progress": return isReviewerOrAdmin ? ["draft", "locked"] : ["draft"];
+    case "signed": return [];
+    case "locked": return [];
+    default: return [];
+  }
+}
 
 // draft / in_progress 상태만 삭제 허용
 // signed: 법적 불변성, locked: 관리자 잠금 상태 — 삭제 불가
@@ -70,7 +76,9 @@ export default function NotesPage() {
   const [unlockTarget, setUnlockTarget] = useState<Note | null>(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [unlocking, setUnlocking] = useState(false);
-  const [isAdmin] = useState(true); // TODO: 실제 인증 연동 시 권한 체크로 교체
+  const storedUser = getStoredUser();
+  const userRole = (storedUser?.role as string) ?? "";
+  const isAdmin = userRole === "admin";
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -234,7 +242,8 @@ export default function NotesPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((note) => {
-            const canTransition = statusTransitions[note.status]?.length > 0;
+            const transitions = getStatusTransitions(note.status, userRole);
+            const canTransition = transitions.length > 0;
             const canAdminUnlock = isAdmin && note.status === "locked";
 
             return (
@@ -261,7 +270,7 @@ export default function NotesPage() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="min-w-[140px]">
-                            {canTransition && statusTransitions[note.status].map((s) => (
+                            {canTransition && transitions.map((s) => (
                               <DropdownMenuItem
                                 key={s}
                                 onClick={() => handleStatusChange(note.id, s)}

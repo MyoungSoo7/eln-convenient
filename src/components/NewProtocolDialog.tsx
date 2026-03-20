@@ -79,7 +79,7 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
       title: title.trim(),
       description: description.trim() || undefined,
       category,
-      sections,
+      sections: sections.map((s, i) => ({ type: 'text', title: s, content: '', order: i })),
       tags: tags.length > 0 ? tags : undefined,
       isPublic: true,
     });

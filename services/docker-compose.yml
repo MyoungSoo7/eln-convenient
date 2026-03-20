@@ -129,6 +129,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-Admin1234!}
+      - RESEARCHER_INITIAL_PASSWORD=${RESEARCHER_INITIAL_PASSWORD:-Researcher1234!}
+      - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:-Reviewer1234!}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,7 +158,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
       - SEARCH_SERVICE_URL=http://search-service:8006
     depends_on:
       postgres:
@@ -182,7 +186,7 @@ services:
       - ELN_SERVICE_URL=http://eln-service:8002
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -213,7 +217,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -260,7 +264,7 @@ services:
       - OPENSEARCH_URL=http://opensearch:9200
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - REDIS_URL=redis://redis:6379
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -292,7 +296,7 @@ services:
       - MINIO_EXPORTS_BUCKET=labnote-exports
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       minio:
         condition: service_healthy
@@ -355,10 +359,13 @@ services:
       - COLLAB_SERVICE_URL=http://collab-service:8009
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - REDIS_URL=redis://redis:6379
       - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
       - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/labnote/protocol/openid-connect/certs
       - KEYCLOAK_ISSUER=http://keycloak:8080/realms/labnote
     depends_on:
+      redis:
+        condition: service_healthy
       auth-service:
         condition: service_healthy
       eln-service:

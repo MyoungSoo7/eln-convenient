@@ -15,7 +15,7 @@ export const ServiceEventType = {
   USER_SUSPENDED: 'user.suspended',
   USER_REACTIVATED: 'user.reactivated',
   NOTE_DELETED: 'note.deleted',
-  NOTE_SIGNED: 'note.signed',
+  NOTE_SIGNED: 'NOTE_SIGNED',
 } as const;
 
 export type ServiceEventType = (typeof ServiceEventType)[keyof typeof ServiceEventType];

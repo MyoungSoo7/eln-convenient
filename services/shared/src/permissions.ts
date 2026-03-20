@@ -10,6 +10,7 @@ export const Permission = {
   NOTE_READ:    'note:read',
   NOTE_WRITE:   'note:write',
   NOTE_DELETE:  'note:delete',
+  NOTE_STATUS:  'note:status',
   NOTE_SIGN:    'note:sign',
   NOTE_UNLOCK:  'note:unlock',
 
@@ -64,7 +65,7 @@ export type RoleNameValue = typeof RoleName[keyof typeof RoleName];
 export const RolePermissions: Record<RoleNameValue, PermissionValue[]> = {
   [RoleName.ADMIN]: [
     Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_DELETE,
-    Permission.NOTE_SIGN, Permission.NOTE_UNLOCK,
+    Permission.NOTE_STATUS, Permission.NOTE_SIGN, Permission.NOTE_UNLOCK,
     Permission.TEMPLATE_READ, Permission.TEMPLATE_WRITE, Permission.TEMPLATE_DELETE,
     Permission.INVENTORY_READ, Permission.INVENTORY_WRITE, Permission.INVENTORY_DELETE,
     Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE, Permission.SCHEDULER_MANAGE,
@@ -75,7 +76,7 @@ export const RolePermissions: Record<RoleNameValue, PermissionValue[]> = {
   ],
 
   [RoleName.RESEARCHER]: [
-    Permission.NOTE_READ, Permission.NOTE_WRITE,
+    Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_STATUS,
     Permission.TEMPLATE_READ, Permission.TEMPLATE_WRITE,
     Permission.INVENTORY_READ, Permission.INVENTORY_WRITE,
     Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE,
@@ -84,7 +85,7 @@ export const RolePermissions: Record<RoleNameValue, PermissionValue[]> = {
   ],
 
   [RoleName.REVIEWER]: [
-    Permission.NOTE_READ, Permission.NOTE_SIGN,
+    Permission.NOTE_READ, Permission.NOTE_STATUS, Permission.NOTE_SIGN,
     Permission.TEMPLATE_READ,
     Permission.INVENTORY_READ,
     Permission.SCHEDULER_READ,

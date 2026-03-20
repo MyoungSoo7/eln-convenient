@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import redis, { invalidateSearchCache } from '../lib/redis';
-import { createHttpLogger } from '@lab/shared';
+import { createHttpLogger, AppError, asyncHandler, ErrorCode } from '@lab/shared';
 import type { ISearchResult, ISearchResponse, DomainType } from '../interfaces/search.interface';
 import {
   osClient,
@@ -60,7 +60,7 @@ function buildPermissionFilter(userId: string, labId?: string, projectId?: strin
 // ─── 통합 검색 ───────────────────────────────────────────
 
 /** GET /api/search?q=...&domainTypes=NOTE,PROTOCOL&page=1&size=20 */
-export async function search(req: Request, res: Response): Promise<void> {
+export const search = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const q = (req.query.q as string)?.trim() || '';
   const domainTypesParam = req.query.domainTypes as string | undefined;
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -199,12 +199,12 @@ export async function search(req: Request, res: Response): Promise<void> {
     res.json(responseBody);
   } catch (err) {
     logger.error({ err }, 'OpenSearch 검색 실패');
-    res.status(502).json({ ok: false, error: 'OpenSearch 검색에 실패했습니다.' });
+    throw new AppError(502, 'OpenSearch 검색에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-}
+});
 
 /** GET /api/search/suggest?q=... */
-export async function suggest(req: Request, res: Response): Promise<void> {
+export const suggest = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const q = (req.query.q as string)?.trim() || '';
   const userId = (req.headers['x-user-id'] as string)?.trim() || '';
   const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
@@ -253,12 +253,12 @@ export async function suggest(req: Request, res: Response): Promise<void> {
     logger.error({ err }, '자동완성 검색 실패');
     res.json({ ok: true, query: q, suggestions: [] });
   }
-}
+});
 
 // ─── 색인 관리 (내부 서비스 전용) ────────────────────────
 
 /** POST /api/search/index — 단일 문서 색인 */
-export async function indexDoc(req: Request, res: Response): Promise<void> {
+export const indexDoc = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id, doc } = req.body;
   try {
     await indexDocument(id, { ...doc, docStatus: doc.docStatus ?? 'active' });
@@ -266,12 +266,12 @@ export async function indexDoc(req: Request, res: Response): Promise<void> {
     res.json({ ok: true, message: `${doc.domainType}:${id} 색인 완료` });
   } catch (err) {
     logger.error({ err }, '문서 색인 실패');
-    res.status(502).json({ ok: false, error: 'OpenSearch 색인에 실패했습니다.' });
+    throw new AppError(502, 'OpenSearch 색인에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-}
+});
 
 /** POST /api/search/index/bulk — 벌크 색인 */
-export async function bulkIndexDocs(req: Request, res: Response): Promise<void> {
+export const bulkIndexDocs = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { docs } = req.body;
   try {
     const result = await bulkIndexDocuments(docs);
@@ -279,12 +279,12 @@ export async function bulkIndexDocs(req: Request, res: Response): Promise<void> 
     res.json({ ok: true, ...result });
   } catch (err) {
     logger.error({ err }, '벌크 색인 실패');
-    res.status(502).json({ ok: false, error: 'OpenSearch 벌크 색인에 실패했습니다.' });
+    throw new AppError(502, 'OpenSearch 벌크 색인에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-}
+});
 
 /** DELETE /api/search/index/:id — 문서 소프트 삭제 */
-export async function removeDoc(req: Request, res: Response): Promise<void> {
+export const removeDoc = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   try {
     await softDeleteDocument(id);
@@ -292,17 +292,17 @@ export async function removeDoc(req: Request, res: Response): Promise<void> {
     res.json({ ok: true, message: `${id} 소프트 삭제 완료` });
   } catch (err) {
     logger.error({ err }, '문서 삭제 실패');
-    res.status(502).json({ ok: false, error: 'OpenSearch 삭제에 실패했습니다.' });
+    throw new AppError(502, 'OpenSearch 삭제에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-}
+});
 
 /** GET /api/search/stats */
-export async function statsHandler(_req: Request, res: Response): Promise<void> {
+export const statsHandler = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
   try {
     const data = await getIndexStats();
     res.json({ ok: true, data });
   } catch (err) {
     logger.error({ err }, '통계 조회 실패');
-    res.status(502).json({ ok: false, error: 'OpenSearch 통계 조회에 실패했습니다.' });
+    throw new AppError(502, 'OpenSearch 통계 조회에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-}
+});

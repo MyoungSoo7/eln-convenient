@@ -7,6 +7,8 @@ export {
   type ErrorResponse,
 } from './errors';
 
+export { ErrorCode, type ErrorCodeValue } from './error-codes';
+
 export { validate } from './validate';
 
 export { createLogger, createHttpLogger, type Logger } from './logger';

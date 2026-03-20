@@ -17,7 +17,7 @@ model Signature {
   timestamp     DateTime        @default(now())
   status        SignatureStatus @default(valid)
 
-  @@index([noteId])
+  @@unique([noteId, chainIndex])
   @@index([noteId, status])
   @@index([signerId])
 }

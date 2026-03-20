@@ -43,7 +43,8 @@ app.listen(PORT, async () => {
     await prisma.$connect();
     logger.info('PostgreSQL 연결 완료');
   } catch (err) {
-    logger.error({ err }, 'PostgreSQL 연결 실패');
+    logger.fatal({ err }, 'PostgreSQL 연결 실패 — 서비스를 종료합니다');
+    process.exit(1);
   }
   try {
     await ensureIndices();

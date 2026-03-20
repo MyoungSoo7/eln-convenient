@@ -19,9 +19,15 @@ const BLOCK_MS = 5000;           // XREADGROUP 블록 타임아웃
 const BATCH_SIZE = 10;           // 한 번에 읽는 메시지 수
 const CLAIM_INTERVAL_MS = 60000; // pending 메시지 복구 주기
 const CLAIM_MIN_IDLE_MS = 30000; // 이 시간 이상 미처리된 메시지만 XCLAIM
+const MAX_DELIVERY_COUNT = 5;    // 이 횟수 이상 재시도된 메시지는 dead letter 처리
 
 let running = false;
 let redis: Redis | null = null;
+
+/** 이벤트 컨슈머 실행 상태 조회 */
+export function isEventConsumerRunning(): boolean {
+  return running && redis !== null;
+}
 
 /** 이벤트 메시지 파싱 (Redis Stream의 field-value 배열 → 객체) */
 function parseFields(fields: string[]): Record<string, string> {
@@ -147,8 +153,15 @@ async function claimLoop(): Promise<void> {
       if (!pending || pending.length === 0) continue;
 
       for (const entry of pending) {
-        const [msgId, _consumer, idleMs] = entry;
+        const [msgId, _consumer, idleMs, deliveryCount] = entry;
         if (idleMs < CLAIM_MIN_IDLE_MS) continue;
+
+        // 최대 재시도 횟수 초과 → dead letter 처리 (ACK하여 제거)
+        if (deliveryCount >= MAX_DELIVERY_COUNT) {
+          console.error(`[event-consumer] dead letter: 메시지 ${msgId} (재시도 ${deliveryCount}회 초과)`);
+          await redis.xack(EVENT_STREAM, GROUP_NAME, msgId);
+          continue;
+        }
 
         // 오래된 메시지를 이 consumer로 가져와서 재처리
         const claimed = await redis.xclaim(

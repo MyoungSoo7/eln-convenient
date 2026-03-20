@@ -54,6 +54,15 @@ app.listen(PORT, async () => {
   logger.info({ port: PORT }, '서버 시작');
   logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
 
+  // DB 연결 확인 — 실패 시 서비스 종료
+  try {
+    await prisma.$connect();
+    logger.info('PostgreSQL 연결 완료');
+  } catch (err) {
+    logger.fatal({ err }, 'PostgreSQL 연결 실패 — 서비스를 종료합니다');
+    process.exit(1);
+  }
+
   // export job processors 등록
   registerProcessor('pdf', processPdfJob);
   registerProcessor('zip', processZipJob);

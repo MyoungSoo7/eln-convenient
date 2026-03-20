@@ -28,7 +28,7 @@ router.put('/notes/:id',                         requirePermission(Permission.NO
 router.delete('/notes/:id',                      requirePermission(Permission.NOTE_DELETE),  ctrl.deleteNote);
 
 // ─── 상태 관리 ────────────────────────────────────────────────
-router.patch('/notes/:id/status',                requirePermission(Permission.NOTE_WRITE),   validate({ body: ChangeStatusSchema }), ctrl.changeNoteStatus);
+router.patch('/notes/:id/status',                requirePermission(Permission.NOTE_STATUS),  validate({ body: ChangeStatusSchema }), ctrl.changeNoteStatus);
 router.post('/notes/:id/admin-unlock',
   requireRole(RoleName.ADMIN),              // 레이어 1: 역할 게이트
   requirePermission(Permission.NOTE_UNLOCK),  // 레이어 2: 권한 게이트
@@ -52,18 +52,18 @@ router.delete('/notes/:id/links/:linkId',        requirePermission(Permission.NO
 
 // ─── 프로토콜 CRUD (type=protocol 필터) ──────────────────────
 // note.controller.ts의 동일 핸들러 재사용, ?type=protocol 쿼리 자동 주입
-router.get('/protocols', requirePermission(Permission.NOTE_READ), (req, res) => {
+router.get('/protocols', requirePermission(Permission.NOTE_READ), (req, res, next) => {
   req.query.type = 'protocol';
-  return ctrl.getNotes(req, res);
+  return ctrl.getNotes(req, res, next);
 });
-router.post('/protocols', requirePermission(Permission.NOTE_WRITE), (req, res) => {
+router.post('/protocols', requirePermission(Permission.NOTE_WRITE), (req, res, next) => {
   req.body.type = 'protocol';
-  return ctrl.createNote(req, res);
+  return ctrl.createNote(req, res, next);
 });
 router.get('/protocols/:id',    requirePermission(Permission.NOTE_READ),    ctrl.getNoteById);
 router.put('/protocols/:id',    requirePermission(Permission.NOTE_WRITE),   ctrl.updateNote);
 router.delete('/protocols/:id', requirePermission(Permission.NOTE_DELETE),  ctrl.deleteNote);
-router.patch('/protocols/:id/status',  requirePermission(Permission.NOTE_WRITE),  ctrl.changeNoteStatus);
+router.patch('/protocols/:id/status',  requirePermission(Permission.NOTE_STATUS),  ctrl.changeNoteStatus);
 router.get('/protocols/:id/revisions', requirePermission(Permission.NOTE_READ),   ctrl.getRevisions);
 router.get('/protocols/:id/revisions/:rev', requirePermission(Permission.NOTE_READ), ctrl.getRevisionById);
 

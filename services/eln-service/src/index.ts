@@ -6,7 +6,7 @@ import templateRoutes from './routes/template.routes';
 import { swaggerDocument } from './swagger';
 import prisma from './lib/prisma';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
-import { startEventConsumer, stopEventConsumer } from './lib/eventConsumer';
+import { startEventConsumer, stopEventConsumer, isEventConsumerRunning } from './lib/eventConsumer';
 
 const { logger, httpLogger } = createHttpLogger('eln-service');
 
@@ -28,11 +28,14 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.get('/health', async (_req, res) => {
   let dbOk = false;
   try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+  const eventConsumer = isEventConsumerRunning();
+  const allOk = dbOk && eventConsumer;
   res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
+    status: allOk ? 'ok' : 'degraded',
     service: 'eln-service',
     timestamp: new Date().toISOString(),
     db: dbOk ? 'ok' : 'error',
+    eventConsumer: eventConsumer ? 'ok' : 'stopped',
   });
 });
 

@@ -223,14 +223,14 @@ COMMENT ON TABLE audit_logs IS '시스템 전체 감사로그 (불변 이력)';
 CREATE OR REPLACE FUNCTION check_note_status_transition()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- 허용 전환: draft↔in_progress, in_progress→locked
+    -- 허용 전환: draft↔in_progress, in_progress→signed|locked
     -- locked→draft는 admin_unlock 전용 (is_admin_action=true 체크)
     IF OLD.status = 'draft' AND NEW.status NOT IN ('in_progress') THEN
         RAISE EXCEPTION '초안에서는 "진행 중"으로만 전환할 수 있습니다.';
     END IF;
 
-    IF OLD.status = 'in_progress' AND NEW.status NOT IN ('draft', 'locked') THEN
-        RAISE EXCEPTION '진행 중에서는 "초안" 또는 "잠김"으로만 전환할 수 있습니다.';
+    IF OLD.status = 'in_progress' AND NEW.status NOT IN ('draft', 'signed', 'locked') THEN
+        RAISE EXCEPTION '진행 중에서는 "초안", "서명 완료" 또는 "잠김"으로만 전환할 수 있습니다.';
     END IF;
 
     IF OLD.status = 'signed' AND OLD.status != NEW.status THEN
