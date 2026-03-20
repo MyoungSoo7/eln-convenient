@@ -77,6 +77,7 @@ const unifiedMapping = {
       ownerId:    { type: 'keyword' },
       labId:      { type: 'keyword' },
       projectId:  { type: 'keyword' },
+      orgId:      { type: 'keyword' },
       visibility: { type: 'keyword' },
       docStatus:  { type: 'keyword' },
       createdAt:  { type: 'date' },

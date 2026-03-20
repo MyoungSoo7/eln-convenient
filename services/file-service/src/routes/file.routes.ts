@@ -2,7 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as ctrl from '../controllers/file.controller';
 import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
-import { validate, Permission } from '@lab/shared';
+import { validate, Permission, requireOwnerOrAdmin, ErrorCode, getOrgId } from '@lab/shared';
+import prisma from '../lib/prisma';
 import { PresignedUploadQuerySchema } from '../dtos/file.dto';
 
 const upload = multer({
@@ -34,6 +35,14 @@ router.get('/:id/stream',  requirePermission(Permission.FILE_READ),   ctrl.strea
 
 // ── 메타 / 삭제 ────────────────────────────────────────────
 router.get('/:id/meta',    requirePermission(Permission.FILE_READ),   ctrl.getFileMeta);
-router.delete('/:id',      requirePermission(Permission.FILE_DELETE), ctrl.deleteFile);
+router.delete('/:id',
+  requirePermission(Permission.FILE_DELETE),
+  requireOwnerOrAdmin(
+    (req) => prisma.file.findFirst({ where: { id: req.params.id, orgId: getOrgId(req), isDeleted: false } }),
+    'uploaderId',
+    ErrorCode.FILE_PERMISSION_DENIED,
+  ),
+  ctrl.deleteFile,
+);
 
 export default router;

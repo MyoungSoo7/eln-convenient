@@ -94,6 +94,20 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
       throw new AppError(401, '유효하지 않은 refresh token입니다.', ErrorCode.AUTH_TOKEN_INVALID);
     }
 
+    // 사용자 단위 블랙리스트 확인 (역할/상태 변경 시 refresh도 차단)
+    try {
+      const invalidatedAt = await redis.get(`blacklist:user:${targetUserId}`);
+      if (invalidatedAt) {
+        const refreshIat = (decoded as any).iat ?? 0;
+        if (refreshIat < Number(invalidatedAt)) {
+          throw new AppError(401, '권한이 변경되었습니다. 다시 로그인해주세요.', ErrorCode.AUTH_TOKEN_INVALID);
+        }
+      }
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      // Redis 오류는 무시하고 통과
+    }
+
     // Fetch fresh user data
     const user = await prisma.user.findUnique({
       where: { id: targetUserId },
@@ -284,6 +298,22 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
       status: 'active',
     },
   });
+
+  const actorId = req.headers['x-user-id'] as string;
+  await writeAuditLog({
+    entityType: 'user',
+    entityId: user.id,
+    action: 'user_create',
+    actorId: actorId || 'system',
+    orgId: resolvedOrgId,
+    ipAddress: req.ip,
+    details: {
+      email: user.email,
+      name: user.name,
+      roleId: user.roleId,
+    },
+  });
+
   res.status(201).json({
     ok: true,
     data: {
@@ -316,11 +346,13 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
     // 역할 변경 감사 로그
     if (roleId !== undefined && before && before.roleId !== roleId) {
-      writeAuditLog({
+      await writeAuditLog({
         entityType: 'user',
         entityId: req.params.id,
         action: 'role_change',
         actorId,
+        orgId: user.orgId,
+        ipAddress: req.ip,
         details: {
           beforeRole: before.role?.name ?? null,
           beforeRoleId: before.roleId,
@@ -333,11 +365,13 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
     // 상태 변경 감사 로그
     if (status !== undefined && before && before.status !== status) {
-      writeAuditLog({
+      await writeAuditLog({
         entityType: 'user',
         entityId: req.params.id,
         action: 'status_change',
         actorId,
+        orgId: user.orgId,
+        ipAddress: req.ip,
         details: {
           beforeStatus: before.status,
           afterStatus: status,
@@ -350,7 +384,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     const roleChanged = roleId !== undefined && before && before.roleId !== roleId;
     const statusChanged = status !== undefined && before && before.status !== status;
     if (roleChanged || statusChanged) {
-      invalidateUserTokens(req.params.id);
+      await invalidateUserTokens(req.params.id);
     }
 
     res.json({
@@ -381,15 +415,18 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
       include: { role: true },
     });
 
+    await invalidateUserTokens(req.params.id);
     await prisma.teamMember.deleteMany({ where: { userId: req.params.id } });
     await prisma.user.delete({ where: { id: req.params.id } });
 
     if (target) {
-      writeAuditLog({
+      await writeAuditLog({
         entityType: 'user',
         entityId: req.params.id,
         action: 'user_delete',
         actorId: callerId,
+        orgId: target.orgId,
+        ipAddress: req.ip,
         details: {
           deletedEmail: target.email,
           deletedName: target.name,
@@ -428,6 +465,18 @@ export const createOrg = asyncHandler(async (req: Request, res: Response) => {
   const { name, slug } = req.body;
   try {
     const org = await prisma.organization.create({ data: { id: uuidv4(), name, slug } });
+
+    const actorId = req.headers['x-user-id'] as string;
+    writeAuditLog({
+      entityType: 'organization',
+      entityId: org.id,
+      action: 'org_create',
+      actorId,
+      orgId: org.id,
+      ipAddress: req.ip,
+      details: { name: org.name, slug: org.slug },
+    });
+
     res.status(201).json({
       ok: true,
       data: { id: org.id, name: org.name, slug: org.slug, createdAt: org.createdAt.toISOString() },
@@ -445,6 +494,9 @@ export const createOrg = asyncHandler(async (req: Request, res: Response) => {
 export const updateOrg = asyncHandler(async (req: Request, res: Response) => {
   const { name, slug } = req.body;
   try {
+    const actorId = req.headers['x-user-id'] as string;
+    const before = await prisma.organization.findUnique({ where: { id: req.params.id } });
+
     const org = await prisma.organization.update({
       where: { id: req.params.id },
       data: {
@@ -452,6 +504,20 @@ export const updateOrg = asyncHandler(async (req: Request, res: Response) => {
         ...(slug !== undefined && { slug }),
       },
     });
+
+    writeAuditLog({
+      entityType: 'organization',
+      entityId: org.id,
+      action: 'org_update',
+      actorId,
+      orgId: org.id,
+      ipAddress: req.ip,
+      details: {
+        beforeName: before?.name, afterName: org.name,
+        beforeSlug: before?.slug, afterSlug: org.slug,
+      },
+    });
+
     res.json({
       ok: true,
       data: { id: org.id, name: org.name, slug: org.slug, updatedAt: org.updatedAt.toISOString() },
@@ -471,11 +537,27 @@ export const updateOrg = asyncHandler(async (req: Request, res: Response) => {
 /** DELETE /api/auth/orgs/:id (admin) */
 export const deleteOrg = asyncHandler(async (req: Request, res: Response) => {
   try {
+    const actorId = req.headers['x-user-id'] as string;
+    const target = await prisma.organization.findUnique({ where: { id: req.params.id } });
+
     const userCount = await prisma.user.count({ where: { orgId: req.params.id } });
     if (userCount > 0) {
       throw new AppError(400, `소속 사용자가 ${userCount}명 있어 삭제할 수 없습니다.`, ErrorCode.AUTH_ORG_HAS_USERS);
     }
     await prisma.organization.delete({ where: { id: req.params.id } });
+
+    if (target) {
+      writeAuditLog({
+        entityType: 'organization',
+        entityId: req.params.id,
+        action: 'org_delete',
+        actorId,
+        orgId: req.params.id,
+        ipAddress: req.ip,
+        details: { name: target.name, slug: target.slug },
+      });
+    }
+
     res.json({ ok: true, message: '조직이 삭제되었습니다.' });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
@@ -512,6 +594,18 @@ export const getTeams = asyncHandler(async (req: Request, res: Response) => {
 export const createTeam = asyncHandler(async (req: Request, res: Response) => {
   const { orgId, name } = req.body;
   const team = await prisma.team.create({ data: { id: uuidv4(), orgId, name } });
+
+  const actorId = req.headers['x-user-id'] as string;
+  writeAuditLog({
+    entityType: 'team',
+    entityId: team.id,
+    action: 'team_create',
+    actorId,
+    orgId: team.orgId,
+    ipAddress: req.ip,
+    details: { name: team.name },
+  });
+
   res.status(201).json({
     ok: true,
     data: { id: team.id, orgId: team.orgId, name: team.name, createdAt: team.createdAt.toISOString() },
@@ -522,10 +616,24 @@ export const createTeam = asyncHandler(async (req: Request, res: Response) => {
 export const updateTeam = asyncHandler(async (req: Request, res: Response) => {
   const { name } = req.body;
   try {
+    const actorId = req.headers['x-user-id'] as string;
+    const before = await prisma.team.findUnique({ where: { id: req.params.id } });
+
     const team = await prisma.team.update({
       where: { id: req.params.id },
       data: { name },
     });
+
+    writeAuditLog({
+      entityType: 'team',
+      entityId: team.id,
+      action: 'team_update',
+      actorId,
+      orgId: team.orgId,
+      ipAddress: req.ip,
+      details: { beforeName: before?.name, afterName: team.name },
+    });
+
     res.json({
       ok: true,
       data: { id: team.id, orgId: team.orgId, name: team.name, updatedAt: team.updatedAt.toISOString() },
@@ -542,8 +650,24 @@ export const updateTeam = asyncHandler(async (req: Request, res: Response) => {
 /** DELETE /api/auth/teams/:id (admin) */
 export const deleteTeam = asyncHandler(async (req: Request, res: Response) => {
   try {
+    const actorId = req.headers['x-user-id'] as string;
+    const target = await prisma.team.findUnique({ where: { id: req.params.id } });
+
     await prisma.teamMember.deleteMany({ where: { teamId: req.params.id } });
     await prisma.team.delete({ where: { id: req.params.id } });
+
+    if (target) {
+      writeAuditLog({
+        entityType: 'team',
+        entityId: req.params.id,
+        action: 'team_delete',
+        actorId,
+        orgId: target.orgId,
+        ipAddress: req.ip,
+        details: { name: target.name },
+      });
+    }
+
     res.json({ ok: true, message: '팀이 삭제되었습니다.' });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
@@ -579,6 +703,18 @@ export const addTeamMember = asyncHandler(async (req: Request, res: Response) =>
     await prisma.teamMember.create({
       data: { userId, teamId: req.params.id },
     });
+
+    const actorId = req.headers['x-user-id'] as string;
+    writeAuditLog({
+      entityType: 'team',
+      entityId: req.params.id,
+      action: 'team_member_add',
+      actorId,
+      orgId: req.headers['x-user-org-id'] as string || '',
+      ipAddress: req.ip,
+      details: { userId, teamId: req.params.id },
+    });
+
     res.status(201).json({ ok: true, message: '팀에 멤버가 추가되었습니다.' });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
@@ -595,6 +731,18 @@ export const removeTeamMember = asyncHandler(async (req: Request, res: Response)
     await prisma.teamMember.delete({
       where: { userId_teamId: { userId: req.params.userId, teamId: req.params.id } },
     });
+
+    const actorId = req.headers['x-user-id'] as string;
+    writeAuditLog({
+      entityType: 'team',
+      entityId: req.params.id,
+      action: 'team_member_remove',
+      actorId,
+      orgId: req.headers['x-user-org-id'] as string || '',
+      ipAddress: req.ip,
+      details: { userId: req.params.userId, teamId: req.params.id },
+    });
+
     res.json({ ok: true, message: '팀에서 멤버가 제거되었습니다.' });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
@@ -638,6 +786,18 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
   const role = await prisma.role.create({
     data: { id: uuidv4(), orgId, name, permissions: permissions || [] },
   });
+
+  const actorId = req.headers['x-user-id'] as string;
+  writeAuditLog({
+    entityType: 'role',
+    entityId: role.id,
+    action: 'role_create',
+    actorId,
+    orgId: role.orgId,
+    ipAddress: req.ip,
+    details: { name: role.name, permissions: role.permissions },
+  });
+
   res.status(201).json({
     ok: true,
     data: { id: role.id, orgId: role.orgId, name: role.name, permissions: role.permissions },
@@ -657,11 +817,13 @@ export const updatePermissions = asyncHandler(async (req: Request, res: Response
     });
 
     if (before) {
-      writeAuditLog({
+      await writeAuditLog({
         entityType: 'role',
         entityId: req.params.id,
         action: 'permission_update',
         actorId,
+        orgId: role.orgId,
+        ipAddress: req.ip,
         details: {
           roleName: role.name,
           beforePermissions: before.permissions,
@@ -671,7 +833,28 @@ export const updatePermissions = asyncHandler(async (req: Request, res: Response
     }
 
     // Redis 역할 권한 캐시 무효화 (api-gateway 캐시)
-    try { await redis.del(`role-perms:${role.name}`); } catch { /* 무시 */ }
+    // redis.keys() 대신 해당 role의 orgId 목록으로 키를 직접 지정 삭제 (O(N) 블로킹 방지)
+    try {
+      const orgs = await prisma.organization.findMany({ select: { id: true } });
+      const baseKeys = [
+        `role-perms:${role.name}`,
+        ...orgs.map((o) => `role-perms:${role.name}:${o.id}`),
+      ];
+      // 정규 캐시 + stale 캐시 모두 삭제
+      const cacheKeys = baseKeys.flatMap((k) => [k, `${k}:stale`]);
+      await redis.del(...cacheKeys);
+    } catch { /* 무시 */ }
+
+    // 해당 역할을 가진 모든 사용자의 토큰 무효화 (권한 즉시 반영)
+    try {
+      const affectedUsers = await prisma.user.findMany({
+        where: { roleId: role.id },
+        select: { id: true },
+      });
+      await Promise.all(affectedUsers.map((u) => invalidateUserTokens(u.id)));
+    } catch (invErr) {
+      logger.warn({ err: invErr, roleId: role.id }, '역할 권한 변경 후 토큰 무효화 실패');
+    }
 
     res.json({ ok: true, data: { id: role.id, permissions: role.permissions }, message: '권한 수정 완료' });
   } catch (err: any) {
@@ -686,11 +869,27 @@ export const updatePermissions = asyncHandler(async (req: Request, res: Response
 /** DELETE /api/auth/roles/:id (admin) */
 export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
   try {
+    const actorId = req.headers['x-user-id'] as string;
+    const target = await prisma.role.findUnique({ where: { id: req.params.id } });
+
     const userCount = await prisma.user.count({ where: { roleId: req.params.id } });
     if (userCount > 0) {
       throw new AppError(400, `해당 역할을 가진 사용자가 ${userCount}명 있어 삭제할 수 없습니다.`, ErrorCode.AUTH_ROLE_HAS_USERS);
     }
     await prisma.role.delete({ where: { id: req.params.id } });
+
+    if (target) {
+      writeAuditLog({
+        entityType: 'role',
+        entityId: req.params.id,
+        action: 'role_delete',
+        actorId,
+        orgId: target.orgId,
+        ipAddress: req.ip,
+        details: { name: target.name, permissions: target.permissions },
+      });
+    }
+
     res.json({ ok: true, message: '역할이 삭제되었습니다.' });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
@@ -710,15 +909,7 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
  * 서비스 간 내부 호출 전용 — API Gateway Keycloak 분기에서 역할→권한 매핑 시 사용
  */
 export const getRolePermissions = asyncHandler(async (req: Request, res: Response) => {
-  const internalSecret = process.env.INTERNAL_SECRET;
-  if (!internalSecret) {
-    throw new AppError(404, 'Not Found', ErrorCode.NOT_FOUND);
-  }
-  const incoming = req.headers['x-internal-secret'];
-  if (incoming !== internalSecret) {
-    throw new AppError(401, '내부 요청 인증 실패', ErrorCode.INTERNAL_AUTH_FAILED);
-  }
-
+  // x-internal-secret 검증은 requireInternalSecret 미들웨어에서 처리
   const roleName = req.query.role as string;
   const orgId = req.query.orgId as string | undefined;
 
@@ -747,15 +938,7 @@ export const getRolePermissions = asyncHandler(async (req: Request, res: Respons
  * 헤더: x-internal-secret (환경변수 INTERNAL_SECRET 검증)
  */
 export const verifyPassword = asyncHandler(async (req: Request, res: Response) => {
-  const internalSecret = process.env.INTERNAL_SECRET;
-  if (!internalSecret) {
-    throw new AppError(404, 'Not Found', ErrorCode.NOT_FOUND);
-  }
-  const incoming = req.headers['x-internal-secret'];
-  if (incoming !== internalSecret) {
-    throw new AppError(401, '내부 요청 인증 실패', ErrorCode.INTERNAL_AUTH_FAILED);
-  }
-
+  // x-internal-secret 검증은 requireInternalSecret 미들웨어에서 처리
   const { userId, password } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.passwordHash) {
@@ -862,15 +1045,17 @@ export const ssoHook = asyncHandler(async (req: Request, res: Response) => {
       break;
     }
 
-    // 계정 삭제 → 로컬 사용자 비활성화
+    // 계정 삭제 → 로컬 사용자 비활성화 + 토큰 즉시 무효화
     case 'DELETE_ACCOUNT': {
       const email = details?.email;
       if (email) {
+        const targets = await prisma.user.findMany({ where: { email }, select: { id: true } });
         await prisma.user.updateMany({
           where: { email },
           data: { status: 'inactive' },
         });
-        logger.info(`[sso-hook] DELETE_ACCOUNT: ${email} 비활성화`);
+        await Promise.all(targets.map((u) => invalidateUserTokens(u.id)));
+        logger.info(`[sso-hook] DELETE_ACCOUNT: ${email} 비활성화 + 토큰 무효화`);
       }
       res.json({ ok: true, message: 'DELETE_ACCOUNT 이벤트 처리 완료' });
       break;

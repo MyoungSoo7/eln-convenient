@@ -1,6 +1,12 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { requireAuth, requireRole, requirePermission } from '../plugins/auth';
 import { Permission, RoleName } from '@lab/shared';
+
+function getOrgId(request: FastifyRequest): string {
+  const orgId = request.headers['x-user-org-id'] as string;
+  if (!orgId) throw { statusCode: 403, message: '조직 정보가 없습니다.' };
+  return orgId;
+}
 
 // ─── JSON Schema ─────────────────────────────────────────────
 
@@ -40,10 +46,12 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request) => {
+    const orgId = getOrgId(request);
     const { type, isActive } = request.query as { type?: string; isActive?: string };
 
     const data = await fastify.prisma.resource.findMany({
       where: {
+        orgId,
         ...(type ? { type: type as 'EQUIPMENT' | 'ROOM' } : {}),
         isActive: isActive !== undefined ? isActive === 'true' : true,
       },
@@ -58,8 +66,9 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
-    const resource = await fastify.prisma.resource.findUnique({
-      where: { id: request.params.id },
+    const orgId = getOrgId(request);
+    const resource = await fastify.prisma.resource.findFirst({
+      where: { id: request.params.id, orgId },
       include: { _count: { select: { bookings: true } } },
     });
     if (!resource) {
@@ -73,6 +82,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], body: resourceBody },
   }, async (request, reply) => {
+    const orgId = getOrgId(request);
     const body = request.body as {
       name: string; type: 'EQUIPMENT' | 'ROOM';
       location?: string; description?: string; capacity?: number; ownerId?: string;
@@ -81,6 +91,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     const resource = await fastify.prisma.resource.create({
       data: {
         name:        body.name.trim(),
+        orgId,
         type:        body.type,
         location:    body.location ?? null,
         description: body.description ?? null,
@@ -108,18 +119,19 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     if (body.isActive    !== undefined) update.isActive    = Boolean(body.isActive);
     if (body.ownerId     !== undefined) update.ownerId     = body.ownerId     ?? null;
 
-    try {
-      const resource = await fastify.prisma.resource.update({
-        where: { id: request.params.id },
-        data: update,
-      });
-      return { ok: true, data: resource };
-    } catch (err: any) {
-      if (err?.code === 'P2025') {
-        return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
-      }
-      throw err;
+    const orgId = getOrgId(request);
+    const existing = await fastify.prisma.resource.findFirst({
+      where: { id: request.params.id, orgId },
+    });
+    if (!existing) {
+      return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
     }
+
+    const resource = await fastify.prisma.resource.update({
+      where: { id: request.params.id },
+      data: update,
+    });
+    return { ok: true, data: resource };
   });
 
   // ── DELETE /resources/:id (soft delete) ──────────────────
@@ -127,9 +139,10 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
+    const orgId = getOrgId(request);
     const { id } = request.params;
 
-    const resource = await fastify.prisma.resource.findUnique({ where: { id } });
+    const resource = await fastify.prisma.resource.findFirst({ where: { id, orgId } });
     if (!resource) {
       return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
     }

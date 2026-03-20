@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/audit.controller';
-import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
+import { requireAuth, requirePermission, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate, Permission } from '@lab/shared';
 import {
   CreateAuditLogInternalSchema,
@@ -10,8 +10,8 @@ import {
 
 const router = Router();
 
-// 내부 전용 — requireAuth 미들웨어 적용 안 함
-router.post('/internal', validate({ body: CreateAuditLogInternalSchema }), ctrl.createAuditLogInternal);
+// 내부 전용 — requireInternalSecret으로 보호
+router.post('/internal', requireInternalSecret, validate({ body: CreateAuditLogInternalSchema }), ctrl.createAuditLogInternal);
 
 router.use(requireAuth);
 

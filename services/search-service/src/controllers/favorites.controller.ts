@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 
 const logger = createLogger('search-service');
 
@@ -12,7 +12,7 @@ export const addFavorite = asyncHandler(async (req: Request, res: Response): Pro
 
   try {
     const favorite = await prisma.favorite.create({
-      data: { id: uuidv4(), userId, docType, docId, title },
+      data: { id: uuidv4(), userId, orgId: getOrgId(req), docType, docId, title },
     });
     res.status(201).json({ ok: true, data: favorite });
   } catch (err: any) {
@@ -28,7 +28,7 @@ export const addFavorite = asyncHandler(async (req: Request, res: Response): Pro
 export const removeFavorite = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.headers['x-user-id'] as string;
 
-  const favorite = await prisma.favorite.findUnique({ where: { id: req.params.id } });
+  const favorite = await prisma.favorite.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!favorite) {
     throw new AppError(404, '즐겨찾기를 찾을 수 없습니다.', ErrorCode.SEARCH_FAVORITE_NOT_FOUND);
   }
@@ -46,7 +46,7 @@ export const getFavorites = asyncHandler(async (req: Request, res: Response): Pr
   const docType = req.query.docType as string | undefined;
 
   // Prisma 타입 호환을 위해 명시적 타입 사용
-  const where: { userId: string; docType?: string } = { userId };
+  const where: { userId: string; orgId: string; docType?: string } = { userId, orgId: getOrgId(req) };
   if (docType) where.docType = docType;
 
   const favorites = await prisma.favorite.findMany({

@@ -21,6 +21,22 @@ export {
   type RoleNameValue,
 } from './permissions';
 
+export { getOrgId, withOrgScope } from './org-scope';
+
+export {
+  requireAuth,
+  requireRole,
+  requirePermission,
+  requireOwnerOrAdmin,
+  requireInternalSecret,
+} from './middleware-express';
+
+export {
+  requireAuthFastify,
+  requireRoleFastify,
+  requirePermissionFastify,
+} from './middleware-fastify';
+
 export {
   ServiceEventType,
   buildServiceEvent,

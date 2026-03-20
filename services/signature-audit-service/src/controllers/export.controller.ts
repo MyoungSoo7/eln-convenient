@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { exportQueue } from '../lib/queue';
 import { getExportPresignedUrl } from '../lib/fileServiceClient';
@@ -12,6 +12,7 @@ async function recordAuditLog(
   actorId: string,
   entityId: string,
   details: object,
+  orgId: string,
   ipAddress?: string,
 ): Promise<void> {
   await prisma.auditLog.create({
@@ -21,6 +22,7 @@ async function recordAuditLog(
       entityId,
       action,
       actorId,
+      orgId,
       details,
       ipAddress: ipAddress ?? null,
     },
@@ -32,6 +34,8 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
   const { noteId } = req.params;
 
+  const orgId = getOrgId(req);
+
   const job = await prisma.exportJob.create({
     data: {
       id: uuidv4(),
@@ -39,6 +43,7 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
       format: 'pdf',
       status: 'pending',
       requestedBy,
+      orgId,
     },
   });
 
@@ -49,7 +54,7 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
     requestedBy,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, orgId, req.ip);
 
   res.status(202).json({
     ok: true,
@@ -72,7 +77,7 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
 
 /** GET /api/export/status/:jobId */
 export const getExportStatus = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const job = await prisma.exportJob.findUnique({ where: { id: req.params.jobId } });
+  const job = await prisma.exportJob.findFirst({ where: { id: req.params.jobId, orgId: getOrgId(req) } });
   if (!job) {
     throw new AppError(404, '작업을 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND);
   }
@@ -108,6 +113,7 @@ export const getExportStatus = asyncHandler(async (req: Request, res: Response):
 export const exportZip = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
   const noteIds: string[] = req.body.noteIds;
+  const orgId = getOrgId(req);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -117,6 +123,7 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
       format: 'zip',
       status: 'pending',
       requestedBy,
+      orgId,
     },
   });
 
@@ -128,7 +135,7 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
     requestedBy,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, orgId, req.ip);
 
   res.status(202).json({
     ok: true,
@@ -154,6 +161,7 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
 export const exportReport = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
   const noteIds: string[] = req.body.noteIds;
+  const orgId = getOrgId(req);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -163,6 +171,7 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
       format: 'report',
       status: 'pending',
       requestedBy,
+      orgId,
     },
   });
 
@@ -174,7 +183,7 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
     requestedBy,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, orgId, req.ip);
 
   res.status(202).json({
     ok: true,
@@ -200,9 +209,10 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
 export const listExportJobs = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const requestedBy = req.headers['x-user-id'] as string;
   const userRole = req.headers['x-user-role'] as string;
+  const orgId = getOrgId(req);
 
-  // admin은 전체 조회, 일반 사용자는 본인 것만
-  const where = userRole === 'admin' ? {} : { requestedBy };
+  // admin은 org 전체 조회, 일반 사용자는 본인 것만
+  const where = userRole === 'admin' ? { orgId } : { requestedBy, orgId };
 
   const jobs = await prisma.exportJob.findMany({
     where,

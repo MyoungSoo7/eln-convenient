@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/inventory.controller';
 import { requireAuth, requirePermission, requireRole } from '../middlewares/auth.middleware';
-import { validate, Permission, RoleName } from '@lab/shared';
+import { validate, Permission, RoleName, requireOwnerOrAdmin, ErrorCode, getOrgId } from '@lab/shared';
+import prisma from '../lib/prisma';
 import {
   CreateItemSchema, UpdateItemSchema, AdjustQuantitySchema,
   CreateCategorySchema, UuidParamsSchema,
@@ -16,8 +17,25 @@ router.get('/items',                    requirePermission(Permission.INVENTORY_R
 router.post('/items',                   requirePermission(Permission.INVENTORY_WRITE),   validate({ body: CreateItemSchema }), ctrl.createItem);
 router.get('/items/barcode/:barcode',   requirePermission(Permission.INVENTORY_READ),    ctrl.getItemByBarcode);
 router.get('/items/:id',                requirePermission(Permission.INVENTORY_READ),    ctrl.getItemById);
-router.put('/items/:id',                requirePermission(Permission.INVENTORY_WRITE),   validate({ params: UuidParamsSchema, body: UpdateItemSchema }), ctrl.updateItem);
-router.delete('/items/:id',             requirePermission(Permission.INVENTORY_DELETE),  ctrl.deleteItem);
+router.put('/items/:id',
+  requirePermission(Permission.INVENTORY_WRITE),
+  validate({ params: UuidParamsSchema, body: UpdateItemSchema }),
+  requireOwnerOrAdmin(
+    (req) => prisma.inventoryItem.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } }),
+    'createdBy',
+    ErrorCode.ITEM_PERMISSION_DENIED,
+  ),
+  ctrl.updateItem,
+);
+router.delete('/items/:id',
+  requirePermission(Permission.INVENTORY_DELETE),
+  requireOwnerOrAdmin(
+    (req) => prisma.inventoryItem.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } }),
+    'createdBy',
+    ErrorCode.ITEM_PERMISSION_DENIED,
+  ),
+  ctrl.deleteItem,
+);
 
 // ── 수량 조정 (입출고 이력) ───────────────────────────────
 router.post('/items/:id/quantity',      requirePermission(Permission.INVENTORY_WRITE),   validate({ params: UuidParamsSchema, body: AdjustQuantitySchema }), ctrl.adjustQuantity);

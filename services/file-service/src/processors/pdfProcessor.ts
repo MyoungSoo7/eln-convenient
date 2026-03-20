@@ -61,6 +61,7 @@ export async function processPdfJob(jobId: string): Promise<void> {
           originalName: `note-${dateStr}.pdf`,
           mimeType: 'application/pdf',
           sizeBytes: BigInt(pdfBuffer.length),
+          orgId: job.orgId,
           uploaderId: job.requestedBy,
           refType: 'export',
           refId: jobId,

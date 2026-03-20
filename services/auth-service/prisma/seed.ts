@@ -28,7 +28,7 @@ async function main() {
   // 2. 역할 생성
   const adminRole = await prisma.role.upsert({
     where: { id: 'role-admin-001' },
-    update: {},
+    update: { permissions: [...RolePermissions.admin] },
     create: {
       id: 'role-admin-001',
       orgId: org.id,
@@ -39,7 +39,7 @@ async function main() {
 
   const researcherRole = await prisma.role.upsert({
     where: { id: 'role-researcher-001' },
-    update: {},
+    update: { permissions: [...RolePermissions.researcher] },
     create: {
       id: 'role-researcher-001',
       orgId: org.id,
@@ -50,7 +50,7 @@ async function main() {
 
   const reviewerRole = await prisma.role.upsert({
     where: { id: 'role-reviewer-001' },
-    update: {},
+    update: { permissions: [...RolePermissions.reviewer] },
     create: {
       id: 'role-reviewer-001',
       orgId: org.id,
@@ -61,7 +61,7 @@ async function main() {
 
   const viewerRole = await prisma.role.upsert({
     where: { id: 'role-viewer-001' },
-    update: {},
+    update: { permissions: [...RolePermissions.viewer] },
     create: {
       id: 'role-viewer-001',
       orgId: org.id,

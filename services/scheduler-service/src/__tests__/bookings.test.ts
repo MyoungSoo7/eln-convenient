@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildApp } from '../app';
+import { Permission } from '@lab/shared';
 
 // ─── Prisma 모킹 ──────────────────────────────────────────────
 vi.mock('../lib/prisma', () => ({
@@ -68,7 +69,7 @@ function adminHeaders() {
   return {
     'x-user-id':          'user-admin-001',
     'x-user-role':        'admin',
-    'x-user-permissions': '["scheduler:read","scheduler:write"]',
+    'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
     'content-type':       'application/json',
   };
 }
@@ -78,7 +79,7 @@ function adminHeadersNoBody() {
   return {
     'x-user-id':   'user-admin-001',
     'x-user-role': 'admin',
-    'x-user-permissions': '["scheduler:read","scheduler:write"]',
+    'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
   };
 }
 
@@ -86,7 +87,7 @@ function userHeaders(userId = 'user-001') {
   return {
     'x-user-id':          userId,
     'x-user-role':        'researcher',
-    'x-user-permissions': '["scheduler:read","scheduler:write"]',
+    'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
     'content-type':       'application/json',
   };
 }
@@ -95,7 +96,7 @@ function userHeadersNoBody(userId = 'user-001') {
   return {
     'x-user-id':   userId,
     'x-user-role': 'researcher',
-    'x-user-permissions': '["scheduler:read","scheduler:write"]',
+    'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
   };
 }
 

@@ -10,6 +10,7 @@ datasource db {
 model InventoryItem {
   id                 String             @id @default(uuid())
   name               String
+  orgId              String
   type               String
   status             String             @default("available")
   category           String?
@@ -28,7 +29,8 @@ model InventoryItem {
 
   history            InventoryHistory[]
 
-  @@index([type])
+  @@index([orgId, type])
+  @@index([orgId])
   @@index([status])
   @@index([category])
   @@index([barcode])
@@ -57,6 +59,10 @@ model InventoryHistory {
 
 model Category {
   id        String   @id @default(uuid())
-  name      String   @unique
+  name      String
+  orgId     String
   createdAt DateTime @default(now())
+
+  @@unique([orgId, name])
+  @@index([orgId])
 }

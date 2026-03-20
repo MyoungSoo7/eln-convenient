@@ -1,7 +1,7 @@
 // services/file-service/src/routes/export.routes.ts
 import { Router } from 'express';
 import multer from 'multer';
-import { requireAuth } from '../middlewares/auth.middleware';
+import { requireAuth, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate } from '@lab/shared';
 import { ListExportsQuerySchema, JobIdParamsSchema } from '../dtos/file.dto';
 import * as ctrl from '../controllers/export.controller';
@@ -14,8 +14,8 @@ const internalUpload = multer({
 const router = Router();
 
 // ── 내부 서비스 전용 (인증: x-internal-secret) ──
-router.post('/internal/upload',               internalUpload.single('file'), ctrl.internalUploadExport);
-router.get('/internal/presigned/:fileId',     ctrl.internalPresignedUrl);
+router.post('/internal/upload',               requireInternalSecret, internalUpload.single('file'), ctrl.internalUploadExport);
+router.get('/internal/presigned/:fileId',     requireInternalSecret, ctrl.internalPresignedUrl);
 
 // ── 사용자 API (인증: JWT/x-user-id) ──
 router.use(requireAuth);

@@ -62,18 +62,8 @@ export type RoleNameValue = typeof RoleName[keyof typeof RoleName];
 
 // ─── 역할별 기본 권한 ─────────────────────────────
 
-export const RolePermissions: Record<RoleNameValue, PermissionValue[]> = {
-  [RoleName.ADMIN]: [
-    Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_DELETE,
-    Permission.NOTE_STATUS, Permission.NOTE_SIGN, Permission.NOTE_UNLOCK,
-    Permission.TEMPLATE_READ, Permission.TEMPLATE_WRITE, Permission.TEMPLATE_DELETE,
-    Permission.INVENTORY_READ, Permission.INVENTORY_WRITE, Permission.INVENTORY_DELETE,
-    Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE, Permission.SCHEDULER_MANAGE,
-    Permission.RESOURCE_WRITE,
-    Permission.FILE_UPLOAD, Permission.FILE_READ, Permission.FILE_DELETE,
-    Permission.USER_READ, Permission.USER_WRITE, Permission.USER_DELETE,
-    Permission.AUDIT_READ, Permission.EXPORT_PDF,
-  ],
+export const RolePermissions: Record<RoleNameValue, readonly string[]> = {
+  [RoleName.ADMIN]: ['*'],
 
   [RoleName.RESEARCHER]: [
     Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_STATUS,
@@ -87,8 +77,9 @@ export const RolePermissions: Record<RoleNameValue, PermissionValue[]> = {
   [RoleName.REVIEWER]: [
     Permission.NOTE_READ, Permission.NOTE_STATUS, Permission.NOTE_SIGN,
     Permission.TEMPLATE_READ,
-    Permission.INVENTORY_READ,
-    Permission.SCHEDULER_READ,
+    Permission.INVENTORY_READ, Permission.INVENTORY_WRITE,
+    Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE, Permission.SCHEDULER_MANAGE,
+    Permission.RESOURCE_WRITE,
     Permission.FILE_READ,
     Permission.AUDIT_READ,
   ],

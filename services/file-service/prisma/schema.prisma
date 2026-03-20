@@ -16,6 +16,7 @@ model File {
   sizeBytes       BigInt?
   checksumSha256  String?
   uploaderId      String
+  orgId           String
   refType         String?
   refId           String?
   isDeleted       Boolean     @default(false)
@@ -27,6 +28,7 @@ model File {
 
   @@index([refType, refId])
   @@index([uploaderId])
+  @@index([orgId])
   @@index([isDeleted])
   @@map("files")
 }
@@ -36,6 +38,7 @@ model ExportJob {
   type          String
   status        String    @default("PENDING")
   requestedBy   String
+  orgId         String
   params        Json
   resultFileId  String?   @unique
   resultFile    File?     @relation("ResultFile", fields: [resultFileId], references: [id])

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/auth.controller';
-import { requireAuth, requireRole } from '../middlewares/auth.middleware';
+import { requireAuth, requireRole, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate, RoleName } from '@lab/shared';
 import {
   LoginSchema, RegisterSchema, CreateUserSchema, UpdateUserSchema,
@@ -16,9 +16,9 @@ const router = Router();
 router.post('/login', validate({ body: LoginSchema }), ctrl.login);
 router.post('/register', validate({ body: RegisterSchema }), ctrl.register);
 
-// ─── 내부 서비스 전용 ────────────────────────────
-router.post('/internal/verify-password', validate({ body: VerifyPasswordSchema }), ctrl.verifyPassword);
-router.get('/internal/role-permissions', ctrl.getRolePermissions);
+// ─── 내부 서비스 전용 (x-internal-secret 필수) ───
+router.post('/internal/verify-password', requireInternalSecret, validate({ body: VerifyPasswordSchema }), ctrl.verifyPassword);
+router.get('/internal/role-permissions', requireInternalSecret, ctrl.getRolePermissions);
 
 // ─── SSO 훅 (Keycloak → auth-service, 시크릿으로 보호) ───
 router.post('/sso-hook', validate({ body: SsoHookSchema }), ctrl.ssoHook);

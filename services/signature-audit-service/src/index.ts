@@ -8,12 +8,16 @@ import notificationRoutes from './routes/notification.routes';
 import { swaggerDocument } from './swagger';
 import './workers/export.worker'; // BullMQ 워커 자동 시작
 import prisma from './lib/prisma';
+import { redisConnection } from './lib/queue';
 import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
 const { logger, httpLogger } = createHttpLogger('signature-audit-service');
 
 setupProcessHandlers('signature-audit-service', logger, {
-  onShutdown: () => prisma.$disconnect(),
+  onShutdown: async () => {
+    await redisConnection.quit().catch(() => {});
+    await prisma.$disconnect();
+  },
 });
 
 const app = express();

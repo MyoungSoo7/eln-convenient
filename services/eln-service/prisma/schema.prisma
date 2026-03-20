@@ -28,6 +28,7 @@ model Note {
   sections      Json                @default("[]")
   status        NoteStatus          @default(draft)
   authorId      String
+  orgId         String
   templateId    String?
   tags          String[]
   createdAt     DateTime            @default(now())
@@ -38,9 +39,9 @@ model Note {
   attachments   Attachment[]
   statusHistory NoteStatusHistory[]
 
-  @@index([authorId, type, status])
+  @@index([orgId, authorId, type, status])
   @@index([authorId, deletedAt])
-  @@index([type, status, deletedAt])
+  @@index([orgId, type, status, deletedAt])
 }
 
 model NoteStatusHistory {
@@ -77,6 +78,7 @@ model NoteLink {
   targetType String
   targetId   String
   label      String?
+  createdBy  String   @default("")
   createdAt  DateTime @default(now())
   note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
 }
@@ -102,6 +104,7 @@ model Template {
   sections    Json     @default("[]")
   tags        String[]
   createdBy   String
+  orgId       String
   isPublic    Boolean  @default(false)
   useCount    Int      @default(0)  // 이 템플릿으로 노트/프로토콜 생성 횟수
   copyCount   Int      @default(0)  // 이 템플릿이 복사된 횟수
@@ -109,6 +112,7 @@ model Template {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@index([orgId])
   @@index([useCount])
   @@index([copyCount])
   @@index([category])

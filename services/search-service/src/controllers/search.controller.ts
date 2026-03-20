@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import redis, { invalidateSearchCache } from '../lib/redis';
-import { createHttpLogger, AppError, asyncHandler, ErrorCode } from '@lab/shared';
+import { createHttpLogger, AppError, asyncHandler, ErrorCode, getOrgId } from '@lab/shared';
 import type { ISearchResult, ISearchResponse, DomainType } from '../interfaces/search.interface';
 import {
   osClient,
@@ -71,6 +71,7 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
   const userId = (req.headers['x-user-id'] as string)?.trim() || '';
   const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
   const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
+  const orgId = getOrgId(req);
 
   if (!q) {
     const emptyCounts = Object.fromEntries(DOMAIN_TYPES.map(t => [t, 0])) as Record<DomainType, number>;
@@ -81,7 +82,7 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
   const domainTypes = parseDomainTypes(domainTypesParam);
 
   // Redis 캐시 확인 (3분 TTL)
-  const cacheParams = JSON.stringify({ q, domainTypes, page, size, dateFrom, dateTo, userId });
+  const cacheParams = JSON.stringify({ q, domainTypes, page, size, dateFrom, dateTo, userId, orgId });
   const cacheKey = `cache:search:${createHash('sha256').update(cacheParams).digest('hex').slice(0, 16)}`;
   if (redis) {
     try {
@@ -97,6 +98,8 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
     const filters: object[] = [
       { term: { docStatus: 'active' } },
     ];
+
+    filters.push({ term: { orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
@@ -176,7 +179,7 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
 
     if (userId) {
       prisma.searchHistory.create({
-        data: { id: uuidv4(), userId, query: q },
+        data: { id: uuidv4(), userId, query: q, orgId },
       }).catch((err) => logger.warn({ err, userId, query: q }, '검색 히스토리 저장 실패'));
     }
 
@@ -209,6 +212,7 @@ export const suggest = asyncHandler(async (req: Request, res: Response): Promise
   const userId = (req.headers['x-user-id'] as string)?.trim() || '';
   const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
   const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
+  const orgId = getOrgId(req);
 
   if (!q) {
     res.json({ ok: true, query: q, suggestions: [] });
@@ -217,6 +221,8 @@ export const suggest = asyncHandler(async (req: Request, res: Response): Promise
 
   try {
     const filters: object[] = [{ term: { docStatus: 'active' } }];
+
+    filters.push({ term: { orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));

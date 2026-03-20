@@ -138,6 +138,7 @@ export async function processZipJob(jobId: string): Promise<void> {
           originalName: `export-${dateStr}.zip`,
           mimeType: 'application/zip',
           sizeBytes: BigInt(totalSize),
+          orgId: job.orgId,
           uploaderId: job.requestedBy,
           refType: 'export',
           refId: jobId,

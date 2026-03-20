@@ -11,6 +11,7 @@ model Signature {
   id            String          @id @default(uuid())
   noteId        String
   signerId      String
+  orgId         String          @default("")
   signatureHash String
   prevHash      String?         // 이전 서명 해시 (해시 체인)
   chainIndex    Int             @default(0) // 체인 내 순서
@@ -20,6 +21,7 @@ model Signature {
   @@unique([noteId, chainIndex])
   @@index([noteId, status])
   @@index([signerId])
+  @@index([orgId])
 }
 
 model AuditLog {
@@ -28,6 +30,7 @@ model AuditLog {
   entityId   String
   action     String
   actorId    String
+  orgId      String     @default("")
   details    Json     @default("{}")
   ipAddress  String?
   createdAt  DateTime @default(now())
@@ -36,6 +39,7 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt])
   @@index([actorId, createdAt])
+  @@index([orgId, createdAt])
 }
 
 model ExportJob {
@@ -45,6 +49,7 @@ model ExportJob {
   format      ExportFormat
   status      ExportStatus @default(pending)
   requestedBy String       @default("")
+  orgId       String     @default("")
   fileUrl     String?
   fileId      String?      // file-service File 레코드 ID (presigned URL 재발급용)
   errorMsg    String?
@@ -79,6 +84,7 @@ enum ExportStatus {
 model Notification {
   id          String           @id @default(uuid())
   recipientId String
+  orgId       String           @default("")
   type        NotificationType
   entityType  String           // "note" | "booking"
   entityId    String
@@ -89,7 +95,7 @@ model Notification {
   isRead      Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
-  @@index([recipientId, isRead])
+  @@index([orgId, recipientId, isRead])
   @@index([recipientId, createdAt])
 }
 

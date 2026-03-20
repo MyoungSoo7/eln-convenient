@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 
 const logger = createLogger('search-service');
 
@@ -12,7 +12,7 @@ export const addKeywordFavorite = asyncHandler(async (req: Request, res: Respons
 
   try {
     const fav = await prisma.searchKeywordFavorite.create({
-      data: { id: uuidv4(), userId, keyword: keyword.trim() },
+      data: { id: uuidv4(), userId, orgId: getOrgId(req), keyword: keyword.trim() },
     });
     res.status(201).json({ ok: true, data: fav });
   } catch (err: any) {
@@ -29,7 +29,7 @@ export const getKeywordFavorites = asyncHandler(async (req: Request, res: Respon
   const userId = (req.headers['x-user-id'] as string)?.trim();
 
   const favorites = await prisma.searchKeywordFavorite.findMany({
-    where: { userId },
+    where: { userId, orgId: getOrgId(req) },
     orderBy: { createdAt: 'desc' },
   });
   res.json({ ok: true, data: favorites, total: favorites.length });
@@ -39,7 +39,7 @@ export const getKeywordFavorites = asyncHandler(async (req: Request, res: Respon
 export const removeKeywordFavorite = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = (req.headers['x-user-id'] as string)?.trim();
 
-  const fav = await prisma.searchKeywordFavorite.findUnique({ where: { id: req.params.id } });
+  const fav = await prisma.searchKeywordFavorite.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!fav) {
     throw new AppError(404, '즐겨찾기를 찾을 수 없습니다.', ErrorCode.SEARCH_FAVORITE_NOT_FOUND);
   }

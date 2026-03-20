@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId, Permission } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { publishEvent } from '../lib/queue';
 import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
@@ -62,7 +62,7 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
         'Content-Type': 'application/json; charset=utf-8',
         'x-user-id': userId,
         'x-user-role': 'system',
-        'x-user-permissions': JSON.stringify(['note:status']),
+        'x-user-permissions': JSON.stringify([Permission.NOTE_STATUS]),
       },
       body: JSON.stringify({ status }),
     });
@@ -130,6 +130,7 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
       entityId: noteId,
       action: 'signed',
       actorId: signerId,
+      orgId: getOrgId(req),
       details: {
         signatureId: signature.id,
         hash: signatureHash,
@@ -152,6 +153,7 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
         data: {
           id: uuidv4(),
           recipientId: note.authorId,
+          orgId: getOrgId(req),
           type: 'NOTE_SIGNED',
           entityType: 'note',
           entityId: noteId,
@@ -269,6 +271,7 @@ export const revokeSignature = asyncHandler(async (req: Request, res: Response):
       entityId: sig.id,
       action: 'revoked',
       actorId,
+      orgId: getOrgId(req),
       details: { noteId: sig.noteId, reason, chainIndex: sig.chainIndex },
       ipAddress: req.ip,
     },
@@ -278,7 +281,7 @@ export const revokeSignature = asyncHandler(async (req: Request, res: Response):
 });
 
 /** GET /api/signatures/compliance/stats */
-export const getComplianceStats = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+export const getComplianceStats = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   try {
     var [signed, pending, locked, draft, totalSignatures] = await Promise.all([
       fetchNoteCount('signed'),

@@ -1,19 +1,26 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { searchClient } from '../lib/searchClient';
 
 /** GET /api/templates */
 export async function listTemplates(req: Request, res: Response): Promise<void> {
   const { category, search, publicOnly, sortBy, page = '1', limit = '20' } = req.query;
-  const where: Record<string, unknown> = {};
+  const orgId = getOrgId(req);
+  // 자기 조직 템플릿 + 다른 조직의 public 템플릿
+  const where: Record<string, unknown> = {
+    OR: [{ orgId }, { isPublic: true }],
+  };
   if (category)   where.category = category;
   if (publicOnly === 'true') where.isPublic = true;
   if (search) {
-    where.OR = [
-      { title:       { contains: search as string, mode: 'insensitive' } },
-      { description: { contains: search as string, mode: 'insensitive' } },
-      { tags:        { has: search as string } },
+    where.AND = [
+      { OR: [
+        { title:       { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } },
+        { tags:        { has: search as string } },
+      ]},
     ];
   }
 
@@ -51,6 +58,7 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
     const tmpl = await prisma.template.create({
       data: {
         id: uuidv4(),
+        orgId: getOrgId(req),
         title: req.body.title,
         description: req.body.description || '',
         content: req.body.content || '',
@@ -86,7 +94,8 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
 /** GET /api/templates/:id */
 export async function getTemplate(req: Request, res: Response): Promise<void> {
   try {
-    const tmpl = await prisma.template.findUnique({ where: { id: req.params.id } });
+    const orgId = getOrgId(req);
+    const tmpl = await prisma.template.findFirst({ where: { id: req.params.id, OR: [{ orgId }, { isPublic: true }] } });
     if (!tmpl) { res.status(404).json({ ok: false, error: '템플릿을 찾을 수 없습니다.' }); return; }
     res.json({ ok: true, data: tmpl });
   } catch (err) {
@@ -101,7 +110,7 @@ export async function updateTemplate(req: Request, res: Response): Promise<void>
   const userRole = req.headers['x-user-role'] as string;
 
   try {
-    const existing = await prisma.template.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.template.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
     if (!existing) { res.status(404).json({ ok: false, error: '템플릿을 찾을 수 없습니다.' }); return; }
 
     // 작성자 또는 admin만 수정 가능
@@ -155,7 +164,7 @@ export async function deleteTemplate(req: Request, res: Response): Promise<void>
   const userRole = req.headers['x-user-role'] as string;
 
   try {
-    const existing = await prisma.template.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.template.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
     if (!existing) { res.status(404).json({ ok: false, error: '템플릿을 찾을 수 없습니다.' }); return; }
 
     if (existing.createdBy !== userId && userRole !== 'admin') {
@@ -180,9 +189,10 @@ export async function deleteTemplate(req: Request, res: Response): Promise<void>
 export async function recommendTemplates(req: Request, res: Response): Promise<void> {
   const { category } = req.query;
   try {
+    const orgId = getOrgId(req);
     const templates = await prisma.template.findMany({
       where: {
-        isPublic: true,
+        OR: [{ orgId }, { isPublic: true }],
         ...(category && { category: category as string }),
       },
       take: 5,
@@ -208,7 +218,8 @@ export async function copyTemplate(req: Request, res: Response): Promise<void> {
   const userId = (req.headers['x-user-id'] as string) || 'anonymous';
 
   try {
-    const original = await prisma.template.findUnique({ where: { id: req.params.id } });
+    const orgId = getOrgId(req);
+    const original = await prisma.template.findFirst({ where: { id: req.params.id, OR: [{ orgId }, { isPublic: true }] } });
     if (!original) {
       res.status(404).json({ ok: false, error: '원본 템플릿을 찾을 수 없습니다.' });
       return;
@@ -219,6 +230,7 @@ export async function copyTemplate(req: Request, res: Response): Promise<void> {
       prisma.template.create({
         data: {
           id: uuidv4(),
+          orgId: getOrgId(req),
           title:        `${original.title} (복사본)`,
           description:  original.description,
           content:      original.content,

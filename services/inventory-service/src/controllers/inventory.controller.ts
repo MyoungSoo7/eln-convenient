@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId, withOrgScope } from '@lab/shared';
 import prisma from '../lib/prisma';
 import redis from '../lib/redis';
 import type { ItemType } from '../dtos/inventory.dto';
@@ -8,7 +8,7 @@ import { searchClient } from '../lib/searchClient';
 
 const logger = createLogger('inventory-service');
 
-const CATEGORY_CACHE_KEY = 'cache:inv-categories';
+const CATEGORY_CACHE_KEY_PREFIX = 'cache:inv-categories';
 const CATEGORY_CACHE_TTL = 1800; // 30분
 
 // ─────────────────────────────────────────────
@@ -25,8 +25,9 @@ export const getItems = asyncHandler(async (req: Request, res: Response) => {
     sortBy = 'createdAt', sortOrder = 'desc',
   } = req.query;
 
+  const orgId = getOrgId(req);
   const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { orgId };
 
   if (type) where.type = type;
   if (status) where.status = status;
@@ -60,14 +61,14 @@ export const getItems = asyncHandler(async (req: Request, res: Response) => {
 
 /** GET /api/inventory/items/:id */
 export const getItemById = asyncHandler(async (req: Request, res: Response) => {
-  const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+  const item = await prisma.inventoryItem.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!item) throw new AppError(404, '아이템을 찾을 수 없습니다.', ErrorCode.ITEM_NOT_FOUND);
   res.json({ ok: true, data: item });
 });
 
 /** GET /api/inventory/items/barcode/:barcode */
 export const getItemByBarcode = asyncHandler(async (req: Request, res: Response) => {
-  const item = await prisma.inventoryItem.findUnique({ where: { barcode: req.params.barcode } });
+  const item = await prisma.inventoryItem.findFirst({ where: { barcode: req.params.barcode, orgId: getOrgId(req) } });
   if (!item) throw new AppError(404, '바코드에 해당하는 아이템이 없습니다.', ErrorCode.ITEM_NOT_FOUND);
   res.json({ ok: true, data: item });
 });
@@ -81,6 +82,7 @@ export const createItem = asyncHandler(async (req: Request, res: Response) => {
       data: {
         id: uuidv4(),
         name,
+        orgId: getOrgId(req),
         type,
         status: 'available',
         category: req.body.category || null,
@@ -118,6 +120,7 @@ export const createItem = asyncHandler(async (req: Request, res: Response) => {
       doc: {
         domainType: 'INVENTORY',
         title: item.name,
+        orgId: item.orgId,
         tags: item.tags,
         ownerId: item.createdBy,
         visibility: 'private',
@@ -137,8 +140,8 @@ export const createItem = asyncHandler(async (req: Request, res: Response) => {
 
 /** PUT /api/inventory/items/:id */
 export const updateItem = asyncHandler(async (req: Request, res: Response) => {
-  const existing = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
-  if (!existing) throw new AppError(404, '아이템을 찾을 수 없습니다.', ErrorCode.ITEM_NOT_FOUND);
+  // 소유권 검증은 라우트의 requireOwnerOrAdmin 미들웨어에서 수행됨
+  const existing = res.locals.resource;
 
   const updateData: Record<string, unknown> = {};
   if (req.body.name !== undefined) updateData.name = req.body.name;
@@ -178,6 +181,7 @@ export const updateItem = asyncHandler(async (req: Request, res: Response) => {
       doc: {
         domainType: 'INVENTORY',
         title: item.name,
+        orgId: item.orgId,
         tags: item.tags,
         ownerId: item.createdBy,
         visibility: 'private',
@@ -200,16 +204,10 @@ export const updateItem = asyncHandler(async (req: Request, res: Response) => {
 
 /** DELETE /api/inventory/items/:id */
 export const deleteItem = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    await prisma.inventoryItem.delete({ where: { id: req.params.id } });
-    searchClient.delete(req.params.id);
-    res.json({ ok: true, message: '아이템이 삭제되었습니다.', id: req.params.id });
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
-      throw new AppError(404, '아이템을 찾을 수 없습니다.', ErrorCode.ITEM_NOT_FOUND);
-    }
-    throw err;
-  }
+  // 소유권 검증은 라우트의 requireOwnerOrAdmin 미들웨어에서 수행됨
+  await prisma.inventoryItem.delete({ where: { id: req.params.id } });
+  searchClient.delete(req.params.id);
+  res.json({ ok: true, message: '아이템이 삭제되었습니다.', id: req.params.id });
 });
 
 // ─────────────────────────────────────────────
@@ -221,7 +219,7 @@ export const adjustQuantity = asyncHandler(async (req: Request, res: Response) =
   const { changeType, quantity, reason } = req.body;
   const performedBy = (req.headers['x-user-id'] as string) || 'anonymous';
 
-  const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+  const item = await prisma.inventoryItem.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!item) throw new AppError(404, '아이템을 찾을 수 없습니다.', ErrorCode.ITEM_NOT_FOUND);
 
   const before = item.quantity ?? 0;
@@ -270,7 +268,7 @@ export const adjustQuantity = asyncHandler(async (req: Request, res: Response) =
 
 /** GET /api/inventory/items/:id/history */
 export const getItemHistory = asyncHandler(async (req: Request, res: Response) => {
-  const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+  const item = await prisma.inventoryItem.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!item) throw new AppError(404, '아이템을 찾을 수 없습니다.', ErrorCode.ITEM_NOT_FOUND);
 
   const history = await prisma.inventoryHistory.findMany({
@@ -288,6 +286,7 @@ export const getItemHistory = asyncHandler(async (req: Request, res: Response) =
 
 /** GET /api/inventory/alerts/expiring — 만료 임박 아이템 */
 export const getExpiringItems = asyncHandler(async (req: Request, res: Response) => {
+  const orgId = getOrgId(req);
   // 각 아이템의 expiryWarningDays 기준으로 필터
   // PostgreSQL에서 동적 날짜 비교를 위해 raw query 대신 넉넉한 범위로 조회 후 JS 필터
   const daysAhead = parseInt(req.query.days as string) || 90;
@@ -296,6 +295,7 @@ export const getExpiringItems = asyncHandler(async (req: Request, res: Response)
 
   const items = await prisma.inventoryItem.findMany({
     where: {
+      orgId,
       expiryDate: { not: null, lte: cutoff },
       status: { notIn: ['disposed', 'depleted'] },
     },
@@ -320,9 +320,11 @@ export const getExpiringItems = asyncHandler(async (req: Request, res: Response)
 
 /** GET /api/inventory/alerts/low-stock — 재고 부족 아이템 */
 export const getLowStockItems = asyncHandler(async (req: Request, res: Response) => {
+  const orgId = getOrgId(req);
   // minQuantity가 설정된 아이템 중 현재 quantity <= minQuantity 인 것
   const items = await prisma.inventoryItem.findMany({
     where: {
+      orgId,
       minQuantity: { not: null },
       status: { notIn: ['disposed', 'depleted'] },
     },
@@ -340,11 +342,14 @@ export const getLowStockItems = asyncHandler(async (req: Request, res: Response)
 // ─────────────────────────────────────────────
 
 /** GET /api/inventory/categories (Redis 캐시 적용: 30분 TTL) */
-export const getCategories = asyncHandler(async (_req: Request, res: Response) => {
+export const getCategories = asyncHandler(async (req: Request, res: Response) => {
+  const orgId = getOrgId(req);
+  const cacheKey = `${CATEGORY_CACHE_KEY_PREFIX}:${orgId}`;
+
   // Redis 캐시 확인
   if (redis) {
     try {
-      const cached = await redis.get(CATEGORY_CACHE_KEY);
+      const cached = await redis.get(cacheKey);
       if (cached) {
         res.json({ ok: true, data: JSON.parse(cached) });
         return;
@@ -352,27 +357,28 @@ export const getCategories = asyncHandler(async (_req: Request, res: Response) =
     } catch { /* Redis 오류 무시 → DB 폴백 */ }
   }
 
-  const categories = await prisma.category.findMany({ orderBy: { name: 'asc' } });
+  const categories = await prisma.category.findMany({ where: { orgId }, orderBy: { name: 'asc' } });
 
   // Redis에 캐싱
   if (redis) {
-    try { await redis.set(CATEGORY_CACHE_KEY, JSON.stringify(categories), 'EX', CATEGORY_CACHE_TTL); } catch { /* 무시 */ }
+    try { await redis.set(cacheKey, JSON.stringify(categories), 'EX', CATEGORY_CACHE_TTL); } catch { /* 무시 */ }
   }
 
   res.json({ ok: true, data: categories });
 });
 
 /** 카테고리 캐시 무효화 헬퍼 */
-async function invalidateCategoryCache(): Promise<void> {
-  if (redis) { try { await redis.del(CATEGORY_CACHE_KEY); } catch { /* 무시 */ } }
+async function invalidateCategoryCache(orgId: string): Promise<void> {
+  if (redis) { try { await redis.del(`${CATEGORY_CACHE_KEY_PREFIX}:${orgId}`); } catch { /* 무시 */ } }
 }
 
 /** POST /api/inventory/categories */
 export const createCategory = asyncHandler(async (req: Request, res: Response) => {
   const { name } = req.body;
+  const orgId = getOrgId(req);
   try {
-    const category = await prisma.category.create({ data: { id: uuidv4(), name: name.trim() } });
-    await invalidateCategoryCache();
+    const category = await prisma.category.create({ data: { id: uuidv4(), name: name.trim(), orgId } });
+    await invalidateCategoryCache(orgId);
     res.status(201).json({ ok: true, data: category });
   } catch (err: any) {
     if (err?.code === 'P2002') {
@@ -385,17 +391,19 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
 /** PUT /api/inventory/categories/:id */
 export const updateCategory = asyncHandler(async (req: Request, res: Response) => {
   const { name } = req.body;
+  const orgId = getOrgId(req);
+
+  const existing = await prisma.category.findFirst({ where: { id: req.params.id, orgId } });
+  if (!existing) throw new AppError(404, '카테고리를 찾을 수 없습니다.', ErrorCode.CATEGORY_NOT_FOUND);
+
   try {
     const category = await prisma.category.update({
       where: { id: req.params.id },
       data: { name: name.trim() },
     });
-    await invalidateCategoryCache();
+    await invalidateCategoryCache(orgId);
     res.json({ ok: true, data: category });
   } catch (err: any) {
-    if (err?.code === 'P2025') {
-      throw new AppError(404, '카테고리를 찾을 수 없습니다.', ErrorCode.CATEGORY_NOT_FOUND);
-    }
     if (err?.code === 'P2002') {
       throw new AppError(409, '이미 존재하는 카테고리 이름입니다.', ErrorCode.CATEGORY_EXISTS);
     }
@@ -405,14 +413,12 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
 
 /** DELETE /api/inventory/categories/:id */
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    await prisma.category.delete({ where: { id: req.params.id } });
-    await invalidateCategoryCache();
-    res.json({ ok: true, message: '카테고리가 삭제되었습니다.' });
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
-      throw new AppError(404, '카테고리를 찾을 수 없습니다.', ErrorCode.CATEGORY_NOT_FOUND);
-    }
-    throw err;
-  }
+  const orgId = getOrgId(req);
+
+  const existing = await prisma.category.findFirst({ where: { id: req.params.id, orgId } });
+  if (!existing) throw new AppError(404, '카테고리를 찾을 수 없습니다.', ErrorCode.CATEGORY_NOT_FOUND);
+
+  await prisma.category.delete({ where: { id: req.params.id } });
+  await invalidateCategoryCache(orgId);
+  res.json({ ok: true, message: '카테고리가 삭제되었습니다.' });
 });

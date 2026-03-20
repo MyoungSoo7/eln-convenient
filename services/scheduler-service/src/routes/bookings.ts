@@ -1,10 +1,16 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { BookingStatus } from '@prisma/client';
 import { requireAuth, requirePermission } from '../plugins/auth';
 import { Permission, RoleName } from '@lab/shared';
 import { checkConflict } from '../lib/conflict';
 import { assertTransition, InvalidTransitionError } from '../lib/state-machine';
 import { callNotification } from '../lib/notification';
+
+function getOrgId(request: FastifyRequest): string {
+  const orgId = request.headers['x-user-org-id'] as string;
+  if (!orgId) throw { statusCode: 403, message: '조직 정보가 없습니다.' };
+  return orgId;
+}
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 
@@ -47,12 +53,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request) => {
+    const orgId = getOrgId(request);
     const q = request.query as Record<string, string>;
     const page  = Math.max(1, parseInt(q.page  ?? '1'));
     const limit = Math.min(100, parseInt(q.limit ?? '20'));
     const skip  = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { orgId };
     if (q.resourceId) where.resourceId = q.resourceId;
     if (q.userId)     where.userId     = q.userId;
     if (q.status)     where.status     = q.status;
@@ -82,8 +89,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const booking = await fastify.prisma.booking.findUnique({
-      where: { id: request.params.id },
+    const orgId = getOrgId(request);
+    const booking = await fastify.prisma.booking.findFirst({
+      where: { id: request.params.id, orgId },
       include: { resource: true },
     });
     if (!booking) {
@@ -109,6 +117,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
+    const orgId = getOrgId(request);
     const { from, to, type } = request.query as { from: string; to: string; type?: string };
 
     const fromDate = parseDate(from, reply);
@@ -121,6 +130,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
     const data = await fastify.prisma.booking.findMany({
       where: {
+        orgId,
         status: 'APPROVED',
         startAt: { lt: toDate },
         endAt:   { gt: fromDate },
@@ -151,6 +161,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
+    const orgId = getOrgId(request);
     const body = request.body as {
       resourceId: string; title: string; description?: string;
       startAt: string; endAt: string;
@@ -165,8 +176,8 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ ok: false, error: 'endAt은 startAt보다 이후여야 합니다.' });
     }
 
-    // 자원 유효성 확인
-    const resource = await fastify.prisma.resource.findUnique({ where: { id: body.resourceId } });
+    // 자원 유효성 확인 (같은 조직의 자원만)
+    const resource = await fastify.prisma.resource.findFirst({ where: { id: body.resourceId, orgId } });
     if (!resource) {
       return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
     }
@@ -187,6 +198,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     const booking = await fastify.prisma.booking.create({
       data: {
         resourceId:  body.resourceId,
+        orgId,
         userId,
         title:       body.title,
         description: body.description ?? null,
@@ -207,12 +219,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
+    const orgId  = getOrgId(request);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const body   = request.body as Record<string, unknown>;
     const { id } = request.params;
 
-    const existing = await fastify.prisma.booking.findUnique({ where: { id } });
+    const existing = await fastify.prisma.booking.findFirst({ where: { id, orgId } });
     if (!existing) {
       return reply.code(404).send({ ok: false, error: '예약을 찾을 수 없습니다.' });
     }
@@ -261,6 +274,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
+    const orgId      = getOrgId(request);
     const approvedBy = request.headers['x-user-id'] as string;
     const role       = request.headers['x-user-role'] as string;
     const { id }     = request.params;
@@ -275,6 +289,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
+          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+        }
+        if (current.orgId !== orgId) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
 
@@ -355,6 +372,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
+    const orgId  = getOrgId(request);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -369,6 +387,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
+          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+        }
+        if (current.orgId !== orgId) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
         if (!canManageBooking(role, userId, current.resource.ownerId)) {
@@ -400,6 +421,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
+    const orgId  = getOrgId(request);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -413,6 +435,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
+          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+        }
+        if (current.orgId !== orgId) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {
@@ -444,6 +469,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
+    const orgId  = getOrgId(request);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -454,6 +480,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
         const current = await tx.booking.findUnique({ where: { id } });
         if (!current) {
+          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+        }
+        if (current.orgId !== orgId) {
           throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {

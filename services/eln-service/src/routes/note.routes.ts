@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/note.controller';
 import { requireAuth, requirePermission, requireRole } from '../middlewares/auth.middleware';
-import { validate, Permission, RoleName } from '@lab/shared';
+import { validate, Permission, RoleName, requireOwnerOrAdmin, ErrorCode, getOrgId } from '@lab/shared';
+import prisma from '../lib/prisma';
 import {
   CreateNoteSchema, UpdateNoteSchema, ChangeStatusSchema, AdminUnlockSchema,
   AddLinkSchema, NoteIdParamsSchema, NotesBatchBodySchema, NoteStatsQuerySchema,
@@ -43,7 +44,19 @@ router.get('/notes/:id/revisions/:rev',          requirePermission(Permission.NO
 // ─── 첨부파일 ────────────────────────────────────────────────
 router.get('/notes/:id/attachments',             requirePermission(Permission.FILE_READ),    ctrl.getAttachments);
 router.post('/notes/:id/attachments',            requirePermission(Permission.FILE_UPLOAD),  ctrl.addAttachment);
-router.delete('/notes/:id/attachments/:attachmentId', requirePermission(Permission.FILE_DELETE), ctrl.deleteAttachment);
+router.delete('/notes/:id/attachments/:attachmentId',
+  requirePermission(Permission.FILE_DELETE),
+  requireOwnerOrAdmin(
+    async (req) => {
+      const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+      if (!note) return null;
+      return prisma.attachment.findFirst({ where: { id: req.params.attachmentId, noteId: note.id } });
+    },
+    'uploadedBy',
+    ErrorCode.ATTACHMENT_PERMISSION_DENIED,
+  ),
+  ctrl.deleteAttachment,
+);
 
 // ─── 링크 (교차 참조) ────────────────────────────────────────
 router.get('/notes/:id/links',                   requirePermission(Permission.NOTE_READ),    ctrl.getNoteLinks);

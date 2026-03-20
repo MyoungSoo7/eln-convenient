@@ -10,6 +10,7 @@ datasource db {
 model SearchHistory {
   id        String   @id @default(uuid())
   userId    String
+  orgId     String   @default("")
   query     String
   createdAt DateTime @default(now())
 
@@ -19,6 +20,7 @@ model SearchHistory {
 model Favorite {
   id        String   @id @default(uuid())
   userId    String
+  orgId     String   @default("")
   docType   String   // "notes" | "templates" | "inventory"
   docId     String
   title     String
@@ -31,6 +33,7 @@ model Favorite {
 model SearchKeywordFavorite {
   id        String   @id @default(uuid())
   userId    String
+  orgId     String   @default("")
   keyword   String
   createdAt DateTime @default(now())
 

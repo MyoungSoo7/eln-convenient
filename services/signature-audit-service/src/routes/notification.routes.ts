@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middlewares/auth.middleware';
+import { requireAuth, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate } from '@lab/shared';
 import {
   ListNotificationsQuerySchema,
@@ -10,8 +10,8 @@ import * as ctrl from '../controllers/notification.controller';
 
 const router = Router();
 
-// 내부 전용 — requireAuth 미적용
-router.post('/internal', validate({ body: CreateNotificationInternalSchema }), ctrl.createNotificationInternal);
+// 내부 전용 — requireInternalSecret으로 보호
+router.post('/internal', requireInternalSecret, validate({ body: CreateNotificationInternalSchema }), ctrl.createNotificationInternal);
 
 router.use(requireAuth);
 

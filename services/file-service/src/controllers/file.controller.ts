@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import {
   uploadObject, getPresignedUrl, getPresignedUploadUrl,
@@ -82,6 +82,7 @@ export const uploadFile = asyncHandler(async (req: Request, res: Response): Prom
         mimeType: file.mimetype,
         sizeBytes: BigInt(file.size),
         uploaderId: uploadedBy,
+        orgId: getOrgId(req),
         refType: linkedEntityType,
         refId: linkedEntityId,
       },
@@ -145,6 +146,12 @@ export const downloadFile = asyncHandler(async (req: Request, res: Response): Pr
   const key = await resolveKey(req.params.id, req.query.key as string);
   if (!key) { throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND); }
 
+  // Org verification for DB-tracked files (legacy files without DB record are allowed)
+  const dbFile = await prisma.file.findFirst({ where: { objectKey: key, isDeleted: false } });
+  if (dbFile && dbFile.orgId && dbFile.orgId !== getOrgId(req)) {
+    throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND);
+  }
+
   try {
     const url = await getPresignedUrl(key);
     res.redirect(url);
@@ -158,6 +165,12 @@ export const downloadFile = asyncHandler(async (req: Request, res: Response): Pr
 export const getDownloadUrl = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const key = await resolveKey(req.params.id, req.query.key as string);
   if (!key) { throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND); }
+
+  // Org verification for DB-tracked files (legacy files without DB record are allowed)
+  const dbFile = await prisma.file.findFirst({ where: { objectKey: key, isDeleted: false } });
+  if (dbFile && dbFile.orgId && dbFile.orgId !== getOrgId(req)) {
+    throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND);
+  }
 
   try {
     const expiresIn = Number.parseInt(req.query.expiresIn as string) || 3600;
@@ -174,6 +187,12 @@ export const getDownloadUrl = asyncHandler(async (req: Request, res: Response): 
 export const streamFile = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const key = await resolveKey(req.params.id, req.query.key as string);
   if (!key) { throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND); }
+
+  // Org verification for DB-tracked files (legacy files without DB record are allowed)
+  const dbFile = await prisma.file.findFirst({ where: { objectKey: key, isDeleted: false } });
+  if (dbFile && dbFile.orgId && dbFile.orgId !== getOrgId(req)) {
+    throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND);
+  }
 
   try {
     const obj = await getObjectStream(key);
@@ -202,7 +221,7 @@ export const getFileMeta = asyncHandler(async (req: Request, res: Response): Pro
   try {
     // DB에서 먼저 조회
     const file = await prisma.file.findFirst({
-      where: { id: req.params.id, isDeleted: false },
+      where: { id: req.params.id, isDeleted: false, orgId: getOrgId(req) },
     });
     if (file) {
       res.json({
@@ -258,20 +277,7 @@ export const getFileMeta = asyncHandler(async (req: Request, res: Response): Pro
 
 /** DELETE /api/files/:id — 파일 삭제 */
 export const deleteFile = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userId = req.headers['x-user-id'] as string;
-  const userRole = req.headers['x-user-role'] as string;
-
-  // 소유권 검증
-  const file = await prisma.file.findUnique({
-    where: { id: req.params.id },
-    select: { uploaderId: true, isDeleted: true },
-  });
-  if (!file || file.isDeleted) {
-    throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND);
-  }
-  if (file.uploaderId !== userId && userRole !== 'admin') {
-    throw new AppError(403, '권한이 없습니다.', ErrorCode.FILE_PERMISSION_DENIED);
-  }
+  // 소유권 검증은 라우트의 requireOwnerOrAdmin 미들웨어에서 수행됨
 
   // DB에서 파일 soft delete
   const updated = await prisma.file.updateMany({

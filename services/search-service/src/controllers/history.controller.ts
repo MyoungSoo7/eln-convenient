@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 
 const logger = createLogger('search-service');
 
@@ -11,7 +11,7 @@ export const saveHistory = asyncHandler(async (req: Request, res: Response): Pro
   const { query } = req.body;
 
   const entry = await prisma.searchHistory.create({
-    data: { id: uuidv4(), userId, query: query.trim() },
+    data: { id: uuidv4(), userId, orgId: getOrgId(req), query: query.trim() },
   });
   res.status(201).json({ ok: true, data: entry });
 });
@@ -21,7 +21,7 @@ export const getHistory = asyncHandler(async (req: Request, res: Response): Prom
   const userId = req.headers['x-user-id'] as string;
 
   const history = await prisma.searchHistory.findMany({
-    where: { userId },
+    where: { userId, orgId: getOrgId(req) },
     orderBy: { createdAt: 'desc' },
     take: 20,
   });
@@ -32,7 +32,7 @@ export const getHistory = asyncHandler(async (req: Request, res: Response): Prom
 export const deleteHistoryEntry = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.headers['x-user-id'] as string;
 
-  const entry = await prisma.searchHistory.findUnique({ where: { id: req.params.id } });
+  const entry = await prisma.searchHistory.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
   if (!entry) {
     throw new AppError(404, '검색 기록을 찾을 수 없습니다.', ErrorCode.SEARCH_HISTORY_NOT_FOUND);
   }
@@ -48,6 +48,6 @@ export const deleteHistoryEntry = asyncHandler(async (req: Request, res: Respons
 export const clearHistory = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.headers['x-user-id'] as string;
 
-  const { count } = await prisma.searchHistory.deleteMany({ where: { userId } });
+  const { count } = await prisma.searchHistory.deleteMany({ where: { userId, orgId: getOrgId(req) } });
   res.json({ ok: true, message: `검색 기록 ${count}건이 삭제되었습니다.`, count });
 });

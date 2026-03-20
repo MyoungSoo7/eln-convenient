@@ -242,6 +242,7 @@ services:
     environment:
       - PORT=8005
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
     depends_on:
       postgres:
         condition: service_healthy

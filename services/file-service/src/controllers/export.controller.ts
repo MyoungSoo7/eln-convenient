@@ -1,13 +1,12 @@
 // services/file-service/src/controllers/export.controller.ts
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, asyncHandler, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { jobQueue } from '../lib/jobWorker';
 import { getPresignedUrlFromBucket, uploadObjectToBucket, EXPORTS_BUCKET, EXPIRY } from '../lib/minio';
 
 const logger = createLogger('file-service');
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
 // ─── POST /api/exports/pdf ───────────────────────────────────────
 export const createPdfExport = asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -21,6 +20,7 @@ export const createPdfExport = asyncHandler(async (req: Request, res: Response):
       type: 'pdf',
       status: 'PENDING',
       requestedBy,
+      orgId: getOrgId(req),
       params: { noteId },
       expiresAt: new Date(Date.now() + EXPIRY.EXPORT_DOWNLOAD * 1000), // 24h
     },
@@ -41,6 +41,7 @@ export const createZipExport = asyncHandler(async (req: Request, res: Response):
       type: 'zip',
       status: 'PENDING',
       requestedBy,
+      orgId: getOrgId(req),
       params: { scope, projectId: projectId || null, noteIds: noteIds || null },
       expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
     },
@@ -71,8 +72,10 @@ export const listExports = asyncHandler(async (req: Request, res: Response): Pro
   const pageNum = Math.max(1, parseInt(page as string) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
   const skip = (pageNum - 1) * limitNum;
+  const orgId = getOrgId(req);
   const where = {
     requestedBy,
+    orgId,
     ...(status ? { status: status as string } : {}),
   };
   const [jobs, total] = await Promise.all([
@@ -94,7 +97,7 @@ export const getExport = asyncHandler(async (req: Request, res: Response): Promi
     throw new AppError(401, '인증이 필요합니다.', ErrorCode.UNAUTHORIZED);
   }
   const job = await prisma.exportJob.findFirst({
-    where: { id: req.params.jobId, requestedBy },
+    where: { id: req.params.jobId, requestedBy, orgId: getOrgId(req) },
   });
   if (!job) { throw new AppError(404, 'Export job을 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND); }
   res.json({ ok: true, data: toDto(job) });
@@ -107,7 +110,7 @@ export const downloadExport = asyncHandler(async (req: Request, res: Response): 
     throw new AppError(401, '인증이 필요합니다.', ErrorCode.UNAUTHORIZED);
   }
   const job = await prisma.exportJob.findFirst({
-    where: { id: req.params.jobId, requestedBy },
+    where: { id: req.params.jobId, requestedBy, orgId: getOrgId(req) },
     include: { resultFile: true },
   });
   if (!job) { throw new AppError(404, 'Export job을 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND); }
@@ -125,7 +128,7 @@ export const cancelExport = asyncHandler(async (req: Request, res: Response): Pr
     throw new AppError(401, '인증이 필요합니다.', ErrorCode.UNAUTHORIZED);
   }
   const job = await prisma.exportJob.findFirst({
-    where: { id: req.params.jobId, requestedBy },
+    where: { id: req.params.jobId, requestedBy, orgId: getOrgId(req) },
   });
   if (!job) { throw new AppError(404, 'Export job을 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND); }
   if (!['PENDING', 'FAILED'].includes(job.status)) {
@@ -138,11 +141,6 @@ export const cancelExport = asyncHandler(async (req: Request, res: Response): Pr
 // ─── POST /api/exports/internal/upload ─────────────────────────────
 // 내부 서비스(signature-audit 등)가 생성한 파일을 저장하는 내부 전용 API
 export const internalUploadExport = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const secret = req.headers['x-internal-secret'] as string;
-  if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-    throw new AppError(403, '내부 서비스 인증 실패', ErrorCode.INTERNAL_AUTH_FAILED);
-  }
-
   const file = req.file;
   if (!file) {
     throw new AppError(400, '파일이 필요합니다.', ErrorCode.FILE_NO_FILE);
@@ -167,6 +165,7 @@ export const internalUploadExport = asyncHandler(async (req: Request, res: Respo
       mimeType: file.mimetype,
       sizeBytes: file.size,
       uploaderId,
+      orgId: (req.headers['x-org-id'] as string) || '',
       refType: 'export',
       refId: jobId || null,
       isDeleted: false,
@@ -189,11 +188,6 @@ export const internalUploadExport = asyncHandler(async (req: Request, res: Respo
 // ─── GET /api/exports/internal/presigned/:fileId ──────────────────
 // 내부 서비스용 presigned URL 재발급
 export const internalPresignedUrl = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const secret = req.headers['x-internal-secret'] as string;
-  if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-    throw new AppError(403, '내부 서비스 인증 실패', ErrorCode.INTERNAL_AUTH_FAILED);
-  }
-
   const file = await prisma.file.findUnique({ where: { id: req.params.fileId } });
   if (!file || file.isDeleted) {
     throw new AppError(404, '파일을 찾을 수 없습니다.', ErrorCode.FILE_NOT_FOUND);
