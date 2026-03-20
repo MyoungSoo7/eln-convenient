@@ -1,5 +1,5 @@
 /* ─── 페이지 레이아웃 ─────────────────────── */
-.protocol-page {
+.template-page {
   padding: 2rem;
   min-height: 100%;
   background: #f8fafc;
@@ -317,15 +317,15 @@
   margin: 0;
 }
 
-/* ─── 프로토콜 카드 목록 ────────────────── */
-.protocol-list {
+/* ─── 템플릿 문서 카드 목록 ────────────────── */
+.doc-list {
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
   margin-bottom: 1.25rem;
 }
 
-.protocol-card {
+.doc-card {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -336,25 +336,25 @@
   gap: 0.75rem;
 }
 
-.protocol-card:hover {
+.doc-card:hover {
   border-color: #c7d2fe;
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.07);
 }
 
-.protocol-card-header {
+.doc-card-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.protocol-card-title-row {
+.doc-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.protocol-title {
+.doc-title {
   font-size: 1rem;
   font-weight: 600;
   color: #111827;
@@ -362,7 +362,7 @@
   flex: 1;
 }
 
-.protocol-status {
+.doc-status {
   font-size: 0.75rem;
   font-weight: 600;
   padding: 3px 10px;
@@ -371,7 +371,7 @@
   flex-shrink: 0;
 }
 
-.protocol-preview {
+.doc-preview {
   font-size: 0.8125rem;
   color: #6b7280;
   margin: 0;
@@ -379,14 +379,14 @@
   white-space: pre-line;
 }
 
-.protocol-card-footer {
+.doc-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
-.protocol-meta {
+.doc-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -395,25 +395,25 @@
   min-width: 0;
 }
 
-.protocol-meta-item {
+.doc-meta-item {
   font-size: 0.75rem;
   color: #9ca3af;
 }
 
-.protocol-from-template {
+.doc-from-template {
   color: #7c3aed;
   background: #ede9fe;
   padding: 1px 8px;
   border-radius: 9999px;
 }
 
-.protocol-tags {
+.doc-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.protocol-tag {
+.doc-tag {
   background: #f3f4f6;
   color: #374151;
   border: 1px solid #e5e7eb;
@@ -423,13 +423,13 @@
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.protocol-tag:hover {
+.doc-tag:hover {
   background: #ede9fe;
   border-color: #c4b5fd;
   color: #5b21b6;
 }
 
-.protocol-tag-more {
+.doc-tag-more {
   font-size: 0.75rem;
   color: #9ca3af;
   padding: 2px 4px;
@@ -479,8 +479,8 @@
 
 /* ─── 반응형 ───────────────────────────── */
 @media (max-width: 640px) {
-  .protocol-page { padding: 1rem; }
+  .template-page { padding: 1rem; }
   .page-header { flex-direction: column; }
   .page-header-actions { width: 100%; justify-content: flex-end; }
-  .protocol-card-title-row { flex-direction: column; align-items: flex-start; }
+  .doc-title-row { flex-direction: column; align-items: flex-start; }
 }

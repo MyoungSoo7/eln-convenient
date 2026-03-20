@@ -1,7 +1,7 @@
 /**
  * 연구노트 서비스 DTO (Zod schemas)
  *
- * 노트/프로토콜 상태 흐름:
+ * 노트/템플릿 상태 흐름:
  *   draft ↔ in_progress → signed (서명)
  *                       → locked  (잠금)
  *   locked → draft  (관리자 잠금 해제)
@@ -9,7 +9,7 @@
 import { z } from 'zod';
 
 // ─── Enums ───────────────────────────────────────
-export const NoteTypeEnum = z.enum(['note', 'protocol']);
+export const NoteTypeEnum = z.enum(['note', 'template']);
 export type NoteType = z.infer<typeof NoteTypeEnum>;
 
 export const NoteStatusEnum = z.enum(['draft', 'in_progress', 'signed', 'locked']);
@@ -58,7 +58,7 @@ export type AdminUnlockDto = z.infer<typeof AdminUnlockSchema>;
 
 // ─── 링크 ────────────────────────────────────────
 export const AddLinkSchema = z.object({
-  targetType: z.enum(['inventory', 'equipment', 'protocol', 'note'], {
+  targetType: z.enum(['inventory', 'equipment', 'template', 'note'], {
     message: 'targetType과 targetId는 필수입니다.',
   }),
   targetId: z.string().min(1, 'targetType과 targetId는 필수입니다.'),

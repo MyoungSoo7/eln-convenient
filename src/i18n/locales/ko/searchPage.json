@@ -1,13 +1,13 @@
 {
   "title": "통합검색",
-  "titleTooltip": "연구노트, 프로토콜, 인벤토리를 한 번에 검색합니다. 키워드를 입력하면 각 카테고리별 결과가 탭으로 분류됩니다.",
-  "subtitle": "노트, 프로토콜, 인벤토리 통합 검색 · 최근 검색 · 즐겨찾기",
+  "titleTooltip": "연구노트, 템플릿, 인벤토리를 한 번에 검색합니다. 키워드를 입력하면 각 카테고리별 결과가 탭으로 분류됩니다.",
+  "subtitle": "노트, 템플릿, 인벤토리 통합 검색 · 최근 검색 · 즐겨찾기",
   "placeholder": "검색어를 입력하세요...",
   "searching": "검색 중...",
   "searchFailed": "검색 실패",
   "searchError": "검색 중 오류가 발생했습니다.",
   "noResults": "검색 결과가 없습니다",
-  "total": "총 {{total}}건 (노트·프로토콜·인벤토리 통합)",
+  "total": "총 {{total}}건 (노트·템플릿·인벤토리 통합)",
   "recentSearches": "최근 검색",
   "recentTooltip": "최근에 검색했던 키워드입니다. 클릭하면 바로 검색됩니다.",
   "clearRecent": "지우기",
@@ -19,5 +19,5 @@
   "removeFavorite": "즐겨찾기 해제",
   "isFavoriteHint": "이 검색어는 즐겨찾기에 있습니다. 별 아이콘을 누르면 해제됩니다.",
   "notFavoriteHint": "별 아이콘을 누르면 즐겨찾기에 추가됩니다.",
-  "tab": { "notes": "노트", "protocols": "프로토콜", "inventory": "인벤토리" }
+  "tab": { "notes": "노트", "protocols": "템플릿", "inventory": "인벤토리" }
 }

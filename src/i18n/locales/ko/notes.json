@@ -5,7 +5,7 @@
   "newNote": "새 노트",
   "searchPlaceholder": "노트 제목, 태그 검색...",
   "filterTooltip": "상태 필터: 초안(작성 중), 진행 중(실험 수행), 서명 완료(검증됨), 잠김(변경 불가). 관리자는 잠긴 노트를 해제할 수 있습니다.",
-  "templateFilterBanner": "특정 프로토콜로 생성된 노트만 표시 중",
+  "templateFilterBanner": "특정 템플릿으로 생성된 노트만 표시 중",
   "clearFilter": "필터 해제",
   "noResults": "검색 결과가 없습니다.",
   "empty": "노트가 없습니다. 새 노트를 작성해보세요.",
@@ -60,8 +60,8 @@
     "statusChangeFailed": "상태 변경 실패",
     "directEdit": "직접 편집",
     "liveEditing": "실시간 편집 중",
-    "protocolBased": "프로토콜 기반",
-    "protocolLabel": "프로토콜: {{title}}",
+    "protocolBased": "템플릿 기반",
+    "protocolLabel": "템플릿: {{title}}",
     "tab": {
       "editor": "편집기",
       "attachments": "첨부파일",
@@ -114,6 +114,6 @@
       "defaultSummary": "수정"
     }
   },
-  "sectionTemplate": "## 목적\n연구 목적을 기재하세요.\n\n## 재료\n- 시약/샘플 목록\n\n## 방법\n1. 실험 절차\n\n## 결과\n실험 결과 기재\n\n## 고찰\n결과에 대한 분석 및 해석",
-  "sectionTemplateFromProtocol": "## 목적\n[{{category}}] 실험 목적을 기재하세요.\n\n## 재료\n- 시약/샘플 목록\n\n## 방법\n1. 실험 절차\n\n## 결과\n실험 결과 기재\n\n## 고찰\n결과에 대한 분석 및 해석\n\n---\n> 📋 프로토콜 \"{{title}}\" 기반으로 생성됨"
+  "sectionTemplate": "## 전주실적\n지난 주 수행한 실험 결과를 기재하세요.\n\n## 금주계획\n이번 주 수행할 실험 계획을 기재하세요.",
+  "sectionTemplateFromProtocol": "## 전주실적\n[{{category}}] 지난 주 수행한 실험 결과를 기재하세요.\n\n## 금주계획\n이번 주 수행할 실험 계획을 기재하세요.\n\n---\n> 📋 템플릿 \"{{title}}\" 기반으로 생성됨"
 }

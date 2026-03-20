@@ -13,14 +13,14 @@ import { updateTemplate, listCodes, type TemplateRecord } from "@/api/notes";
 
 /** DB에 저장된 섹션에서 표시용 제목 문자열 배열을 추출 */
 function extractSectionTitles(raw: unknown): string[] {
-  if (!Array.isArray(raw) || raw.length === 0) return ["목적", "재료", "방법", "결과", "고찰"];
+  if (!Array.isArray(raw) || raw.length === 0) return ["전주실적", "금주계획"];
   // { type, title, content } 객체 배열인 경우 title만 추출
   if (typeof raw[0] === 'object' && raw[0] !== null && 'title' in raw[0]) {
     return raw.map((s: { title: string }) => s.title);
   }
   // 이미 문자열 배열인 경우 그대로 반환
   if (typeof raw[0] === 'string') return raw as string[];
-  return ["목적", "재료", "방법", "결과", "고찰"];
+  return ["전주실적", "금주계획"];
 }
 
 interface EditProtocolDialogProps {

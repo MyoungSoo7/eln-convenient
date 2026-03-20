@@ -19,7 +19,7 @@ export const openApiDocument = {
                 type: 'object',
                 properties: {
                   file: { type: 'string', format: 'binary' },
-                  linkedEntityType: { type: 'string', enum: ['note', 'protocol', 'inventory'] },
+                  linkedEntityType: { type: 'string', enum: ['note', 'template', 'inventory'] },
                   linkedEntityId: { type: 'string' },
                 },
               },

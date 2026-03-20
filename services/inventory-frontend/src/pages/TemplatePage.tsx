@@ -1,76 +1,76 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Protocol, Template, ProtocolFilters, TemplateFilters, NoteStatus } from '../types/protocol';
-import { NOTE_STATUS_LABELS, NOTE_STATUS_COLORS } from '../types/protocol';
+import type { TemplateDoc, Template, TemplateDocFilters, TemplateFilters, NoteStatus } from '../types/template';
+import { NOTE_STATUS_LABELS, NOTE_STATUS_COLORS } from '../types/template';
 import {
-  fetchProtocols,
-  deleteProtocol,
-  fetchProtocolStats,
+  fetchTemplateDocs,
+  deleteTemplateDoc,
+  fetchTemplateDocStats,
   fetchTemplates,
   deleteTemplate,
   copyTemplate,
-} from '../api/protocol';
-import CreateProtocolModal from '../components/CreateProtocolModal';
-import './ProtocolPage.css';
+} from '../api/template';
+import CreateTemplateModal from '../components/CreateTemplateModal';
+import './TemplatePage.css';
 
-type Tab = 'protocol' | 'template';
-type ModalMode = 'protocol' | 'template';
+type Tab = 'templateDoc' | 'library';
+type ModalMode = 'templateDoc' | 'template';
 const NOTE_STATUSES = Object.entries(NOTE_STATUS_LABELS) as [NoteStatus, string][];
 const CATEGORIES = ['일반', '실험법', '분석법', '품질관리', 'SOP', '안전절차'];
 
-const DEFAULT_P_FILTERS: ProtocolFilters = { q: '', status: '', tag: '', page: 1, limit: 20 };
+const DEFAULT_DOC_FILTERS: TemplateDocFilters = { q: '', status: '', tag: '', page: 1, limit: 20 };
 const DEFAULT_T_FILTERS: TemplateFilters = {
   search: '', category: '', publicOnly: false, sortBy: 'createdAt', page: 1, limit: 20,
 };
 
-export default function ProtocolPage() {
-  const [tab, setTab] = useState<Tab>('protocol');
+export default function TemplatePage() {
+  const [tab, setTab] = useState<Tab>('templateDoc');
 
-  // ── 프로토콜 상태 ──
-  const [protocols, setProtocols]     = useState<Protocol[]>([]);
-  const [pTotal, setPTotal]           = useState(0);
-  const [pLoading, setPLoading]       = useState(false);
-  const [pError, setPError]           = useState('');
-  const [pFilters, setPFilters]       = useState<ProtocolFilters>(DEFAULT_P_FILTERS);
-  const [pSearchInput, setPSearchInput] = useState('');
-  const [stats, setStats]             = useState({ total: 0, draft: 0, in_progress: 0, signed: 0, locked: 0 });
-  const [deletingPId, setDeletingPId] = useState<string | null>(null);
+  // ── 템플릿 문서 상태 ──
+  const [docs, setDocs]                 = useState<TemplateDoc[]>([]);
+  const [docTotal, setDocTotal]         = useState(0);
+  const [docLoading, setDocLoading]     = useState(false);
+  const [docError, setDocError]         = useState('');
+  const [docFilters, setDocFilters]     = useState<TemplateDocFilters>(DEFAULT_DOC_FILTERS);
+  const [docSearchInput, setDocSearchInput] = useState('');
+  const [stats, setStats]               = useState({ total: 0, draft: 0, in_progress: 0, signed: 0, locked: 0 });
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
-  // ── 템플릿 상태 ──
-  const [templates, setTemplates]     = useState<Template[]>([]);
-  const [tTotal, setTTotal]           = useState(0);
-  const [tLoading, setTLoading]       = useState(false);
-  const [tError, setTError]           = useState('');
-  const [tFilters, setTFilters]       = useState<TemplateFilters>(DEFAULT_T_FILTERS);
+  // ── 템플릿 라이브러리 상태 ──
+  const [templates, setTemplates]       = useState<Template[]>([]);
+  const [tTotal, setTTotal]             = useState(0);
+  const [tLoading, setTLoading]         = useState(false);
+  const [tError, setTError]             = useState('');
+  const [tFilters, setTFilters]         = useState<TemplateFilters>(DEFAULT_T_FILTERS);
   const [tSearchInput, setTSearchInput] = useState('');
-  const [deletingTId, setDeletingTId] = useState<string | null>(null);
-  const [copyingId, setCopyingId]     = useState<string | null>(null);
+  const [deletingTId, setDeletingTId]   = useState<string | null>(null);
+  const [copyingId, setCopyingId]       = useState<string | null>(null);
 
   // ── 모달 ──
-  const [modalMode, setModalMode]     = useState<ModalMode | null>(null);
+  const [modalMode, setModalMode]       = useState<ModalMode | null>(null);
 
-  // ─── 프로토콜 로드 ────────────────────────────────────────
-  const loadProtocols = useCallback(async () => {
-    setPLoading(true); setPError('');
+  // ─── 템플릿 문서 로드 ────────────────────────────────────────
+  const loadDocs = useCallback(async () => {
+    setDocLoading(true); setDocError('');
     try {
-      const res = await fetchProtocols({
-        q: pFilters.q || undefined,
-        status: pFilters.status || undefined,
-        tag: pFilters.tag || undefined,
-        page: pFilters.page, limit: pFilters.limit,
+      const res = await fetchTemplateDocs({
+        q: docFilters.q || undefined,
+        status: docFilters.status || undefined,
+        tag: docFilters.tag || undefined,
+        page: docFilters.page, limit: docFilters.limit,
       });
-      setProtocols(res.data); setPTotal(res.total);
+      setDocs(res.data); setDocTotal(res.total);
     } catch (e: unknown) {
-      setPError(e instanceof Error ? e.message : '불러오기 실패');
-    } finally { setPLoading(false); }
-  }, [pFilters]);
+      setDocError(e instanceof Error ? e.message : '불러오기 실패');
+    } finally { setDocLoading(false); }
+  }, [docFilters]);
 
-  useEffect(() => { loadProtocols(); }, [loadProtocols]);
+  useEffect(() => { loadDocs(); }, [loadDocs]);
 
   useEffect(() => {
-    fetchProtocolStats().then(setStats).catch(() => {});
-  }, [protocols]);
+    fetchTemplateDocStats().then(setStats).catch(() => {});
+  }, [docs]);
 
-  // ─── 템플릿 로드 ──────────────────────────────────────────
+  // ─── 템플릿 라이브러리 로드 ──────────────────────────────────
   const loadTemplates = useCallback(async () => {
     setTLoading(true); setTError('');
     try {
@@ -88,27 +88,27 @@ export default function ProtocolPage() {
   }, [tFilters]);
 
   useEffect(() => {
-    if (tab === 'template') loadTemplates();
+    if (tab === 'library') loadTemplates();
   }, [tab, loadTemplates]);
 
   // ─── 핸들러 ──────────────────────────────────────────────
-  function setPFilter<K extends keyof ProtocolFilters>(k: K, v: ProtocolFilters[K]) {
-    setPFilters((f) => ({ ...f, [k]: v, page: 1 }));
+  function setDocFilter<K extends keyof TemplateDocFilters>(k: K, v: TemplateDocFilters[K]) {
+    setDocFilters((f) => ({ ...f, [k]: v, page: 1 }));
   }
   function setTFilter<K extends keyof TemplateFilters>(k: K, v: TemplateFilters[K]) {
     setTFilters((f) => ({ ...f, [k]: v, page: 1 }));
   }
 
-  async function handleDeleteProtocol(p: Protocol) {
-    if (!confirm(`"${p.title}" 프로토콜을 삭제하시겠습니까?`)) return;
-    setDeletingPId(p.id);
-    try { await deleteProtocol(p.id); await loadProtocols(); }
+  async function handleDeleteDoc(p: TemplateDoc) {
+    if (!confirm(`"${p.title}" 템플릿을 삭제하시겠습니까?`)) return;
+    setDeletingDocId(p.id);
+    try { await deleteTemplateDoc(p.id); await loadDocs(); }
     catch (e: unknown) { alert(e instanceof Error ? e.message : '삭제 실패'); }
-    finally { setDeletingPId(null); }
+    finally { setDeletingDocId(null); }
   }
 
   async function handleDeleteTemplate(t: Template) {
-    if (!confirm(`"${t.title}" 템플릿을 삭제하시겠습니까?`)) return;
+    if (!confirm(`"${t.title}" 양식을 삭제하시겠습니까?`)) return;
     setDeletingTId(t.id);
     try { await deleteTemplate(t.id); await loadTemplates(); }
     catch (e: unknown) { alert(e instanceof Error ? e.message : '삭제 실패'); }
@@ -128,25 +128,25 @@ export default function ProtocolPage() {
     return new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
-  const pTotalPages = Math.max(1, Math.ceil(pTotal / pFilters.limit));
-  const tTotalPages = Math.max(1, Math.ceil(tTotal / tFilters.limit));
-  const pHasFilter  = !!(pFilters.q || pFilters.status || pFilters.tag);
-  const tHasFilter  = !!(tFilters.search || tFilters.category || tFilters.publicOnly);
+  const docTotalPages = Math.max(1, Math.ceil(docTotal / docFilters.limit));
+  const tTotalPages   = Math.max(1, Math.ceil(tTotal / tFilters.limit));
+  const docHasFilter  = !!(docFilters.q || docFilters.status || docFilters.tag);
+  const tHasFilter    = !!(tFilters.search || tFilters.category || tFilters.publicOnly);
 
   return (
-    <div className="protocol-page">
+    <div className="template-page">
       {/* 헤더 */}
       <header className="page-header">
         <div className="page-header-left">
-          <h1>프로토콜 · 템플릿</h1>
-          <span className="page-subtitle">실험 프로토콜 · SOP · 재사용 템플릿</span>
+          <h1>템플릿</h1>
+          <span className="page-subtitle">실험 템플릿 · SOP · 재사용 양식</span>
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary" onClick={() => { setModalMode('template'); }}>
-            + 새 템플릿
+            + 새 양식
           </button>
-          <button className="btn-primary" onClick={() => { setModalMode('protocol'); }}>
-            + 새 프로토콜
+          <button className="btn-primary" onClick={() => { setModalMode('templateDoc'); }}>
+            + 새 템플릿
           </button>
         </div>
       </header>
@@ -154,25 +154,25 @@ export default function ProtocolPage() {
       {/* 탭 */}
       <div className="page-tabs">
         <button
-          className={`page-tab ${tab === 'protocol' ? 'active' : ''}`}
-          onClick={() => setTab('protocol')}
+          className={`page-tab ${tab === 'templateDoc' ? 'active' : ''}`}
+          onClick={() => setTab('templateDoc')}
         >
-          프로토콜
+          내 템플릿
           <span className="tab-badge">{stats.total}</span>
         </button>
         <button
-          className={`page-tab ${tab === 'template' ? 'active' : ''}`}
-          onClick={() => { setTab('template'); }}
+          className={`page-tab ${tab === 'library' ? 'active' : ''}`}
+          onClick={() => { setTab('library'); }}
         >
-          템플릿
+          템플릿 라이브러리
           <span className="tab-badge">{tTotal}</span>
         </button>
       </div>
 
       {/* ══════════════════════════════════════════════
-          (1)(2) 프로토콜 탭
+          내 템플릿 탭
           ══════════════════════════════════════════════ */}
-      {tab === 'protocol' && (
+      {tab === 'templateDoc' && (
         <>
           {/* 통계 카드 */}
           <div className="stats-row">
@@ -187,8 +187,8 @@ export default function ProtocolPage() {
             ].map(({ key, label }) => (
               <div
                 key={key}
-                className={`stat-card stat-clickable ${pFilters.status === key ? 'stat-active' : ''}`}
-                onClick={() => setPFilter('status', pFilters.status === key ? '' : key)}
+                className={`stat-card stat-clickable ${docFilters.status === key ? 'stat-active' : ''}`}
+                onClick={() => setDocFilter('status', docFilters.status === key ? '' : key)}
                 role="button" tabIndex={0}
               >
                 <span className="stat-label">{label}</span>
@@ -199,26 +199,26 @@ export default function ProtocolPage() {
             ))}
           </div>
 
-          {/* (2) 검색·필터 */}
+          {/* 검색·필터 */}
           <div className="filter-bar">
             <div className="search-group">
               <span className="search-icon">🔍</span>
               <input
                 className="search-input"
                 placeholder="제목, 내용, 태그 검색..."
-                value={pSearchInput}
-                onChange={(e) => setPSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && setPFilter('q', pSearchInput)}
+                value={docSearchInput}
+                onChange={(e) => setDocSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && setDocFilter('q', docSearchInput)}
               />
-              <button className="btn-search" onClick={() => setPFilter('q', pSearchInput)}>검색</button>
+              <button className="btn-search" onClick={() => setDocFilter('q', docSearchInput)}>검색</button>
             </div>
             <div className="filter-selects">
-              <select value={pFilters.status} onChange={(e) => setPFilter('status', e.target.value as NoteStatus | '')}>
+              <select value={docFilters.status} onChange={(e) => setDocFilter('status', e.target.value as NoteStatus | '')}>
                 <option value="">모든 상태</option>
                 {NOTE_STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-              {pHasFilter && (
-                <button className="btn-reset" onClick={() => { setPSearchInput(''); setPFilters(DEFAULT_P_FILTERS); }}>
+              {docHasFilter && (
+                <button className="btn-reset" onClick={() => { setDocSearchInput(''); setDocFilters(DEFAULT_DOC_FILTERS); }}>
                   초기화
                 </button>
               )}
@@ -226,42 +226,42 @@ export default function ProtocolPage() {
           </div>
 
           {/* 활성 필터 뱃지 */}
-          {pHasFilter && (
+          {docHasFilter && (
             <div className="active-filters">
-              {pFilters.q && (
+              {docFilters.q && (
                 <span className="active-filter">
-                  "{pFilters.q}" <button onClick={() => { setPSearchInput(''); setPFilter('q', ''); }}>✕</button>
+                  "{docFilters.q}" <button onClick={() => { setDocSearchInput(''); setDocFilter('q', ''); }}>✕</button>
                 </span>
               )}
-              {pFilters.status && (
+              {docFilters.status && (
                 <span className="active-filter">
-                  {NOTE_STATUS_LABELS[pFilters.status]} <button onClick={() => setPFilter('status', '')}>✕</button>
+                  {NOTE_STATUS_LABELS[docFilters.status]} <button onClick={() => setDocFilter('status', '')}>✕</button>
                 </span>
               )}
-              <span className="filter-count">{pTotal}개 결과</span>
+              <span className="filter-count">{docTotal}개 결과</span>
             </div>
           )}
 
-          {pError && <div className="error-bar"><span>{pError}</span><button onClick={loadProtocols}>재시도</button></div>}
+          {docError && <div className="error-bar"><span>{docError}</span><button onClick={loadDocs}>재시도</button></div>}
 
-          {/* 프로토콜 목록 */}
-          {pLoading ? (
+          {/* 템플릿 문서 목록 */}
+          {docLoading ? (
             <div className="list-loading"><span className="spinner" />불러오는 중...</div>
-          ) : protocols.length === 0 ? (
+          ) : docs.length === 0 ? (
             <div className="list-empty">
               <div className="list-empty-icon">📋</div>
-              <p>{pHasFilter ? '검색 결과가 없습니다.' : '등록된 프로토콜이 없습니다.'}</p>
-              {!pHasFilter && (
-                <button className="btn-primary" onClick={() => setModalMode('protocol')}>+ 첫 프로토콜 작성</button>
+              <p>{docHasFilter ? '검색 결과가 없습니다.' : '등록된 템플릿이 없습니다.'}</p>
+              {!docHasFilter && (
+                <button className="btn-primary" onClick={() => setModalMode('templateDoc')}>+ 첫 템플릿 작성</button>
               )}
             </div>
           ) : (
-            <div className="protocol-list">
-              {protocols.map((p) => (
-                <div key={p.id} className="protocol-card">
-                  <div className="protocol-card-top">
-                    <div className="protocol-title-row">
-                      <h3 className="protocol-title">{p.title}</h3>
+            <div className="doc-list">
+              {docs.map((p) => (
+                <div key={p.id} className="doc-card">
+                  <div className="doc-card-top">
+                    <div className="doc-title-row">
+                      <h3 className="doc-title">{p.title}</h3>
                       <span
                         className="status-badge"
                         style={{
@@ -273,21 +273,21 @@ export default function ProtocolPage() {
                       </span>
                     </div>
                     {p.content && (
-                      <p className="protocol-preview">
+                      <p className="doc-preview">
                         {p.content.slice(0, 130)}{p.content.length > 130 ? '...' : ''}
                       </p>
                     )}
                   </div>
-                  <div className="protocol-card-footer">
-                    <div className="protocol-meta">
-                      {p.templateId && <span className="meta-badge meta-template">📄 템플릿 기반</span>}
+                  <div className="doc-card-footer">
+                    <div className="doc-meta">
+                      {p.templateId && <span className="meta-badge meta-template">📄 양식 기반</span>}
                       <span className="meta-date">{formatDate(p.createdAt)}</span>
                       {p.tags.length > 0 && (
                         <div className="tag-row">
                           {p.tags.slice(0, 4).map((t) => (
                             <button
                               key={t} className="tag-chip"
-                              onClick={() => setPFilter('tag', pFilters.tag === t ? '' : t)}
+                              onClick={() => setDocFilter('tag', docFilters.tag === t ? '' : t)}
                             >
                               {t}
                             </button>
@@ -298,10 +298,10 @@ export default function ProtocolPage() {
                     </div>
                     <button
                       className="btn-danger-sm"
-                      onClick={() => handleDeleteProtocol(p)}
-                      disabled={deletingPId === p.id}
+                      onClick={() => handleDeleteDoc(p)}
+                      disabled={deletingDocId === p.id}
                     >
-                      {deletingPId === p.id ? '...' : '삭제'}
+                      {deletingDocId === p.id ? '...' : '삭제'}
                     </button>
                   </div>
                 </div>
@@ -310,22 +310,22 @@ export default function ProtocolPage() {
           )}
 
           {/* 페이지네이션 */}
-          <Pagination page={pFilters.page} total={pTotalPages} onChange={(n) => setPFilter('page', n)} />
+          <Pagination page={docFilters.page} total={docTotalPages} onChange={(n) => setDocFilter('page', n)} />
         </>
       )}
 
       {/* ══════════════════════════════════════════════
-          (1)(2)(3)(4) 템플릿 탭
+          템플릿 라이브러리 탭
           ══════════════════════════════════════════════ */}
-      {tab === 'template' && (
+      {tab === 'library' && (
         <>
-          {/* (2) 템플릿 검색·필터 */}
+          {/* 검색·필터 */}
           <div className="filter-bar">
             <div className="search-group">
               <span className="search-icon">🔍</span>
               <input
                 className="search-input"
-                placeholder="템플릿 제목, 설명, 태그 검색..."
+                placeholder="양식 제목, 설명, 태그 검색..."
                 value={tSearchInput}
                 onChange={(e) => setTSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && setTFilter('search', tSearchInput)}
@@ -373,15 +373,15 @@ export default function ProtocolPage() {
 
           {tError && <div className="error-bar"><span>{tError}</span><button onClick={loadTemplates}>재시도</button></div>}
 
-          {/* (2) 템플릿 목록 */}
+          {/* 양식 목록 */}
           {tLoading ? (
             <div className="list-loading"><span className="spinner" />불러오는 중...</div>
           ) : templates.length === 0 ? (
             <div className="list-empty">
               <div className="list-empty-icon">📂</div>
-              <p>{tHasFilter ? '검색 결과가 없습니다.' : '등록된 템플릿이 없습니다.'}</p>
+              <p>{tHasFilter ? '검색 결과가 없습니다.' : '등록된 양식이 없습니다.'}</p>
               {!tHasFilter && (
-                <button className="btn-primary" onClick={() => setModalMode('template')}>+ 첫 템플릿 만들기</button>
+                <button className="btn-primary" onClick={() => setModalMode('template')}>+ 첫 양식 만들기</button>
               )}
             </div>
           ) : (
@@ -405,7 +405,7 @@ export default function ProtocolPage() {
                     {t.description && <p className="tpl-desc">{t.description}</p>}
                   </div>
 
-                  {/* (4) 카운트 통계 */}
+                  {/* 카운트 통계 */}
                   <div className="tpl-stats">
                     <div className="tpl-stat">
                       <span className="tpl-stat-icon">📝</span>
@@ -443,23 +443,22 @@ export default function ProtocolPage() {
 
                   {/* 액션 버튼 */}
                   <div className="tpl-actions">
-                    {/* (3) 템플릿 복사 버튼 */}
                     <button
                       className="btn-copy"
                       onClick={() => handleCopyTemplate(t)}
                       disabled={copyingId === t.id}
-                      title="이 템플릿을 복사해 새 템플릿으로 저장합니다"
+                      title="이 양식을 복사해 새 양식으로 저장합니다"
                     >
                       {copyingId === t.id ? '복사 중...' : '📋 복사'}
                     </button>
                     <button
                       className="btn-use"
                       onClick={() => {
-                        setModalMode('protocol');
+                        setModalMode('templateDoc');
                       }}
-                      title="이 템플릿으로 새 프로토콜 작성"
+                      title="이 양식으로 새 템플릿 작성"
                     >
-                      ➕ 프로토콜 작성
+                      ➕ 템플릿 작성
                     </button>
                     <button
                       className="btn-danger-sm"
@@ -481,12 +480,12 @@ export default function ProtocolPage() {
 
       {/* 생성 모달 */}
       {modalMode !== null && (
-        <CreateProtocolModal
+        <CreateTemplateModal
           defaultMode={modalMode}
           onClose={() => setModalMode(null)}
           onCreated={() => {
             setModalMode(null);
-            if (tab === 'protocol') loadProtocols();
+            if (tab === 'templateDoc') loadDocs();
             else loadTemplates();
           }}
         />

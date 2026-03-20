@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { CreateItemDto, ItemType } from '../types/inventory';
 import { ITEM_TYPE_LABELS } from '../types/inventory';
-import { createItem, fetchCategories } from '../api/inventory';
+import { createItem } from '../api/inventory';
 import './AddItemModal.css';
 
 interface Props {
@@ -14,7 +14,7 @@ const ITEM_TYPES = Object.entries(ITEM_TYPE_LABELS) as [ItemType, string][];
 const INITIAL: CreateItemDto = {
   name: '',
   type: 'reagent',
-  category: '',
+
   quantity: undefined,
   unit: '',
   location: '',
@@ -28,15 +28,8 @@ const INITIAL: CreateItemDto = {
 export default function AddItemModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState<CreateItemDto>(INITIAL);
   const [tagInput, setTagInput] = useState('');
-  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchCategories()
-      .then((res) => setCategories(res.data.map((c) => c.name)))
-      .catch(() => {/* 카테고리 로드 실패 무시 */});
-  }, []);
 
   function set<K extends keyof CreateItemDto>(key: K, value: CreateItemDto[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -63,7 +56,7 @@ export default function AddItemModal({ onClose, onCreated }: Props) {
     const dto: CreateItemDto = {
       name: form.name.trim(),
       type: form.type,
-      ...(form.category?.trim() && { category: form.category.trim() }),
+
       ...(form.quantity !== undefined && { quantity: form.quantity }),
       ...(form.unit?.trim() && { unit: form.unit.trim() }),
       ...(form.location?.trim() && { location: form.location.trim() }),
@@ -119,19 +112,6 @@ export default function AddItemModal({ onClose, onCreated }: Props) {
             </div>
 
             <div className="form-row">
-              <div className="form-group">
-                <label>카테고리</label>
-                <input
-                  type="text"
-                  list="category-list"
-                  value={form.category}
-                  onChange={(e) => set('category', e.target.value)}
-                  placeholder="카테고리 선택 또는 입력"
-                />
-                <datalist id="category-list">
-                  {categories.map((c) => <option key={c} value={c} />)}
-                </datalist>
-              </div>
               <div className="form-group">
                 <label>위치</label>
                 <input

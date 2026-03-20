@@ -87,7 +87,7 @@
   overflow-y: auto;
 }
 
-/* 프로토콜 모드: 좌우 2열 */
+/* 템플릿 문서 모드: 좌우 2열 */
 .cp-form:has(.cp-right) {
   flex-direction: row;
 }
@@ -297,7 +297,7 @@
   margin: 0;
 }
 
-/* ── 우측 템플릿 패널 ────────────────────────── */
+/* ── 우측 양식 패널 ──────────────────────────── */
 .cp-tpl-header {
   display: flex;
   flex-direction: column;

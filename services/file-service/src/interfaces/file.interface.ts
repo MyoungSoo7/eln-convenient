@@ -6,7 +6,7 @@ export interface IFileMeta {
   sizeBytes: number;
   storagePath: string;
   uploadedBy: string;
-  linkedEntityType?: 'note' | 'protocol' | 'inventory' | null;
+  linkedEntityType?: 'note' | 'template' | 'inventory' | null;
   linkedEntityId?: string | null;
   createdAt: string;
 }

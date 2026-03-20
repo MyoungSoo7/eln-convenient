@@ -7,10 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 노트 타입: 연구노트 vs 프로토콜
+// 노트 타입: 연구노트 vs 템플릿
 enum NoteType {
   note
-  protocol
+  template
 }
 
 enum NoteStatus {

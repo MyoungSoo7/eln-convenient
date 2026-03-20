@@ -114,6 +114,6 @@
       "defaultSummary": "Edit"
     }
   },
-  "sectionTemplate": "## Objective\nDescribe the research objective.\n\n## Materials\n- List of reagents/samples\n\n## Methods\n1. Experimental procedure\n\n## Results\nRecord experimental results\n\n## Discussion\nAnalysis and interpretation of results",
-  "sectionTemplateFromProtocol": "## Objective\n[{{category}}] Describe the objective.\n\n## Materials\n- List of reagents/samples\n\n## Methods\n1. Experimental procedure\n\n## Results\nRecord experimental results\n\n## Discussion\nAnalysis and interpretation\n\n---\n> 📋 Created from protocol \"{{title}}\""
+  "sectionTemplate": "## Last Week's Results\nDescribe the experiments performed last week.\n\n## This Week's Plan\nDescribe the experiments planned for this week.",
+  "sectionTemplateFromProtocol": "## Last Week's Results\n[{{category}}] Describe the experiments performed last week.\n\n## This Week's Plan\nDescribe the experiments planned for this week.\n\n---\n> 📋 Created from protocol \"{{title}}\""
 }

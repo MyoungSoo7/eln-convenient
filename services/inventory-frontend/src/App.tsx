@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Sidebar, { type Page } from './components/Sidebar';
 import InventoryPage from './pages/InventoryPage';
-import ProtocolPage from './pages/ProtocolPage';
+import TemplatePage from './pages/TemplatePage';
 import './App.css';
 
 export default function App() {
@@ -12,7 +12,7 @@ export default function App() {
       <Sidebar current={page} onChange={setPage} />
       <main className="app-main">
         {page === 'inventory' && <InventoryPage />}
-        {page === 'protocol' && <ProtocolPage />}
+        {page === 'template' && <TemplatePage />}
       </main>
     </div>
   );

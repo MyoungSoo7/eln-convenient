@@ -12,7 +12,7 @@ import { Search, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   listItems, createItem, updateItem, deleteItem,
-  adjustQuantity, getItemHistory, getCategories,
+  adjustQuantity, getItemHistory,
   getExpiringItems, getLowStockItems,
   type InventoryItem, type InventoryHistory,
 } from "@/api/inventory";
@@ -82,14 +82,12 @@ function AddEditDialog({
   open,
   onOpenChange,
   editItem,
-  categories,
   itemTypes,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editItem: InventoryItem | null;
-  categories: { id: string; name: string }[];
   itemTypes: CodeRecord[];
   onSaved: () => void;
 }) {
@@ -110,7 +108,7 @@ function AddEditDialog({
   const [form, setForm] = useState({
     name: "", type: "reagent" as InventoryItem["type"],
     status: "available" as InventoryItem["status"],
-    category: "", location: "", quantity: "",
+    location: "", quantity: "",
     unit: "", minQuantity: "", barcode: "",
     expiryDate: "", expiryWarningDays: "30", tags: "",
   });
@@ -121,7 +119,7 @@ function AddEditDialog({
         name: editItem.name,
         type: editItem.type,
         status: editItem.status,
-        category: editItem.category ?? "",
+
         location: editItem.location ?? "",
         quantity: editItem.quantity !== undefined ? String(editItem.quantity) : "",
         unit: editItem.unit ?? "",
@@ -133,7 +131,7 @@ function AddEditDialog({
       });
     } else {
       setForm({
-        name: "", type: "reagent", status: "available", category: "", location: "",
+        name: "", type: "reagent", status: "available", location: "",
         quantity: "", unit: "", minQuantity: "", barcode: "", expiryDate: "", expiryWarningDays: "30", tags: "",
       });
     }
@@ -146,7 +144,7 @@ function AddEditDialog({
       name: form.name.trim(),
       type: form.type,
       tags: form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-      ...(form.category && { category: form.category }),
+
       ...(form.location && { location: form.location }),
       ...(form.quantity && { quantity: Number(form.quantity) }),
       ...(form.unit && { unit: form.unit }),
@@ -210,27 +208,9 @@ function AddEditDialog({
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>{t('dialog.category')}</Label>
-              <Select
-                value={form.category || SENTINEL_ALL}
-                onValueChange={(v) => setForm((f) => ({ ...f, category: v === SENTINEL_ALL ? "" : v }))}
-                disabled={categories.length === 0}
-              >
-                <SelectTrigger><SelectValue placeholder={t('dialog.category')} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SENTINEL_ALL}>{t('dialog.categoryNone')}</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>{t('dialog.location')}</Label>
-              <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder={t('dialog.locationPlaceholder')} />
-            </div>
+          <div className="space-y-1">
+            <Label>{t('dialog.location')}</Label>
+            <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder={t('dialog.locationPlaceholder')} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
@@ -424,7 +404,7 @@ function DetailDialog({
               {([
                 [t('detail.type'), TYPE_LABELS[item.type] ?? item.type],
                 [t('detail.status'), STATUS_LABELS[item.status] ?? item.status],
-                [t('detail.category'), item.category ?? "-"],
+
                 [t('detail.location'), item.location ?? "-"],
                 [t('detail.quantity'), item.quantity !== undefined ? `${item.quantity} ${item.unit ?? ""}` : "-"],
                 [t('detail.minQuantity'), item.minQuantity !== undefined ? `${item.minQuantity} ${item.unit ?? ""}` : "-"],
@@ -524,10 +504,9 @@ export default function InventoryPage() {
   const [error, setError] = useState(false);
   const [typeTab, setTypeTab] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
   const [expiringCount, setExpiringCount] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
 
@@ -546,7 +525,7 @@ export default function InventoryPage() {
       if (exp.ok) setExpiringCount(exp.data.length);
       if (low.ok) setLowStockCount(low.data.length);
     });
-    getCategories().then((res) => { if (res.ok) setCategories(res.data); });
+
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -556,7 +535,7 @@ export default function InventoryPage() {
     const res = await listItems({
       type: apiType,
       status: statusFilter || undefined,
-      category: categoryFilter || undefined,
+
       q: debouncedQ || undefined,
     });
     if (res.ok) {
@@ -570,7 +549,7 @@ export default function InventoryPage() {
       toast.error((res as { ok: false; error: string }).error || t('listLoadFailed'));
     }
     setLoading(false);
-  }, [typeTab, statusFilter, categoryFilter, debouncedQ, t]);
+  }, [typeTab, statusFilter, debouncedQ, t]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
@@ -632,15 +611,6 @@ export default function InventoryPage() {
             <SelectItem value={SENTINEL_ALL}>{tc('all')}</SelectItem>
             {Object.entries(STATUS_LABELS).map(([k, v]) => (
               <SelectItem key={k} value={k}>{v}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={categoryFilter || SENTINEL_ALL} onValueChange={(v) => setCategoryFilter(v === SENTINEL_ALL ? "" : v)} disabled={categories.length === 0}>
-          <SelectTrigger className="w-32"><SelectValue placeholder={t('categoryAll')} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={SENTINEL_ALL}>{tc('all')}</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -728,7 +698,6 @@ export default function InventoryPage() {
         open={addOpen || !!editItem}
         onOpenChange={(v) => { if (!v) { setAddOpen(false); setEditItem(null); } }}
         editItem={editItem}
-        categories={categories}
         itemTypes={itemTypes}
         onSaved={loadItems}
       />

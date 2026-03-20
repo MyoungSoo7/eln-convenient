@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import type { CreateProtocolDto, CreateTemplateDto, Template } from '../types/protocol';
-import { createProtocol, createTemplate, fetchTemplates } from '../api/protocol';
-import './CreateProtocolModal.css';
+import type { CreateTemplateDocDto, CreateTemplateDto, Template } from '../types/template';
+import { createTemplateDoc, createTemplate, fetchTemplates } from '../api/template';
+import './CreateTemplateModal.css';
 
-type Mode = 'protocol' | 'template';
+type Mode = 'templateDoc' | 'template';
 
 interface Props {
   onClose: () => void;
@@ -13,7 +13,7 @@ interface Props {
 
 const CATEGORIES = ['실험법', '분석법', '품질관리', 'SOP', '안전절차', '기타'];
 
-export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 'protocol' }: Props) {
+export default function CreateTemplateModal({ onClose, onCreated, defaultMode = 'templateDoc' }: Props) {
   const [mode, setMode] = useState<Mode>(defaultMode);
 
   // ── 공통 폼 필드 ──
@@ -24,27 +24,26 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // ── 프로토콜 전용 ──
+  // ── 템플릿 문서 전용 ──
   const [templateId, setTemplateId] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
 
-  // ── 템플릿 전용 ──
+  // ── 템플릿 라이브러리 전용 ──
   const [category, setCategory] = useState('');
   const [isPublic, setIsPublic] = useState(true);
 
   useEffect(() => {
-    if (mode === 'protocol') {
+    if (mode === 'templateDoc') {
       setTemplatesLoading(true);
       fetchTemplates({ publicOnly: false })
         .then((res) => setTemplates(res.data))
-        .catch(() => {/* 템플릿 로드 실패 무시 */})
+        .catch(() => {})
         .finally(() => setTemplatesLoading(false));
     }
   }, [mode]);
 
-  // 템플릿 선택 시 내용 자동 채우기
   function selectTemplate(tpl: Template) {
     setTemplateId(tpl.id);
     if (!content) setContent(tpl.content ?? '');
@@ -69,15 +68,15 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
 
     setLoading(true);
     try {
-      if (mode === 'protocol') {
-        const dto: CreateProtocolDto = {
+      if (mode === 'templateDoc') {
+        const dto: CreateTemplateDocDto = {
           title: title.trim(),
-          type: 'protocol',
+          type: 'template',
           content: content || undefined,
           ...(templateId && { templateId }),
           tags,
         };
-        await createProtocol(dto);
+        await createTemplateDoc(dto);
       } else {
         const dto: CreateTemplateDto = {
           title: title.trim(),
@@ -107,18 +106,18 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
         <div className="cp-modal-header">
           <div className="cp-mode-tabs">
             <button
-              className={`cp-tab ${mode === 'protocol' ? 'active' : ''}`}
-              onClick={() => setMode('protocol')}
+              className={`cp-tab ${mode === 'templateDoc' ? 'active' : ''}`}
+              onClick={() => setMode('templateDoc')}
               type="button"
             >
-              새 프로토콜
+              새 템플릿
             </button>
             <button
               className={`cp-tab ${mode === 'template' ? 'active' : ''}`}
               onClick={() => setMode('template')}
               type="button"
             >
-              새 템플릿
+              새 양식
             </button>
           </div>
           <button className="cp-close" onClick={onClose} aria-label="닫기">✕</button>
@@ -130,19 +129,19 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
             {/* 제목 */}
             <div className="cp-field">
               <label className="cp-label required">
-                {mode === 'protocol' ? '프로토콜 제목' : '템플릿 제목'}
+                {mode === 'templateDoc' ? '템플릿 제목' : '양식 제목'}
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={mode === 'protocol' ? '예: PCR 증폭 프로토콜 v2' : '예: 기본 실험 절차'}
+                placeholder={mode === 'templateDoc' ? '예: PCR 증폭 템플릿 v2' : '예: 기본 실험 절차'}
                 className="cp-input"
                 required
               />
             </div>
 
-            {/* 템플릿 전용: 카테고리 & 공개 여부 */}
+            {/* 양식 전용: 카테고리 & 공개 여부 */}
             {mode === 'template' && (
               <div className="cp-row">
                 <div className="cp-field">
@@ -180,9 +179,9 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={
-                  mode === 'protocol'
-                    ? '프로토콜 내용을 입력하세요.\n\n1. 준비물\n2. 실험 절차\n3. 주의사항'
-                    : '재사용 가능한 템플릿 내용을 입력하세요.'
+                  mode === 'templateDoc'
+                    ? '템플릿 내용을 입력하세요.\n\n1. 준비물\n2. 실험 절차\n3. 주의사항'
+                    : '재사용 가능한 양식 내용을 입력하세요.'
                 }
                 className="cp-textarea"
                 rows={10}
@@ -218,18 +217,18 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
             {error && <p className="cp-error">{error}</p>}
           </div>
 
-          {/* 우측: 템플릿 선택 패널 (프로토콜 모드에서만) */}
-          {mode === 'protocol' && (
+          {/* 우측: 양식 선택 패널 (템플릿 문서 모드에서만) */}
+          {mode === 'templateDoc' && (
             <div className="cp-right">
               <div className="cp-tpl-header">
-                <span className="cp-tpl-title">템플릿으로 시작</span>
+                <span className="cp-tpl-title">양식으로 시작</span>
                 <span className="cp-tpl-sub">선택하면 내용이 자동으로 채워집니다</span>
               </div>
               <input
                 type="text"
                 value={templateSearch}
                 onChange={(e) => setTemplateSearch(e.target.value)}
-                placeholder="템플릿 검색..."
+                placeholder="양식 검색..."
                 className="cp-tpl-search"
               />
               <div className="cp-tpl-list">
@@ -238,15 +237,15 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
                   className={`cp-tpl-item ${templateId === '' ? 'selected' : ''}`}
                   onClick={() => { setTemplateId(''); }}
                 >
-                  <span className="cp-tpl-name">템플릿 없이 시작</span>
-                  <span className="cp-tpl-desc">빈 프로토콜로 시작합니다</span>
+                  <span className="cp-tpl-name">양식 없이 시작</span>
+                  <span className="cp-tpl-desc">빈 템플릿으로 시작합니다</span>
                 </button>
 
                 {templatesLoading ? (
-                  <div className="cp-tpl-loading">템플릿 불러오는 중...</div>
+                  <div className="cp-tpl-loading">양식 불러오는 중...</div>
                 ) : filteredTemplates.length === 0 ? (
                   <div className="cp-tpl-empty">
-                    {templateSearch ? '검색 결과 없음' : '등록된 템플릿이 없습니다'}
+                    {templateSearch ? '검색 결과 없음' : '등록된 양식이 없습니다'}
                   </div>
                 ) : (
                   filteredTemplates.map((tpl) => (
@@ -285,7 +284,7 @@ export default function CreateProtocolModal({ onClose, onCreated, defaultMode = 
               취소
             </button>
             <button type="submit" className="cp-btn cp-btn-primary" disabled={loading}>
-              {loading ? '저장 중...' : mode === 'protocol' ? '프로토콜 생성' : '템플릿 저장'}
+              {loading ? '저장 중...' : mode === 'templateDoc' ? '템플릿 생성' : '양식 저장'}
             </button>
           </div>
         </form>

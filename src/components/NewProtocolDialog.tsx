@@ -30,7 +30,7 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [sections, setSections] = useState<string[]>(["목적", "재료", "방법", "결과", "고찰"]);
+  const [sections, setSections] = useState<string[]>(["전주실적", "금주계획"]);
   const [newSection, setNewSection] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -40,7 +40,7 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
     setTitle("");
     setCategory("");
     setDescription("");
-    setSections(["목적", "재료", "방법", "결과", "고찰"]);
+    setSections(["전주실적", "금주계획"]);
     setNewSection("");
     setTagInput("");
     setTags([]);

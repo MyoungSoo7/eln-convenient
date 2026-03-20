@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // ─── Enums ───────────────────────────────────────
-export const LinkedEntityTypeEnum = z.enum(['note', 'protocol', 'inventory']);
+export const LinkedEntityTypeEnum = z.enum(['note', 'template', 'inventory']);
 export type LinkedEntityType = z.infer<typeof LinkedEntityTypeEnum>;
 
 // ─── 업로드 ──────────────────────────────────────

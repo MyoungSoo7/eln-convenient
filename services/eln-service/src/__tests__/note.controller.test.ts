@@ -425,11 +425,11 @@ describe('getTags', () => {
 
   it('type 쿼리 파라미터를 $queryRaw에 전달한다', async () => {
     mockQueryRaw.mockResolvedValue([]);
-    const req = makeReq({ query: { type: 'protocol' } });
+    const req = makeReq({ query: { type: 'template' } });
     const { res } = makeRes();
     await getTags(req, res);
     // $queryRaw tagged template literal: second argument is the type variable
     const callArgs = mockQueryRaw.mock.calls[0];
-    expect(callArgs[1]).toBe('protocol');
+    expect(callArgs[1]).toBe('template');
   });
 });

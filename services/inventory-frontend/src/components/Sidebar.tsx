@@ -1,6 +1,6 @@
 import './Sidebar.css';
 
-export type Page = 'inventory' | 'protocol';
+export type Page = 'inventory' | 'template';
 
 interface Props {
   current: Page;
@@ -9,7 +9,7 @@ interface Props {
 
 const NAV_ITEMS: { id: Page; icon: string; label: string; sub: string }[] = [
   { id: 'inventory', icon: '🧪', label: '인벤토리', sub: '시약·샘플·장비' },
-  { id: 'protocol', icon: '📋', label: '프로토콜', sub: '실험법·SOP' },
+  { id: 'template', icon: '📋', label: '템플릿', sub: '실험법·SOP' },
 ];
 
 export default function Sidebar({ current, onChange }: Props) {

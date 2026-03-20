@@ -63,14 +63,14 @@ router.get('/notes/:id/links',                   requirePermission(Permission.NO
 router.post('/notes/:id/links',                  requirePermission(Permission.NOTE_WRITE),   validate({ body: AddLinkSchema }), ctrl.createNoteLink);
 router.delete('/notes/:id/links/:linkId',        requirePermission(Permission.NOTE_WRITE),   ctrl.deleteNoteLink);
 
-// ─── 프로토콜 CRUD (type=protocol 필터) ──────────────────────
-// note.controller.ts의 동일 핸들러 재사용, ?type=protocol 쿼리 자동 주입
+// ─── 템플릿 CRUD (type=template 필터) ──────────────────────
+// note.controller.ts의 동일 핸들러 재사용, ?type=template 쿼리 자동 주입
 router.get('/protocols', requirePermission(Permission.NOTE_READ), (req, res, next) => {
-  req.query.type = 'protocol';
+  req.query.type = 'template';
   return ctrl.getNotes(req, res, next);
 });
 router.post('/protocols', requirePermission(Permission.NOTE_WRITE), (req, res, next) => {
-  req.body.type = 'protocol';
+  req.body.type = 'template';
   return ctrl.createNote(req, res, next);
 });
 router.get('/protocols/:id',    requirePermission(Permission.NOTE_READ),    ctrl.getNoteById);

@@ -76,7 +76,7 @@ async function nextRevision(noteId: string) {
 // 연구노트 CRUD
 // ─────────────────────────────────────────────
 
-/** GET /api/notes  또는  GET /api/protocols */
+/** GET /api/notes  또는  GET /api/protocols (템플릿) */
 export const getNotes = asyncHandler(async (req: Request, res: Response) => {
   const { status, tag, search, page = '1', limit = '20', type, templateId } = req.query;
   const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -118,7 +118,7 @@ export const getNoteById = asyncHandler(async (req: Request, res: Response) => {
   res.json({ ok: true, data: note });
 });
 
-/** POST /api/notes  또는  POST /api/protocols */
+/** POST /api/notes  또는  POST /api/protocols (템플릿) */
 export const createNote = asyncHandler(async (req: Request, res: Response) => {
   const { title, content, sections, templateId, tags, type } = req.body;
   const authorId = (req.headers['x-user-id'] as string) || 'anonymous';
@@ -147,7 +147,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
       content: note.content,
       sections: (note.sections as object) ?? [],
       changedBy: authorId,
-      changeSummary: noteType === 'protocol' ? '프로토콜 생성' : '노트 생성',
+      changeSummary: noteType === 'template' ? '템플릿 생성' : '노트 생성',
     },
   });
 
@@ -165,7 +165,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
   searchClient.index({
     id: note.id,
     doc: {
-      domainType: note.type === 'protocol' ? 'PROTOCOL' : 'NOTE',
+      domainType: note.type === 'template' ? 'TEMPLATE' : 'NOTE',
       title: note.title,
       content: note.content,
       tags: note.tags,
@@ -249,7 +249,7 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
   searchClient.index({
     id: updated.id,
     doc: {
-      domainType: updated.type === 'protocol' ? 'PROTOCOL' : 'NOTE',
+      domainType: updated.type === 'template' ? 'TEMPLATE' : 'NOTE',
       title: updated.title,
       content: updated.content,
       tags: updated.tags,
@@ -585,7 +585,7 @@ export const deleteNoteLink = asyncHandler(async (req: Request, res: Response) =
 // 태그 (전체 태그 목록)
 // ─────────────────────────────────────────────
 
-/** GET /api/tags?type=note|protocol */
+/** GET /api/tags?type=note|template */
 export const getTags = asyncHandler(async (req: Request, res: Response) => {
   const type = (req.query.type as NoteType) || 'note';
   const orgId = getOrgId(req);

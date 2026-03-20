@@ -1,4 +1,4 @@
-export type NoteType = 'note' | 'protocol';
+export type NoteType = 'note' | 'template';
 export type NoteStatus = 'draft' | 'in_progress' | 'signed' | 'locked';
 
 export const NOTE_STATUS_LABELS: Record<NoteStatus, string> = {
@@ -15,7 +15,7 @@ export const NOTE_STATUS_COLORS: Record<NoteStatus, string> = {
   locked: '#dc2626',
 };
 
-export interface Protocol {
+export interface TemplateDoc {
   id: string;
   type: NoteType;
   title: string;
@@ -55,10 +55,10 @@ export interface TemplateFilters {
   limit: number;
 }
 
-export interface CreateProtocolDto {
+export interface CreateTemplateDocDto {
   title: string;
   content?: string;
-  type: 'protocol';
+  type: 'template';
   templateId?: string;
   tags?: string[];
   sections?: Record<string, unknown>;
@@ -74,7 +74,7 @@ export interface CreateTemplateDto {
   isPublic?: boolean;
 }
 
-export interface ProtocolFilters {
+export interface TemplateDocFilters {
   q: string;
   status: NoteStatus | '';
   tag: string;
