@@ -6,7 +6,6 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardData } from "@/api/dashboard";
-import { mockNotes, mockBookings, mockAuditLog, mockInventory } from "@/lib/mockData";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -28,11 +27,11 @@ export default function Dashboard() {
 
   const apiData = dashboardRes?.ok ? dashboardRes.data : null;
 
-  // stats 카드: API 데이터 우선, fallback mock
-  const noteTotal = apiData?.notes?.total ?? mockNotes.length;
-  const noteInProgress = apiData?.notes?.in_progress ?? mockNotes.filter(n => n.status === 'in_progress').length;
-  const invTotal = apiData?.inventory?.total ?? mockInventory.length;
-  const pendingBookings = apiData?.scheduler?.pendingBookings ?? mockBookings.filter(b => b.status === 'pending').length;
+  // stats 카드: API 데이터 우선, 없으면 0
+  const noteTotal = apiData?.notes?.total ?? 0;
+  const noteInProgress = apiData?.notes?.in_progress ?? 0;
+  const invTotal = apiData?.inventory?.total ?? 0;
+  const pendingBookings = apiData?.scheduler?.pendingBookings ?? 0;
 
   const stats = [
     { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip') },
@@ -41,32 +40,20 @@ export default function Dashboard() {
     { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip') },
   ];
 
-  // 최근 노트: API → mock fallback
-  const recentNotes = apiData?.recentNotes?.length
-    ? apiData.recentNotes.slice(0, 4)
-    : mockNotes.slice(0, 4);
+  // 최근 노트
+  const recentNotes = apiData?.recentNotes?.slice(0, 4) ?? [];
 
-  // 예약 일정: API → mock fallback
-  const upcomingBookings = apiData?.upcomingBookings?.length
-    ? apiData.upcomingBookings.slice(0, 4)
-    : null;
-  const bookingsFromMock = !upcomingBookings ? mockBookings.slice(0, 4) : null;
+  // 예약 일정
+  const upcomingBookings = apiData?.upcomingBookings?.slice(0, 4) ?? [];
 
-  // 감사로그: API → mock fallback
-  const auditLogs = apiData?.recentActivity?.length
-    ? apiData.recentActivity.slice(0, 4)
-    : null;
-  const auditFromMock = !auditLogs ? mockAuditLog.slice(0, 4) : null;
+  // 감사로그
+  const auditLogs = apiData?.recentActivity?.slice(0, 4) ?? [];
 
-  // 만료/주의 항목: API → mock fallback
+  // 만료/주의 항목
   const alertItems = [
     ...(apiData?.lowStockItems ?? []),
     ...(apiData?.expiringItems ?? []),
   ];
-  const hasAlertItems = alertItems.length > 0;
-  const alertFromMock = !hasAlertItems
-    ? mockInventory.filter(i => i.status === 'expired' || i.status === 'depleted')
-    : null;
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -118,7 +105,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentNotes.map((note) => (
+            {recentNotes.length > 0 ? recentNotes.map((note) => (
               <Link key={note.id} to={`/notes/${note.id}`} className="flex items-start justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors group">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{note.title}</p>
@@ -132,7 +119,9 @@ export default function Dashboard() {
                   {tc(`status.${note.status}`)}
                 </Badge>
               </Link>
-            ))}
+            )) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('emptyNotes')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -148,7 +137,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {upcomingBookings ? upcomingBookings.map((b) => {
+            {upcomingBookings.length > 0 ? upcomingBookings.map((b) => {
               const startDate = new Date(b.startAt);
               const endDate = new Date(b.endAt);
               const dateStr = startDate.toLocaleDateString('ko-KR');
@@ -169,20 +158,9 @@ export default function Dashboard() {
                   </Badge>
                 </div>
               );
-            }) : bookingsFromMock?.map((b) => (
-              <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                <div className={`p-2 rounded-lg ${b.status === 'approved' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                  <CalendarDays className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{b.resourceName}</p>
-                  <p className="text-xs text-muted-foreground">{b.date} {b.startTime}–{b.endTime} · {b.user}</p>
-                </div>
-                <Badge variant="secondary" className={`text-[10px] ${b.status === 'approved' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                  {b.status === 'approved' ? t('approved') : t('pending')}
-                </Badge>
-              </div>
-            ))}
+            }) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('emptyBookings')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -195,7 +173,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {auditLogs ? auditLogs.map((a) => (
+            {auditLogs.length > 0 ? auditLogs.map((a) => (
               <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                 <div className="p-2 rounded-lg bg-muted">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -206,18 +184,9 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">{a.userId ?? a.actorId} · {new Date(a.createdAt).toLocaleString('ko-KR')}</p>
                 </div>
               </div>
-            )) : auditFromMock?.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                <div className="p-2 rounded-lg bg-muted">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{a.action}</p>
-                  <p className="text-xs text-muted-foreground truncate">{a.details}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{a.user} · {a.timestamp}</p>
-                </div>
-              </div>
-            ))}
+            )) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('noActivity')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -230,7 +199,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {hasAlertItems ? alertItems.slice(0, 5).map((item) => (
+            {alertItems.length > 0 ? alertItems.slice(0, 5).map((item) => (
               <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -240,14 +209,6 @@ export default function Dashboard() {
                     {item.location && ` · ${item.location}`}
                     {'daysLeft' in item && ` · ${(item as any).isExpired ? t('isExpired') : t('daysLeft', { count: (item as any).daysLeft })}`}
                   </p>
-                </div>
-              </div>
-            )) : alertFromMock && alertFromMock.length > 0 ? alertFromMock.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
-                <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.quantity} {item.unit} · {item.location}</p>
                 </div>
               </div>
             )) : (

@@ -1,4 +1,3 @@
-import { Request } from 'express';
 import { AppError } from './errors';
 import { ErrorCode } from './error-codes';
 
@@ -7,8 +6,8 @@ import { ErrorCode } from './error-codes';
  * API Gateway가 JWT에서 주입한 x-user-org-id 헤더를 사용.
  * 값이 없으면 AppError(403)을 throw한다.
  */
-export function getOrgId(req: Request): string {
-  const orgId = req.headers['x-user-org-id'] as string | undefined;
+export function getOrgId(headers: Record<string, string | string[] | undefined>): string {
+  const orgId = headers['x-user-org-id'] as string | undefined;
   if (!orgId) {
     throw new AppError(403, '조직 정보가 없습니다.', ErrorCode.FORBIDDEN);
   }

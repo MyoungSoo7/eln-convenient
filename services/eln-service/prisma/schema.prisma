@@ -81,6 +81,8 @@ model NoteLink {
   createdBy  String   @default("")
   createdAt  DateTime @default(now())
   note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
 }
 
 model Attachment {
@@ -93,6 +95,8 @@ model Attachment {
   uploadedBy String
   createdAt  DateTime @default(now())
   note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
 }
 
 model Code {

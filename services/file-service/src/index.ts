@@ -1,65 +1,26 @@
-import express from 'express';
-import cors from 'cors';
-import swaggerUi from 'swagger-ui-express';
-import fileRoutes from './routes/file.routes';
-import exportRoutes from './routes/export.routes';
-import { swaggerDocument } from './swagger';
+import '@lab/shared/dist/tracing';
+import { buildApp } from './app';
+import { setupProcessHandlers, createLogger } from '@lab/shared';
 import { ensureBucket, ensureExportsBucketLifecycle } from './lib/minio';
 import { startWorker, startExpiryCleanup, startSoftDeleteCleanup, registerProcessor } from './lib/jobWorker';
 import { processPdfJob } from './processors/pdfProcessor';
 import { processZipJob } from './processors/zipProcessor';
-import prisma from './lib/prisma';
-import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-const { logger, httpLogger } = createHttpLogger('file-service');
+const logger = createLogger('file-service');
 
-setupProcessHandlers('file-service', logger, {
-  onShutdown: () => prisma.$disconnect(),
-});
+setupProcessHandlers('file-service', logger);
 
-const app = express();
-const PORT = process.env.PORT || 8008;
+const PORT = Number(process.env.PORT) || 8008;
+const HOST = '0.0.0.0';
 
-app.use(cors());
-app.use(express.json());
-app.use(httpLogger);
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/health', async (_req, res) => {
-  let dbOk = false;
-  let minioOk = false;
-  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
+async function main(): Promise<void> {
+  const app = buildApp();
   try {
-    const { s3, BUCKET } = await import('./lib/minio');
-    const { HeadBucketCommand } = await import('@aws-sdk/client-s3');
-    await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
-    minioOk = true;
-  } catch {}
-  const healthy = dbOk && minioOk;
-  res.status(healthy ? 200 : 503).json({
-    status: healthy ? 'ok' : 'degraded',
-    service: 'file-service',
-    timestamp: new Date().toISOString(),
-    db: dbOk ? 'ok' : 'error',
-    minio: minioOk ? 'ok' : 'error',
-  });
-});
-
-app.use('/api/files', fileRoutes);
-app.use('/api/exports', exportRoutes);
-
-app.use(globalErrorHandler('file-service', logger));
-
-app.listen(PORT, async () => {
-  logger.info({ port: PORT }, '서버 시작');
-  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
-
-  // DB 연결 확인 — 실패 시 서비스 종료
-  try {
-    await prisma.$connect();
-    logger.info('PostgreSQL 연결 완료');
+    await app.listen({ port: PORT, host: HOST });
+    logger.info({ port: PORT }, '서버 시작');
+    logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
   } catch (err) {
-    logger.fatal({ err }, 'PostgreSQL 연결 실패 — 서비스를 종료합니다');
+    logger.error(err);
     process.exit(1);
   }
 
@@ -79,6 +40,6 @@ app.listen(PORT, async () => {
   } catch (err) {
     logger.error({ err }, 'MinIO 버킷 초기화 실패 (나중에 재시도)');
   }
-});
+}
 
-export default app;
+main();

@@ -29,9 +29,10 @@ export async function registerDashboard(app: FastifyInstance) {
   app.get('/api/dashboard', async (request, reply) => {
     const userId      = (request.headers as any)['x-user-id']    as string;
     const userRole    = (request.headers as any)['x-user-role']  as string;
+    const userOrgId   = (request.headers as any)['x-user-org-id'] as string;
 
-    // Redis 캐시 확인 (5분 TTL, 역할 기준 캐싱)
-    const cacheKey = `cache:dashboard:${userRole || 'default'}`;
+    // Redis 캐시 확인 (5분 TTL, 조직+역할 기준 캐싱)
+    const cacheKey = `cache:dashboard:${userOrgId || 'default'}:${userRole || 'default'}`;
     if (redis) {
       try {
         const cached = await redis.get(cacheKey);
@@ -44,6 +45,7 @@ export async function registerDashboard(app: FastifyInstance) {
       'x-user-id': userId || 'system',
       'x-user-role': userRole || 'admin',
       'x-user-permissions': JSON.stringify(['*']),
+      'x-user-org-id': userOrgId || '',
     };
 
     const today = new Date().toISOString().slice(0, 10);
@@ -60,13 +62,8 @@ export async function registerDashboard(app: FastifyInstance) {
       recentNotes,
       upcomingBookings,
     ] = await Promise.allSettled([
-      // 1) 노트 상태별 카운트 (raw=true: total 필드 포함된 전체 body 필요)
-      Promise.all([
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=draft&limit=1`, internalHeaders, true),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=in_progress&limit=1`, internalHeaders, true),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=signed&limit=1`, internalHeaders, true),
-        safeGet<any>(`${ELN_URL}/api/notes?type=note&status=locked&limit=1`, internalHeaders, true),
-      ]),
+      // 1) 노트 상태별 카운트 (stats API 1회 호출)
+      safeGet<any>(`${ELN_URL}/api/notes/stats?type=note`, internalHeaders),
       // 2) 규정준수 통계 (서명완료/대기/잠금 카운트)
       safeGet<any>(`${SIG_URL}/api/signatures/compliance/stats`, internalHeaders),
       // 3) 인벤토리 전체 카운트 (raw=true: total 필드 포함된 전체 body 필요)
@@ -88,13 +85,13 @@ export async function registerDashboard(app: FastifyInstance) {
     // ── 노트 통계 조합 ──
     let notes: Record<string, number | null> = { draft: null, in_progress: null, signed: null, locked: null, total: null };
     if (noteStats.status === 'fulfilled' && noteStats.value) {
-      const [draft, inProgress, signed, locked] = noteStats.value;
+      const s = noteStats.value;
       notes = {
-        draft:       draft?.total        ?? null,
-        in_progress: inProgress?.total   ?? null,
-        signed:      signed?.total       ?? null,
-        locked:      locked?.total       ?? null,
-        total: (draft?.total ?? 0) + (inProgress?.total ?? 0) + (signed?.total ?? 0) + (locked?.total ?? 0),
+        draft:       s.draft       ?? null,
+        in_progress: s.in_progress ?? null,
+        signed:      s.signed      ?? null,
+        locked:      s.locked      ?? null,
+        total:       s.total       ?? null,
       };
     }
 

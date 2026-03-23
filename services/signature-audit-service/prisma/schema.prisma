@@ -40,6 +40,8 @@ model AuditLog {
   @@index([createdAt])
   @@index([actorId, createdAt])
   @@index([orgId, createdAt])
+  @@index([orgId, action])
+  @@index([orgId, entityType, createdAt])
 }
 
 model ExportJob {
@@ -59,6 +61,7 @@ model ExportJob {
   @@index([requestedBy])
   @@index([status])
   @@index([createdAt])
+  @@index([orgId])
 }
 
 enum SignatureStatus {

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,21 +10,22 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
 import LoginPage from "./pages/LoginPage";
 import SsoCallbackPage from "./pages/SsoCallbackPage";
-import Dashboard from "./pages/Dashboard";
-import NotesPage from "./pages/NotesPage";
-import NoteEditor from "./pages/NoteEditor";
-import ProtocolsPage from "./pages/ProtocolsPage";
-import InventoryPage from "./pages/InventoryPage";
-import SchedulerPage from "./pages/SchedulerPage";
-import SearchPage from "./pages/SearchPage";
-import SignaturesPage from "./pages/SignaturesPage";
-import AuditLogsPage from "./pages/AuditLogsPage";
-import ExportsPage from "./pages/ExportsPage";
-import OrgTeamUserPage from "./pages/admin/OrgTeamUserPage";
-import RolesPage from "./pages/admin/RolesPage";
-import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
-import CodeManagePage from "./pages/admin/CodeManagePage";
-import NotFound from "./pages/NotFound";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const NotesPage = lazy(() => import("./pages/NotesPage"));
+const NoteEditor = lazy(() => import("./pages/NoteEditor"));
+const ProtocolsPage = lazy(() => import("./pages/ProtocolsPage"));
+const InventoryPage = lazy(() => import("./pages/InventoryPage"));
+const SchedulerPage = lazy(() => import("./pages/SchedulerPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const SignaturesPage = lazy(() => import("./pages/SignaturesPage"));
+const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
+const ExportsPage = lazy(() => import("./pages/ExportsPage"));
+const OrgTeamUserPage = lazy(() => import("./pages/admin/OrgTeamUserPage"));
+const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
+const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
+const CodeManagePage = lazy(() => import("./pages/admin/CodeManagePage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +54,7 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AppLayout>
+                    <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/notes" element={<NotesPage />} />
@@ -69,6 +72,7 @@ const App = () => (
                       <Route path="/admin/codes" element={<AdminRoute><CodeManagePage /></AdminRoute>} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
+                    </Suspense>
                   </AppLayout>
                 </ProtectedRoute>
               }

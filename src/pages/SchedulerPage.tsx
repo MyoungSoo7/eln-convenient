@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +113,23 @@ export default function SchedulerPage() {
 
   const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
+
+  // 캘린더 그리드용 booking 인덱스 (O(n) 사전 구성 → O(1) 룩업)
+  const bookingIndex = useMemo(() => {
+    const map = new Map<string, BackendBooking>();
+    for (const b of bookings) {
+      if (!["PENDING", "APPROVED"].includes(b.status)) continue;
+      const bDate = toLocalDate(b.startAt);
+      const bStart = toLocalHHMM(b.startAt);
+      const bEnd = toLocalHHMM(b.endAt);
+      for (const hour of hours) {
+        if (bStart <= hour && bEnd > hour) {
+          map.set(`${bDate}_${hour}`, b);
+        }
+      }
+    }
+    return map;
+  }, [bookings]);
 
   // 자원 + 예약 목록 로드 (상태 필터: 전체/대기/승인)
   const loadData = useCallback(async () => {
@@ -434,13 +451,7 @@ export default function SchedulerPage() {
               </div>
               {weekDates.map((d, i) => {
                 const dateStr = formatDate(d);
-                const booking = bookings.find((b) => {
-                  if (!["PENDING", "APPROVED"].includes(b.status)) return false;
-                  const bDate = toLocalDate(b.startAt);
-                  const bStart = toLocalHHMM(b.startAt);
-                  const bEnd = toLocalHHMM(b.endAt);
-                  return bDate === dateStr && bStart <= hour && bEnd > hour;
-                });
+                const booking = bookingIndex.get(`${dateStr}_${hour}`);
                 return (
                   <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
                     {booking && toLocalHHMM(booking.startAt) === hour && (

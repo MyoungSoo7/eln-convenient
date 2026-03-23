@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
-import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId, Permission } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId, Permission } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { publishEvent } from '../lib/queue';
 import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
@@ -83,10 +83,10 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
 // ─────────────────────────────────────────────
 
 /** POST /api/signatures/sign/:noteId */
-export const signNote = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const signerId = (req.headers['x-user-id'] as string) || 'anonymous';
-  const { noteId } = req.params;
-  const { comment, password } = req.body;
+export async function signNote(request: FastifyRequest, reply: FastifyReply) {
+  const signerId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const { noteId } = request.params as { noteId: string };
+  const { comment, password } = request.body as any;
 
   // 비밀번호 검증 (제공된 경우 필수 확인)
   if (password) {
@@ -130,7 +130,7 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
       entityId: noteId,
       action: 'signed',
       actorId: signerId,
-      orgId: getOrgId(req),
+      orgId: getOrgId(request.headers),
       details: {
         signatureId: signature.id,
         hash: signatureHash,
@@ -138,7 +138,7 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
         prevHash,
         comment: comment ?? null,
       },
-      ipAddress: req.ip,
+      ipAddress: request.ip,
     },
   });
 
@@ -153,7 +153,7 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
         data: {
           id: uuidv4(),
           recipientId: note.authorId,
-          orgId: getOrgId(req),
+          orgId: getOrgId(request.headers),
           type: 'NOTE_SIGNED',
           entityType: 'note',
           entityId: noteId,
@@ -167,35 +167,35 @@ export const signNote = asyncHandler(async (req: Request, res: Response): Promis
     logger.warn({ noteId, err: notifErr }, '서명 알림 실패');
   }
 
-  res.status(201).json({
+  reply.code(201);
+  return {
     ok: true,
     data: signature,
     message: '전자서명이 완료되었습니다. 노트가 서명 완료 상태로 전환되었습니다.',
     ...(statusUpdated ? {} : { warning: '서명은 저장되었으나 노트 상태 전환이 지연될 수 있습니다. 잠시 후 자동 반영됩니다.' }),
-  });
-});
+  };
+}
 
 /** GET /api/signatures/:noteId — 노트의 서명 목록 조회 */
-export const listSignatures = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { noteId } = req.params;
+export async function listSignatures(request: FastifyRequest, reply: FastifyReply) {
+  const { noteId } = request.params as { noteId: string };
   const signatures = await prisma.signature.findMany({
     where: { noteId },
     orderBy: { chainIndex: 'asc' },
   });
-  res.json({ ok: true, data: signatures, total: signatures.length });
-});
+  return { ok: true, data: signatures, total: signatures.length };
+}
 
 /** GET /api/signatures/verify/:noteId — 해시 체인 전체 무결성 검증 */
-export const verifySignature = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { noteId } = req.params;
+export async function verifySignature(request: FastifyRequest, reply: FastifyReply) {
+  const { noteId } = request.params as { noteId: string };
   const signatures = await prisma.signature.findMany({
     where: { noteId, status: 'valid' },
     orderBy: { chainIndex: 'asc' },
   });
 
   if (signatures.length === 0) {
-    res.json({ ok: true, noteId, verified: false, message: '유효한 서명이 없습니다.' });
-    return;
+    return { ok: true, noteId, verified: false, message: '유효한 서명이 없습니다.' };
   }
 
   let chainIntact = true;
@@ -217,7 +217,7 @@ export const verifySignature = asyncHandler(async (req: Request, res: Response):
     }
   }
 
-  res.json({
+  return {
     ok: true,
     noteId,
     verified: chainIntact,
@@ -228,23 +228,24 @@ export const verifySignature = asyncHandler(async (req: Request, res: Response):
       ? `서명 체인이 유효합니다. (${signatures.length}개 서명)`
       : '서명 체인 무결성 오류가 감지되었습니다.',
     verifiedAt: new Date().toISOString(),
-  });
-});
+  };
+}
 
 /**
  * POST /api/signatures/revoke/:signatureId — 서명 취소 (admin 전용)
  * 해시 체인 무결성을 위해 실제 삭제 대신 status=revoked 처리
  */
-export const revokeSignature = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userRole = req.headers['x-user-role'] as string;
+export async function revokeSignature(request: FastifyRequest, reply: FastifyReply) {
+  const userRole = request.headers['x-user-role'] as string;
   if (userRole !== 'admin') {
     throw new AppError(403, '서명 취소는 관리자만 가능합니다.', ErrorCode.SIGNATURE_ADMIN_ONLY);
   }
 
-  const { reason } = req.body;
-  const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
+  const { reason } = request.body as any;
+  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
 
-  const sig = await prisma.signature.findUnique({ where: { id: req.params.signatureId } });
+  const { signatureId } = request.params as { signatureId: string };
+  const sig = await prisma.signature.findUnique({ where: { id: signatureId } });
   if (!sig) {
     throw new AppError(404, '서명을 찾을 수 없습니다.', ErrorCode.SIGNATURE_NOT_FOUND);
   }
@@ -252,9 +253,10 @@ export const revokeSignature = asyncHandler(async (req: Request, res: Response):
     throw new AppError(400, '이미 취소된 서명입니다.', ErrorCode.SIGNATURE_ALREADY_REVOKED);
   }
 
+  let updated;
   try {
-    var updated = await prisma.signature.update({
-      where: { id: req.params.signatureId },
+    updated = await prisma.signature.update({
+      where: { id: signatureId },
       data: { status: 'revoked' },
     });
   } catch (err: any) {
@@ -271,19 +273,20 @@ export const revokeSignature = asyncHandler(async (req: Request, res: Response):
       entityId: sig.id,
       action: 'revoked',
       actorId,
-      orgId: getOrgId(req),
+      orgId: getOrgId(request.headers),
       details: { noteId: sig.noteId, reason, chainIndex: sig.chainIndex },
-      ipAddress: req.ip,
+      ipAddress: request.ip,
     },
   });
 
-  res.json({ ok: true, data: updated, message: '서명이 취소되었습니다.' });
-});
+  return { ok: true, data: updated, message: '서명이 취소되었습니다.' };
+}
 
 /** GET /api/signatures/compliance/stats */
-export const getComplianceStats = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+export async function getComplianceStats(request: FastifyRequest, reply: FastifyReply) {
+  let signed: number, pending: number, locked: number, draft: number, totalSignatures: number;
   try {
-    var [signed, pending, locked, draft, totalSignatures] = await Promise.all([
+    [signed, pending, locked, draft, totalSignatures] = await Promise.all([
       fetchNoteCount('signed'),
       fetchNoteCount('in_progress'),
       fetchNoteCount('locked'),
@@ -297,15 +300,15 @@ export const getComplianceStats = asyncHandler(async (req: Request, res: Respons
     throw err;
   }
 
-  res.json({
+  return {
     ok: true,
     data: { signed, pending, locked, draft, totalSignatures },
-  });
-});
+  };
+}
 
 /** GET /api/signatures/compliance/list */
-export const getComplianceList = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { status, page, limit } = req.query as unknown as { status?: string; page: number; limit: number };
+export async function getComplianceList(request: FastifyRequest, reply: FastifyReply) {
+  const { status, page, limit } = request.query as unknown as { status?: string; page: number; limit: number };
 
   const params: Record<string, string> = {
     type: 'note',
@@ -362,12 +365,12 @@ export const getComplianceList = asyncHandler(async (req: Request, res: Response
     };
   });
 
-  res.json({ ok: true, data, total: noteList.total, page });
-});
+  return { ok: true, data, total: noteList.total, page };
+}
 
 /** GET /api/signatures/editable/:noteId */
-export const getNoteEditable = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { noteId } = req.params;
+export async function getNoteEditable(request: FastifyRequest, reply: FastifyReply) {
+  const { noteId } = request.params as { noteId: string };
 
   let note;
   try {
@@ -388,8 +391,8 @@ export const getNoteEditable = asyncHandler(async (req: Request, res: Response):
     ? 'editable'
     : note.status === 'locked' ? 'locked' : 'signed';
 
-  res.json({
+  return {
     ok: true,
     data: { noteId: note.id, status: note.status, editable, reason },
-  });
-});
+  };
+}

@@ -43,9 +43,13 @@ function ExportJobPoller({ job, onDone }: { job: ExportJob; onDone: (finished: E
 
   const current = data ?? job;
 
+  useEffect(() => {
+    if (current.status === "completed" || current.status === "failed") {
+      onDone(current);
+    }
+  }, [current.status]);
+
   if (current.status === "completed" || current.status === "failed") {
-    // 완료 시 부모에게 알림 (한 번만)
-    onDone(current);
     return null;
   }
 

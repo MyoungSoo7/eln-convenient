@@ -1,38 +1,40 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
-import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 
 const logger = createLogger('search-service');
 
 /** POST /api/search/history — 검색어 저장 */
-export const saveHistory = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userId = req.headers['x-user-id'] as string;
-  const { query } = req.body;
+export async function saveHistory(request: FastifyRequest, reply: FastifyReply) {
+  const userId = request.headers['x-user-id'] as string;
+  const { query } = request.body as { query: string };
 
   const entry = await prisma.searchHistory.create({
-    data: { id: uuidv4(), userId, orgId: getOrgId(req), query: query.trim() },
+    data: { id: uuidv4(), userId, orgId: getOrgId(request.headers), query: query.trim() },
   });
-  res.status(201).json({ ok: true, data: entry });
-});
+  reply.code(201);
+  return { ok: true, data: entry };
+}
 
 /** GET /api/search/history — 사용자별 최근 검색어 (최근 20개) */
-export const getHistory = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userId = req.headers['x-user-id'] as string;
+export async function getHistory(request: FastifyRequest, reply: FastifyReply) {
+  const userId = request.headers['x-user-id'] as string;
 
   const history = await prisma.searchHistory.findMany({
-    where: { userId, orgId: getOrgId(req) },
+    where: { userId, orgId: getOrgId(request.headers) },
     orderBy: { createdAt: 'desc' },
     take: 20,
   });
-  res.json({ ok: true, data: history, total: history.length });
-});
+  return { ok: true, data: history, total: history.length };
+}
 
 /** DELETE /api/search/history/:id — 특정 검색어 삭제 */
-export const deleteHistoryEntry = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userId = req.headers['x-user-id'] as string;
+export async function deleteHistoryEntry(request: FastifyRequest, reply: FastifyReply) {
+  const userId = request.headers['x-user-id'] as string;
+  const { id } = request.params as { id: string };
 
-  const entry = await prisma.searchHistory.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+  const entry = await prisma.searchHistory.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!entry) {
     throw new AppError(404, '검색 기록을 찾을 수 없습니다.', ErrorCode.SEARCH_HISTORY_NOT_FOUND);
   }
@@ -40,14 +42,14 @@ export const deleteHistoryEntry = asyncHandler(async (req: Request, res: Respons
     throw new AppError(403, '본인의 검색 기록만 삭제할 수 있습니다.', ErrorCode.SEARCH_PERMISSION_DENIED);
   }
 
-  await prisma.searchHistory.delete({ where: { id: req.params.id } });
-  res.json({ ok: true, message: '검색 기록이 삭제되었습니다.', id: req.params.id });
-});
+  await prisma.searchHistory.delete({ where: { id } });
+  return { ok: true, message: '검색 기록이 삭제되었습니다.', id };
+}
 
 /** DELETE /api/search/history — 사용자 전체 검색 기록 삭제 */
-export const clearHistory = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const userId = req.headers['x-user-id'] as string;
+export async function clearHistory(request: FastifyRequest, reply: FastifyReply) {
+  const userId = request.headers['x-user-id'] as string;
 
-  const { count } = await prisma.searchHistory.deleteMany({ where: { userId, orgId: getOrgId(req) } });
-  res.json({ ok: true, message: `검색 기록 ${count}건이 삭제되었습니다.`, count });
-});
+  const { count } = await prisma.searchHistory.deleteMany({ where: { userId, orgId: getOrgId(request.headers) } });
+  return { ok: true, message: `검색 기록 ${count}건이 삭제되었습니다.`, count };
+}

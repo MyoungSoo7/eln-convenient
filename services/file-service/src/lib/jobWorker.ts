@@ -106,21 +106,25 @@ export function startExpiryCleanup() {
         where: { status: 'COMPLETED', expiresAt: { lt: new Date() } },
         include: { resultFile: true },
       });
-      for (const job of expired) {
-        if (job.resultFile) {
-          await deleteObjectFromBucket(job.resultFile.bucket, job.resultFile.objectKey);
-          await prisma.$transaction([
-            prisma.file.update({
-              where: { id: job.resultFile.id },
-              data: { isDeleted: true, deletedAt: new Date() },
-            }),
-            prisma.exportJob.delete({ where: { id: job.id } }),
-          ]);
-        } else {
-          await prisma.exportJob.delete({ where: { id: job.id } });
+      await Promise.allSettled(expired.map(async (job) => {
+        try {
+          if (job.resultFile) {
+            await deleteObjectFromBucket(job.resultFile.bucket, job.resultFile.objectKey);
+            await prisma.$transaction([
+              prisma.file.update({
+                where: { id: job.resultFile.id },
+                data: { isDeleted: true, deletedAt: new Date() },
+              }),
+              prisma.exportJob.delete({ where: { id: job.id } }),
+            ]);
+          } else {
+            await prisma.exportJob.delete({ where: { id: job.id } });
+          }
+          console.log(`[jobWorker] 만료 job 정리: ${job.id}`);
+        } catch (err) {
+          console.error(`[jobWorker] 만료 job 정리 실패 ${job.id}:`, err);
         }
-        console.log(`[jobWorker] 만료 job 정리: ${job.id}`);
-      }
+      }));
     } catch (err) {
       console.error('[jobWorker] 만료 정리 실패:', err);
     }
@@ -140,14 +144,14 @@ export function startSoftDeleteCleanup() {
         take: 100, // 배치 크기 제한
       });
 
-      for (const file of softDeleted) {
+      await Promise.allSettled(softDeleted.map(async (file) => {
         try {
           await deleteObjectFromBucket(file.bucket, file.objectKey);
           await prisma.file.delete({ where: { id: file.id } });
         } catch (err) {
           console.error(`[cleanup] 파일 물리 삭제 실패 ${file.id}:`, err);
         }
-      }
+      }));
 
       if (softDeleted.length > 0) {
         console.log(`[cleanup] soft-delete 파일 ${softDeleted.length}개 물리 삭제 완료`);

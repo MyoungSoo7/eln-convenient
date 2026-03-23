@@ -133,10 +133,14 @@ services:
       - RESEARCHER_INITIAL_PASSWORD=${RESEARCHER_INITIAL_PASSWORD:-Researcher1234!}
       - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:-Reviewer1234!}
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=auth-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
@@ -161,11 +165,15 @@ services:
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
       - SEARCH_SERVICE_URL=http://search-service:8006
       - SEED_ON_START=true
+      - OTEL_SERVICE_NAME=eln-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       search-service:
         condition: service_started
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/health || exit 1"]
       interval: 10s
@@ -189,6 +197,8 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=signature-audit-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +209,8 @@ services:
       auth-service:
         condition: service_healthy
       file-service:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8003/health || exit 1"]
@@ -220,6 +232,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=inventory-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
@@ -227,6 +241,8 @@ services:
         condition: service_healthy
       search-service:
         condition: service_started
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8004/health || exit 1"]
       interval: 10s
@@ -245,8 +261,12 @@ services:
       - PORT=8005
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=scheduler-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8005/health || exit 1"]
@@ -268,12 +288,16 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=search-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8006/health || exit 1"]
@@ -301,10 +325,14 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=5&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=file-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       minio:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8008/health || exit 1"]
@@ -322,8 +350,12 @@ services:
       - PORT=8009
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - REDIS_URL=redis://redis:6379
+      - OTEL_SERVICE_NAME=collab-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       redis:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8009/health || exit 1"]
@@ -367,6 +399,8 @@ services:
       - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
       - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/labnote/protocol/openid-connect/certs
       - KEYCLOAK_ISSUER=http://keycloak:8080/realms/labnote
+      - OTEL_SERVICE_NAME=api-gateway
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       redis:
         condition: service_healthy
@@ -386,12 +420,41 @@ services:
         condition: service_healthy
       collab-service:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # ═══════════════════════════════════════════
+  #  개발 도구
+  # ═══════════════════════════════════════════
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: labnote-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: labnote-dozzle
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   postgres_data:
