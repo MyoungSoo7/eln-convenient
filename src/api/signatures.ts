@@ -109,7 +109,7 @@ export async function listAuditActions(): Promise<ApiResponse<string[]>> {
 // ── 내보내기 API ──
 export async function requestPdfExport(noteId: string): Promise<ApiResponse<ExportJob>> {
   try {
-    const res = await apiClient.post<{ job: ExportJob }>(`/export/pdf/${noteId}`);
+    const res = await apiClient.post<{ job: ExportJob }>(`/export/pdf/${noteId}`, {});
     return { ok: res.ok, data: res.data?.job ?? (res.data as any), error: res.error };
   } catch (err) {
     return { ok: false, data: null as unknown as ExportJob, error: (err as Error).message || ERR_CONN };

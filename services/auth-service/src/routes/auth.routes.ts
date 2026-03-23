@@ -7,7 +7,7 @@ import {
   CreateOrgSchema, UpdateOrgSchema,
   CreateTeamSchema, UpdateTeamSchema, AddTeamMemberSchema,
   CreateRoleSchema, UpdatePermissionsSchema,
-  VerifyPasswordSchema, SsoHookSchema, UuidParamsSchema,
+  VerifyPasswordSchema, UuidParamsSchema,
 } from '../dtos/auth.dto';
 
 const authRoutes: FastifyPluginAsync = async (app) => {
@@ -18,9 +18,6 @@ const authRoutes: FastifyPluginAsync = async (app) => {
   // ─── 내부 서비스 전용 (x-internal-secret 필수) ───
   app.post('/internal/verify-password', { preHandler: [requireInternalSecret, validate({ body: VerifyPasswordSchema })] }, ctrl.verifyPassword);
   app.get('/internal/role-permissions', { preHandler: [requireInternalSecret] }, ctrl.getRolePermissions);
-
-  // ─── SSO 훅 ───
-  app.post('/sso-hook', { preHandler: [validate({ body: SsoHookSchema })] }, ctrl.ssoHook);
 
   // ─── 토큰 갱신 ──
   app.post('/refresh', ctrl.refreshToken);

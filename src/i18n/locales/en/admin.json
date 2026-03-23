@@ -1,12 +1,10 @@
 {
   "settings": {
     "title": "Settings",
-    "titleTooltip": "Manage system-wide settings including organization name, SSO, language, and storage.",
+    "titleTooltip": "Manage system-wide settings including organization name, language, and storage.",
     "subtitle": "System-wide settings management",
     "systemSettings": "System Settings",
     "orgName": "Organization Name",
-    "ssoSettings": "SSO Settings",
-    "ssoValue": "Keycloak (Not Connected)",
     "defaultLang": "Default Language",
     "langValue": "Korean",
     "fileStorage": "File Storage",

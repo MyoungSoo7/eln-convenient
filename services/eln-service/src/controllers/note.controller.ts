@@ -333,20 +333,10 @@ export async function deleteNote(request: FastifyRequest, reply: FastifyReply) {
 /** PATCH /api/notes/:id/status */
 export async function changeNoteStatus(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as { id: string };
-  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
-  if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
-
   const { status: newStatus } = request.body as ChangeStatusDto;
   const userRole = request.headers['x-user-role'] as string;
-  // system 역할(서명 서비스 내부 호출)은 signed 전환 허용, 일반 사용자는 차단
-  const transitions = userRole === 'system'
-    ? SYSTEM_STATUS_TRANSITIONS
-    : ALLOWED_STATUS_TRANSITIONS;
-  const allowed = transitions[note.status as NoteStatus] ?? [];
-
-  if (!allowed.includes(newStatus)) {
-    throw new AppError(400, `상태 전환 불가: "${note.status}" → "${newStatus}". 허용: [${allowed.join(', ')}]`, ErrorCode.NOTE_STATUS_TRANSITION);
-  }
+  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const orgId = getOrgId(request.headers);
 
   // 잠금(locked) 전환은 Reviewer 또는 Admin만 가능
   if (newStatus === 'locked') {
@@ -355,46 +345,60 @@ export async function changeNoteStatus(request: FastifyRequest, reply: FastifyRe
     }
   }
 
-  const updated = await prisma.note.update({
-    where: { id },
-    data: { status: newStatus },
-  });
+  // 트랜잭션 + FOR UPDATE: 동시 상태 전환 race condition 방지
+  const { updated, fromStatus } = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM "Note" WHERE id = ${id} FOR UPDATE`;
+    const note = await tx.note.findFirst({ where: { id, orgId } });
+    if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
-  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+    const transitions = userRole === 'system'
+      ? SYSTEM_STATUS_TRANSITIONS
+      : ALLOWED_STATUS_TRANSITIONS;
+    const allowed = transitions[note.status as NoteStatus] ?? [];
 
-  await prisma.noteStatusHistory.create({
-    data: {
-      id: uuidv4(),
-      noteId: id,
-      fromStatus: note.status as NoteStatus,
-      toStatus: newStatus,
-      changedBy: actorId,
-      isAdminAction: false,
-    },
-  }).catch((histErr: unknown) => {
-    logger.warn({ noteId: id, err: histErr instanceof Error ? histErr.message : histErr }, '[HISTORY_WARN] note_status_history 기록 실패 (상태변경은 완료)');
-  });
+    if (!allowed.includes(newStatus)) {
+      throw new AppError(400, `상태 전환 불가: "${note.status}" → "${newStatus}". 허용: [${allowed.join(', ')}]`, ErrorCode.NOTE_STATUS_TRANSITION);
+    }
+
+    const upd = await tx.note.update({
+      where: { id },
+      data: { status: newStatus },
+    });
+
+    await tx.noteStatusHistory.create({
+      data: {
+        id: uuidv4(),
+        noteId: id,
+        fromStatus: note.status as NoteStatus,
+        toStatus: newStatus,
+        changedBy: actorId,
+        isAdminAction: false,
+      },
+    });
+
+    return { updated: upd, fromStatus: note.status };
+  }, { timeout: 5000 });
 
   await callAuditLog({
     entityType: 'note',
     entityId: id,
     action: 'note.status_changed',
     actorId,
-    details: { from: note.status, to: newStatus },
+    details: { from: fromStatus, to: newStatus },
     ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
     logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.status_changed audit 기록 실패 (상태변경은 완료)');
   });
 
   // 잠금 알림: 노트 작성자에게 알림
-  if (newStatus === 'locked' && note.authorId && note.authorId !== actorId) {
+  if (newStatus === 'locked' && updated.authorId && updated.authorId !== actorId) {
     callNotification({
-      recipientId: note.authorId,
+      recipientId: updated.authorId,
       type: 'NOTE_LOCKED',
       entityType: 'note',
       entityId: id,
       title: '연구노트가 잠금되었습니다',
-      message: `'${note.title}' 노트가 잠금 처리되었습니다.`,
+      message: `'${updated.title}' 노트가 잠금 처리되었습니다.`,
       actorId,
     }).catch((err: unknown) => {
       logger.warn({ noteId: id, err: err instanceof Error ? err.message : err }, '[NOTIFICATION_WARN] 잠금 알림 실패');

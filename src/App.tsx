@@ -9,7 +9,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
 import LoginPage from "./pages/LoginPage";
-import SsoCallbackPage from "./pages/SsoCallbackPage";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const NotesPage = lazy(() => import("./pages/NotesPage"));
@@ -48,7 +47,6 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/sso-callback" element={<SsoCallbackPage />} />
             <Route
               path="/*"
               element={

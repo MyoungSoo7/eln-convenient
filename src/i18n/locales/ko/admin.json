@@ -1,12 +1,10 @@
 {
   "settings": {
     "title": "설정",
-    "titleTooltip": "조직명, SSO 연동, 언어, 저장소 등 시스템 전반의 설정을 관리합니다.",
+    "titleTooltip": "조직명, 언어, 저장소 등 시스템 전반의 설정을 관리합니다.",
     "subtitle": "시스템 전반 설정 관리",
     "systemSettings": "시스템 설정",
     "orgName": "조직 이름",
-    "ssoSettings": "SSO 설정",
-    "ssoValue": "Keycloak (미연결)",
     "defaultLang": "기본 언어",
     "langValue": "한국어",
     "fileStorage": "파일 저장소",

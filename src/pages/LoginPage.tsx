@@ -5,37 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { FlaskConical } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-// Keycloak OIDC Authorization Code + PKCE 리다이렉트
-function redirectToKeycloak() {
-  const base = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
-  const realm = import.meta.env.VITE_KEYCLOAK_REALM || 'labnote';
-  const clientId = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'labnote-frontend';
-  const redirectUri = encodeURIComponent(window.location.origin + '/sso-callback');
-
-  // PKCE code_verifier / code_challenge 생성
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  const verifier = btoa(String.fromCharCode(...array))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  sessionStorage.setItem('pkce_verifier', verifier);
-
-  crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then((hash) => {
-    const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    const url = `${base}/realms/${realm}/protocol/openid-connect/auth`
-      + `?client_id=${clientId}`
-      + `&redirect_uri=${redirectUri}`
-      + `&response_type=code`
-      + `&scope=openid+profile+email+roles`
-      + `&code_challenge=${challenge}`
-      + `&code_challenge_method=S256`;
-    window.location.href = url;
-  });
-}
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -118,26 +89,6 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          {import.meta.env.VITE_KEYCLOAK_ENABLED === 'true' && (
-            <>
-              <div className="my-4 flex items-center gap-2">
-                <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground">또는</span>
-                <Separator className="flex-1" />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full gap-2"
-                onClick={redirectToKeycloak}
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-                </svg>
-                {t('ssoLogin', { defaultValue: 'SSO 로그인 (Keycloak)' })}
-              </Button>
-            </>
-          )}
         </CardContent>
       </Card>
     </div>

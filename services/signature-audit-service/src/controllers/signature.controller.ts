@@ -99,18 +99,18 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   const orgId = getOrgId(request.headers);
 
   // 노트 정보 조회 (자기 노트 서명 차단 + 팀 리더 서명 확인용)
-  const note = await fetchNote(noteId);
+  const note = await fetchNote(noteId, orgId);
   if (!note) {
     throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
   }
 
-  // 자기 노트 서명 차단 (부인방지 원칙)
-  if (note.authorId === signerId) {
+  // 자기 노트 서명 차단 (부인방지 원칙) — admin은 예외
+  const signerRole = request.headers['x-user-role'] as string;
+  if (note.authorId === signerId && signerRole !== 'admin') {
     throw new AppError(403, '자신이 작성한 노트에는 서명할 수 없습니다.', ErrorCode.FORBIDDEN);
   }
 
   // 서명 권한 확인: reviewer/admin 또는 해당 팀 리더
-  const signerRole = request.headers['x-user-role'] as string;
   const hasSystemSignPermission = signerRole === 'admin' || signerRole === 'reviewer';
   const teamRoles = getTeamRoles(request.headers);
   const isNoteTeamLeader = note.teamId && teamRoles[note.teamId] === 'leader';
@@ -399,10 +399,11 @@ export async function getComplianceList(request: FastifyRequest, reply: FastifyR
 /** GET /api/signatures/editable/:noteId */
 export async function getNoteEditable(request: FastifyRequest, reply: FastifyReply) {
   const { noteId } = request.params as { noteId: string };
+  const orgId = getOrgId(request.headers);
 
   let note;
   try {
-    note = await fetchNote(noteId);
+    note = await fetchNote(noteId, orgId);
   } catch (err) {
     if (err instanceof ElnServiceError) {
       throw new AppError(503, '노트 데이터를 가져올 수 없습니다.', ErrorCode.SERVICE_UNAVAILABLE);
