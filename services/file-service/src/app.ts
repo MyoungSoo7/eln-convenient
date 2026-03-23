@@ -50,9 +50,9 @@ export function buildApp(logger?: boolean): FastifyInstance {
     let minioOk = false;
     try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
     try {
-      const { s3, BUCKET } = await import('./lib/minio');
-      const { HeadBucketCommand } = await import('@aws-sdk/client-s3');
-      await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
+      const { getStorage } = await import('./lib/storage');
+      const provider = getStorage();
+      await provider.head('__health_check_noop__').catch(() => {});
       minioOk = true;
     } catch {}
     const healthy = dbOk && minioOk;
@@ -62,7 +62,21 @@ export function buildApp(logger?: boolean): FastifyInstance {
       service: 'file-service',
       timestamp: new Date().toISOString(),
       db: dbOk ? 'ok' : 'error',
-      minio: minioOk ? 'ok' : 'error',
+      storage: minioOk ? 'ok' : 'error',
+    };
+  });
+
+  // ── 스토리지 정보 ──────────────────────────────────────
+  app.get('/api/files/storage/info', async () => {
+    const { getStorage } = await import('./lib/storage');
+    const provider = getStorage();
+    return {
+      ok: true,
+      data: {
+        type: provider.type,
+        bucket: provider.bucket,
+        exportsBucket: provider.exportsBucket,
+      },
     };
   });
 

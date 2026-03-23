@@ -597,11 +597,20 @@ export async function deleteOrg(request: FastifyRequest, reply: FastifyReply) {
 // 팀
 // ─────────────────────────────────────────────
 
-/** GET /api/auth/teams */
+/** GET /api/auth/teams?orgId=xxx */
 export async function getTeams(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = getOrgId(request.headers);
+  const userOrgId = getOrgId(request.headers);
+  const userRole = request.headers['x-user-role'] as string;
+  const query = request.query as Record<string, string>;
+
+  // admin: orgId 파라미터 없으면 전체 조직 팀 조회, 있으면 해당 조직만
+  // 일반 사용자: 자신의 조직만
+  const where = userRole === 'admin'
+    ? (query.orgId ? { orgId: query.orgId } : {})
+    : { orgId: userOrgId };
+
   const teams = await prisma.team.findMany({
-    where: { orgId },
+    where,
     orderBy: { createdAt: 'asc' },
     include: { _count: { select: { members: true } } },
   });

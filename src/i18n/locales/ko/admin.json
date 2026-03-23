@@ -42,6 +42,7 @@
     "userUpdated": "사용자 수정 완료",
     "userDeleted": "사용자 삭제 완료",
     "teamList": "팀 목록",
+    "allOrgs": "전체 조직",
     "addTeam": "팀 추가",
     "teamCol": { "name": "팀 이름", "count": "인원" },
     "noTeams": "팀이 없습니다.",

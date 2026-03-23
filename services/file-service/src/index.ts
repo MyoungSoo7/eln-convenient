@@ -36,9 +36,9 @@ async function main(): Promise<void> {
   try {
     await ensureBucket();
     await ensureExportsBucketLifecycle();
-    logger.info('MinIO 버킷 및 lifecycle 정책 준비 완료');
+    logger.info('스토리지 버킷 및 lifecycle 정책 준비 완료');
   } catch (err) {
-    logger.error({ err }, 'MinIO 버킷 초기화 실패 (나중에 재시도)');
+    logger.error({ err }, '스토리지 버킷 초기화 실패 (나중에 재시도)');
   }
 }
 

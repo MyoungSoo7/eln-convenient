@@ -42,6 +42,7 @@
     "userUpdated": "User updated",
     "userDeleted": "User deleted",
     "teamList": "Team List",
+    "allOrgs": "All Organizations",
     "addTeam": "Add Team",
     "teamCol": { "name": "Team Name", "count": "Members" },
     "noTeams": "No teams.",

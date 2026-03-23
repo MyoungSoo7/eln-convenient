@@ -315,6 +315,7 @@ services:
       - "8008"
     environment:
       - PORT=8008
+      - STORAGE_TYPE=${STORAGE_TYPE:-minio}
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?}

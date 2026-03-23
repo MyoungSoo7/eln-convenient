@@ -94,9 +94,10 @@ export async function deleteOrg(id: string): Promise<ApiResponse<void>> {
 
 // ─── 팀 ─────────────────────────────────────────
 
-export async function listTeams(): Promise<ApiResponse<AdminTeam[]>> {
+export async function listTeams(orgId?: string): Promise<ApiResponse<AdminTeam[]>> {
   try {
-    return await apiClient.get<AdminTeam[]>('/auth/teams');
+    const params = orgId ? { orgId } : undefined;
+    return await apiClient.get<AdminTeam[]>('/auth/teams', params);
   } catch {
     return { ok: false, data: [] as AdminTeam[], error: '팀 목록 조회에 실패했습니다.' };
   }
@@ -218,4 +219,52 @@ export async function deleteRole(id: string): Promise<ApiResponse<void>> {
   } catch {
     return { ok: false, data: undefined as unknown as void, error: '역할 삭제에 실패했습니다.' };
   }
+}
+
+// ─── SSO 설정 ──────────────────────────────────────────
+
+export interface SsoConfigData {
+  mode: 'disabled' | 'optional' | 'preferred' | 'enforced';
+  provider: string;
+  issuerUrl: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+  autoCreateUser: boolean;
+  defaultRoleId: string | null;
+  defaultTeamId: string | null;
+  syncDisplayName: boolean;
+  emergencyLocalAdminId?: string | null;
+  isVerified: boolean;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+}
+
+export interface SsoTestResult {
+  status: 'connected' | 'error';
+  issuer?: string;
+  jwksKeys?: number;
+  endpoints?: { authorization: boolean; token: boolean; userinfo: boolean };
+  errorCode?: string;
+  details?: string;
+  testedAt: string;
+}
+
+export async function getSsoConfig(): Promise<ApiResponse<SsoConfigData>> {
+  return apiClient.get<SsoConfigData>('/auth/sso-config');
+}
+
+export async function updateSsoConfig(data: Partial<SsoConfigData & { clientSecret?: string }>): Promise<ApiResponse<SsoConfigData>> {
+  return apiClient.put<SsoConfigData>('/auth/sso-config', data);
+}
+
+export async function testSsoConnection(): Promise<ApiResponse<SsoTestResult>> {
+  return apiClient.post<SsoTestResult>('/auth/sso-config/test', {});
+}
+
+export async function activateSso(mode: string): Promise<ApiResponse<void>> {
+  return apiClient.post<void>('/auth/sso-config/activate', { mode });
+}
+
+export async function deactivateSso(password: string): Promise<ApiResponse<void>> {
+  return apiClient.post<void>('/auth/sso-config/deactivate', { password });
 }

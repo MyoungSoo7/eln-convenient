@@ -56,6 +56,7 @@ export default function OrgTeamUserPage() {
   const [teamForm, setTeamForm] = useState({ name: '', orgId: '' });
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<AdminTeam | null>(null);
   const [memberTeam, setMemberTeam] = useState<AdminTeam | null>(null);
+  const [teamFilterOrgId, setTeamFilterOrgId] = useState<string>('');
 
   // ─── 조직 상태 ────────────────────────────────────
   const [orgDialogOpen, setOrgDialogOpen] = useState(false);
@@ -74,9 +75,10 @@ export default function OrgTeamUserPage() {
   });
 
   const teamsQuery = useQuery({
-    queryKey: ['admin', 'teams'],
+    queryKey: ['admin', 'teams', teamFilterOrgId],
     queryFn: async () => {
-      const res = await listTeams();
+      const orgId = teamFilterOrgId && teamFilterOrgId !== 'all' ? teamFilterOrgId : undefined;
+      const res = await listTeams(orgId);
       if (!res.ok) throw new Error(res.error ?? t('orgTeamUser.loadTeamsFailed'));
       return res.data;
     },
@@ -164,9 +166,10 @@ export default function OrgTeamUserPage() {
       if (!res.ok) throw new Error(res.error ?? t('orgTeamUser.saveTeamFailed'));
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast({ title: editTeam ? t('orgTeamUser.teamUpdated') : t('orgTeamUser.teamAdded') });
       setTeamDialogOpen(false);
+      if (!editTeam && variables.orgId) setTeamFilterOrgId(variables.orgId);
       setEditTeam(null);
       setTeamForm({ name: '', orgId: '' });
       qc.invalidateQueries({ queryKey: ['admin', 'teams'] });
@@ -344,11 +347,24 @@ export default function OrgTeamUserPage() {
         <TabsContent value="teams" className="mt-4">
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">{t('orgTeamUser.teamList')}</CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-base">{t('orgTeamUser.teamList')}</CardTitle>
+                <Select value={teamFilterOrgId} onValueChange={setTeamFilterOrgId}>
+                  <SelectTrigger className="w-[180px] h-8 text-sm">
+                    <SelectValue placeholder={t('orgTeamUser.allOrgs')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('orgTeamUser.allOrgs')}</SelectItem>
+                    {orgsQuery.data?.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button size="sm" className="gradient-primary text-primary-foreground gap-1"
                 onClick={() => {
                   setEditTeam(null);
-                  setTeamForm({ name: '', orgId: orgsQuery.data?.[0]?.id ?? '' });
+                  setTeamForm({ name: '', orgId: teamFilterOrgId && teamFilterOrgId !== 'all' ? teamFilterOrgId : orgsQuery.data?.[0]?.id ?? '' });
                   setTeamDialogOpen(true);
                 }}>
                 <Plus className="h-3.5 w-3.5" /> {t('orgTeamUser.addTeam')}
