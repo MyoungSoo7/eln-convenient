@@ -119,14 +119,25 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 
 ### 역할별 전환 권한
 
-| 현재 → 변경 | Researcher | Reviewer | Admin | 서명 서비스 (system) |
-|-------------|:----------:|:--------:|:-----:|:-------------------:|
-| draft → in_progress | O | O | O | - |
-| in_progress → draft | O | O | O | - |
-| in_progress → locked | X | O | O | - |
-| in_progress → signed | X | X | X | O (이벤트 기반) |
-| locked → draft | X | X | O (잠금 해제) | - |
-| signed → 모든 상태 | X | X | X | X |
+#### 1) 직접 상태 전환 (`PATCH /api/notes/:id/status`)
+
+| 현재 → 변경 | Researcher | Reviewer | Admin |
+|-------------|:----------:|:--------:|:-----:|
+| draft → in_progress | O | O | O |
+| in_progress → draft | O | O | O |
+| in_progress → locked | X | O | O |
+| locked → draft | X | X | O (잠금 해제) |
+
+#### 2) 서명을 통한 전환 (`POST /api/signatures/sign/:noteId`)
+
+| 단계 | 수행자 | 설명 |
+|------|--------|------|
+| 서명 요청 | Reviewer, Admin (`note:sign` 권한) | 비밀번호 검증 → 해시체인 서명 생성 |
+| 상태 전환 (in_progress → signed) | system (자동) | Redis Stream `NOTE_SIGNED` 이벤트 → eln-service가 소비하여 전환 |
+
+> Researcher는 `note:sign` 권한이 없으므로 서명 요청 자체가 불가.
+> 누구도 `PATCH /status`로 직접 `signed`로 바꿀 수 없음 — 반드시 서명 프로세스를 거쳐야 한다.
+> `signed` 상태는 불변 — 어떤 역할도 다른 상태로 되돌릴 수 없다.
 
 ### 핵심 엔드포인트
 

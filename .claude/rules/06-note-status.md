@@ -16,11 +16,12 @@ signed → 변경 불가
 ## 핵심 제약
 
 1. **signed/locked 노트는 수정/삭제 불가** — 컨트롤러에서 반드시 체크
-2. **in_progress → signed 전환은 system 역할만 가능** — `SYSTEM_STATUS_TRANSITIONS` 사용
-3. **in_progress → locked는 Reviewer/Admin만** — `x-user-role` 검증 필수
-4. **locked → draft는 Admin만** — `requireRole(ADMIN)` + `requirePermission(NOTE_UNLOCK)`
-5. **DB 트리거 `check_note_status_transition()`이 최종 안전장치** — 트리거 수정 금지
-6. **모든 상태 변경은 이중 기록**: `NoteStatusHistory` + `AuditLog`
+2. **signed 전환은 서명 프로세스만 가능** — `POST /signatures/sign/:noteId` (Reviewer/Admin, `note:sign` 권한) → system이 이벤트로 상태 전환. `PATCH /status`로 직접 signed 불가
+3. **Researcher는 서명 불가** — `note:sign` 권한 없음
+4. **in_progress → locked는 Reviewer/Admin만** — `x-user-role` 검증 필수
+5. **locked → draft는 Admin만** — `requireRole(ADMIN)` + `requirePermission(NOTE_UNLOCK)`
+6. **DB 트리거 `check_note_status_transition()`이 최종 안전장치** — 트리거 수정 금지
+7. **모든 상태 변경은 이중 기록**: `NoteStatusHistory` + `AuditLog`
 
 ## 전환 맵 (코드)
 ```typescript
