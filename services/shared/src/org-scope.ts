@@ -29,3 +29,24 @@ export function withOrgScope<T extends Record<string, unknown>>(
 ): T & { orgId: string } {
   return { ...where, orgId };
 }
+
+// ─── 팀 스코프 헬퍼 ──────────────────────────────
+
+/** 요청 헤더에서 소속 팀 ID 목록을 추출한다. */
+export function getTeamIds(headers: Record<string, string | string[] | undefined>): string[] {
+  const raw = headers['x-user-team-ids'] as string | undefined;
+  try { return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+
+/** 요청 헤더에서 팀별 역할(leader/member) 매핑을 추출한다. */
+export function getTeamRoles(headers: Record<string, string | string[] | undefined>): Record<string, string> {
+  const raw = headers['x-user-team-roles'] as string | undefined;
+  try { return raw ? JSON.parse(raw) : {}; }
+  catch { return {}; }
+}
+
+/** 특정 팀의 리더인지 확인한다. */
+export function isTeamLeader(headers: Record<string, string | string[] | undefined>, teamId: string): boolean {
+  return getTeamRoles(headers)[teamId] === 'leader';
+}

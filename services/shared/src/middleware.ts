@@ -22,6 +22,7 @@ export async function requireAuthFastify(
 ): Promise<void> {
   if (!request.headers['x-user-id']) {
     reply.code(401).send({ ok: false, error: '인증이 필요합니다.' });
+    return;
   }
 }
 
@@ -37,6 +38,7 @@ export function requireRoleFastify(...roles: string[]) {
         ok: false,
         error: `권한 부족: ${roles.join(' 또는 ')} 역할이 필요합니다.`,
       });
+      return;
     }
   };
 }
@@ -61,6 +63,7 @@ export function requirePermissionFastify(permission: PermissionValue) {
         error: `권한 부족: '${permission}' 권한이 필요합니다.`,
         code: ErrorCode.AUTH_PERMISSION_DENIED,
       });
+      return;
     }
   };
 }
@@ -112,5 +115,6 @@ export async function requireInternalSecretFastify(
   }
   if (request.headers['x-internal-secret'] !== expected) {
     reply.code(401).send({ ok: false, error: '내부 요청 인증 실패', code: ErrorCode.INTERNAL_AUTH_FAILED });
+    return;
   }
 }

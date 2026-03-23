@@ -1,11 +1,13 @@
-import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2, User, Users, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardData } from "@/api/dashboard";
+import { getDashboardData, getPersonalDashboard, getOrgDashboard } from "@/api/dashboard";
+import { getToken } from "@/lib/authToken";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -14,10 +16,45 @@ const statusColors: Record<string, string> = {
   locked: "bg-destructive/10 text-destructive",
 };
 
+type DashboardTab = 'personal' | 'org';
+
+/** JWT에서 role을 추출하는 헬퍼 */
+function getUserRole(): string {
+  try {
+    const token = getToken();
+    if (!token) return 'viewer';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.role || 'viewer';
+  } catch { return 'viewer'; }
+}
+
 export default function Dashboard() {
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
+  const userRole = getUserRole();
+  const isAdmin = userRole === 'admin';
 
+  const [activeTab, setActiveTab] = useState<DashboardTab>('personal');
+
+  // 개인 대시보드
+  const { data: personalRes, isLoading: personalLoading } = useQuery({
+    queryKey: ['dashboard', 'personal'],
+    queryFn: getPersonalDashboard,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: activeTab === 'personal',
+  });
+
+  // 조직 대시보드 (admin만)
+  const { data: orgRes, isLoading: orgLoading } = useQuery({
+    queryKey: ['dashboard', 'org'],
+    queryFn: getOrgDashboard,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: activeTab === 'org' && isAdmin,
+  });
+
+  // 기존 호환 대시보드 (개인 탭에서 폴백)
   const { data: dashboardRes, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: getDashboardData,
@@ -25,13 +62,25 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-  const apiData = dashboardRes?.ok ? dashboardRes.data : null;
+  const apiData = activeTab === 'org' && orgRes?.ok
+    ? orgRes.data
+    : dashboardRes?.ok ? dashboardRes.data : null;
 
-  // stats 카드: API 데이터 우선, 없으면 0
-  const noteTotal = apiData?.notes?.total ?? 0;
-  const noteInProgress = apiData?.notes?.in_progress ?? 0;
+  const personalData = personalRes?.ok ? personalRes.data : null;
+
+  // stats 카드: 탭에 따라 다른 데이터
+  const noteTotal = activeTab === 'personal'
+    ? (personalData?.myNotes?.total ?? apiData?.notes?.total ?? 0)
+    : (apiData?.notes?.total ?? 0);
+  const noteInProgress = activeTab === 'personal'
+    ? (personalData?.myNotes?.inProgress ?? apiData?.notes?.in_progress ?? 0)
+    : (apiData?.notes?.in_progress ?? 0);
   const invTotal = apiData?.inventory?.total ?? 0;
-  const pendingBookings = apiData?.scheduler?.pendingBookings ?? 0;
+  const pendingBookings = activeTab === 'personal'
+    ? (personalData?.pendingActions?.unreadNotifications ?? 0)
+    : (apiData?.scheduler?.pendingBookings ?? 0);
+
+  const currentLoading = activeTab === 'personal' ? personalLoading : (activeTab === 'org' ? orgLoading : isLoading);
 
   const stats = [
     { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip') },
@@ -61,12 +110,40 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           {t('title')}
           <HelpTooltip text={t('titleTooltip')} />
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {currentLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         {isError && (
           <p className="text-xs text-destructive mt-1">{tc('error.serverFallback')}</p>
         )}
+
+        {/* 대시보드 탭 */}
+        <div className="flex gap-1 mt-4 border-b">
+          <button
+            onClick={() => setActiveTab('personal')}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'personal'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <User className="h-4 w-4" />
+            {t('tabs.personal', '내 대시보드')}
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('org')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'org'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              {t('tabs.org', '조직 대시보드')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

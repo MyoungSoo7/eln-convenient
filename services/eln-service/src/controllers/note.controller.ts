@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { callAuditLog } from '../lib/audit';
 import { callNotification } from '../lib/notification';
 import { searchClient } from '../lib/searchClient';
-import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId, getTeamIds } from '@lab/shared';
 
 const logger = createLogger('eln-service');
 
@@ -78,20 +78,41 @@ async function nextRevision(noteId: string) {
 
 /** GET /api/notes  또는  GET /api/protocols (템플릿) */
 export async function getNotes(request: FastifyRequest, reply: FastifyReply) {
-  const { status, tag, search, page = '1', limit = '20', type, templateId } = request.query as Record<string, string>;
+  const { status, tag, search, page = '1', limit = '20', type, templateId, authorId: queryAuthorId, teamId: queryTeamId } = request.query as Record<string, string>;
   const orgId = getOrgId(request.headers);
+  const userId = request.headers['x-user-id'] as string;
+  const userRole = request.headers['x-user-role'] as string;
 
   const where: Record<string, unknown> = {
     type: (type as NoteType) || 'note',
     orgId,
+    deletedAt: null,
   };
+
+  // authorId/teamId 쿼리 파라미터 (대시보드 집계용)
+  if (queryAuthorId) where.authorId = queryAuthorId;
+  if (queryTeamId) where.teamId = queryTeamId;
+
+  // 팀 가시성 필터: admin이 아니고 특정 authorId/teamId 필터가 없는 경우
+  if (userRole !== 'admin' && !queryAuthorId && !queryTeamId) {
+    const teamIds = getTeamIds(request.headers);
+    where.OR = [
+      { authorId: userId },
+      ...(teamIds.length > 0 ? [{ teamId: { in: teamIds } }] : []),
+      { teamId: null },
+    ];
+  }
+
   if (status) where.status = status;
   if (tag)        where.tags = { has: tag };
   if (templateId) where.templateId = templateId;
   if (search) {
-    where.OR = [
-      { title:   { contains: search, mode: 'insensitive' } },
-      { content: { contains: search, mode: 'insensitive' } },
+    // search는 AND 조건으로 적용 (OR와 별도)
+    where.AND = [
+      { OR: [
+        { title:   { contains: search, mode: 'insensitive' } },
+        { content: { contains: search, mode: 'insensitive' } },
+      ] },
     ];
   }
 
@@ -121,7 +142,7 @@ export async function getNoteById(request: FastifyRequest, reply: FastifyReply) 
 /** POST /api/notes  또는  POST /api/protocols (템플릿) */
 export async function createNote(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any;
-  const { title, content, sections, templateId, tags, type } = body;
+  const { title, content, sections, templateId, tags, type, teamId } = body;
   const authorId = (request.headers['x-user-id'] as string) || 'anonymous';
   const noteType: NoteType = type || 'note';
 
@@ -135,6 +156,7 @@ export async function createNote(request: FastifyRequest, reply: FastifyReply) {
       status: 'draft',
       authorId,
       orgId: getOrgId(request.headers),
+      teamId: teamId || null,
       templateId: templateId || null,
       tags: tags || [],
     },
@@ -663,12 +685,15 @@ export async function createTemplate(request: FastifyRequest, reply: FastifyRepl
 
 /** GET /api/notes/stats */
 export async function getNoteStats(request: FastifyRequest, reply: FastifyReply) {
-  const { type } = request.query as Record<string, string>;
+  const { type, authorId: queryAuthorId, teamId: queryTeamId } = request.query as Record<string, string>;
   const noteType = type || 'note';
   const orgId = getOrgId(request.headers);
+  const where: Record<string, unknown> = { type: noteType as NoteType, deletedAt: null, orgId };
+  if (queryAuthorId) where.authorId = queryAuthorId;
+  if (queryTeamId) where.teamId = queryTeamId;
   const rows = await prisma.note.groupBy({
     by: ['status'],
-    where: { type: noteType as NoteType, deletedAt: null, orgId },
+    where,
     _count: { _all: true },
   });
   const base = { draft: 0, in_progress: 0, locked: 0, signed: 0 };

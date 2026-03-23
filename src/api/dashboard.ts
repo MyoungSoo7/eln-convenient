@@ -54,3 +54,46 @@ export async function getDashboardData(): Promise<ApiResponse<DashboardData>> {
     };
   }
 }
+
+/** 개인 대시보드 */
+export interface PersonalDashboardData {
+  myNotes: { total: number; draft: number; inProgress: number; signed: number; locked: number };
+  pendingActions: { unreadNotifications: number };
+  recentNotes: Note[];
+  myBookings: BackendBooking[];
+  myActivity: { action: string; entityType: string; entityId: string; createdAt: string }[];
+  generatedAt: string;
+}
+
+export async function getPersonalDashboard(): Promise<ApiResponse<PersonalDashboardData>> {
+  try {
+    return await apiClient.get<PersonalDashboardData>('/dashboard/personal');
+  } catch (err) {
+    return { ok: false, data: null as unknown as PersonalDashboardData, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+/** 팀 대시보드 */
+export interface TeamDashboardData {
+  teamNotes: { total: number; draft: number; inProgress: number; signed: number; locked: number };
+  recentNotes: Note[];
+  teamBookings: BackendBooking[];
+  generatedAt: string;
+}
+
+export async function getTeamDashboard(teamId: string): Promise<ApiResponse<TeamDashboardData>> {
+  try {
+    return await apiClient.get<TeamDashboardData>(`/dashboard/team/${teamId}`);
+  } catch (err) {
+    return { ok: false, data: null as unknown as TeamDashboardData, error: (err as Error).message || ERR_CONN };
+  }
+}
+
+/** 조직 대시보드 */
+export async function getOrgDashboard(): Promise<ApiResponse<DashboardData>> {
+  try {
+    return await apiClient.get<DashboardData>('/dashboard/org');
+  } catch (err) {
+    return { ok: false, data: null as unknown as DashboardData, error: (err as Error).message || ERR_CONN };
+  }
+}

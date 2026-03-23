@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import redis from '../lib/redis';
 import { writeAuditLog } from '../lib/audit';
 import { invalidateUserTokens } from '../lib/token-invalidation';
-import { AppError, ErrorCode, createLogger } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 
 const logger = createLogger('auth-service');
 
@@ -25,7 +25,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   const { email, password } = request.body as any;
   const user = await prisma.user.findUnique({
     where: { email },
-    include: { role: true },
+    include: { role: true, teamMembers: { select: { teamId: true, teamRole: true } } },
   });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     throw new AppError(401, '이메일 또는 비밀번호가 올바르지 않습니다.', ErrorCode.AUTH_INVALID_CREDENTIALS);
@@ -33,6 +33,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   if (user.status !== 'active') {
     throw new AppError(403, '비활성화된 계정입니다.', ErrorCode.AUTH_INACTIVE_ACCOUNT);
   }
+  const teams = user.teamMembers.map((tm: any) => ({ id: tm.teamId, role: tm.teamRole }));
   const token = jwt.sign(
     {
       sub: user.id,
@@ -40,6 +41,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
       role: user.role?.name ?? 'viewer',
       permissions: user.role?.permissions ?? [],
       orgId: user.orgId,
+      teams,
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions,
@@ -106,12 +108,13 @@ export async function refreshToken(request: FastifyRequest, reply: FastifyReply)
 
     const user = await prisma.user.findUnique({
       where: { id: targetUserId },
-      include: { role: true },
+      include: { role: true, teamMembers: { select: { teamId: true, teamRole: true } } },
     });
     if (!user || user.status !== 'active') {
       throw new AppError(401, '비활성화된 계정입니다.', ErrorCode.AUTH_INACTIVE_ACCOUNT);
     }
 
+    const teams = user.teamMembers.map((tm: any) => ({ id: tm.teamId, role: tm.teamRole }));
     const newAccessToken = jwt.sign(
       {
         sub: user.id,
@@ -119,6 +122,7 @@ export async function refreshToken(request: FastifyRequest, reply: FastifyReply)
         role: user.role?.name ?? 'viewer',
         permissions: user.role?.permissions ?? [],
         orgId: user.orgId,
+        teams,
       },
       JWT_SECRET,
       { expiresIn: '15m' } as jwt.SignOptions,
@@ -243,13 +247,13 @@ export async function getMe(request: FastifyRequest, reply: FastifyReply) {
 
 /** GET /api/auth/users */
 export async function getUsers(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = request.headers['x-user-org-id'] as string | undefined;
+  const orgId = getOrgId(request.headers);
   const query = request.query as Record<string, string>;
   const page = Math.max(1, parseInt(query.page) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(query.limit) || 50));
   const skip = (page - 1) * limit;
 
-  const where = orgId ? { orgId } : undefined;
+  const where = { orgId };
   const [users, total] = await Promise.all([
     prisma.user.findMany({
       where,
@@ -335,11 +339,15 @@ export async function updateUser(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as { id: string };
   const { name, roleId, status } = request.body as any;
   const actorId = request.headers['x-user-id'] as string;
+  const orgId = getOrgId(request.headers);
   try {
-    const before = await prisma.user.findUnique({
-      where: { id },
+    const before = await prisma.user.findFirst({
+      where: { id, orgId },
       include: { role: true },
     });
+    if (!before) {
+      throw new AppError(404, '사용자를 찾을 수 없습니다.', ErrorCode.AUTH_USER_NOT_FOUND);
+    }
 
     const user = await prisma.user.update({
       where: { id },
@@ -411,14 +419,18 @@ export async function updateUser(request: FastifyRequest, reply: FastifyReply) {
 export async function deleteUser(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as { id: string };
   const callerId = request.headers['x-user-id'] as string;
+  const orgId = getOrgId(request.headers);
   if (id === callerId) {
     throw new AppError(400, '자기 자신은 삭제할 수 없습니다.', ErrorCode.AUTH_SELF_DELETE);
   }
   try {
-    const target = await prisma.user.findUnique({
-      where: { id },
+    const target = await prisma.user.findFirst({
+      where: { id, orgId },
       include: { role: true },
     });
+    if (!target) {
+      throw new AppError(404, '사용자를 찾을 수 없습니다.', ErrorCode.AUTH_USER_NOT_FOUND);
+    }
 
     await invalidateUserTokens(id);
     await prisma.teamMember.deleteMany({ where: { userId: id } });
@@ -456,7 +468,12 @@ export async function deleteUser(request: FastifyRequest, reply: FastifyReply) {
 
 /** GET /api/auth/orgs */
 export async function getOrgs(request: FastifyRequest, reply: FastifyReply) {
-  const orgs = await prisma.organization.findMany({ orderBy: { createdAt: 'asc' } });
+  const orgId = getOrgId(request.headers);
+  const userRole = request.headers['x-user-role'] as string;
+
+  // admin은 전체 조직 조회 가능, 일반 사용자는 자기 조직만
+  const where = userRole === 'admin' ? {} : { id: orgId };
+  const orgs = await prisma.organization.findMany({ where, orderBy: { createdAt: 'asc' } });
   return {
     ok: true,
     data: orgs.map((o: any) => ({
@@ -582,10 +599,9 @@ export async function deleteOrg(request: FastifyRequest, reply: FastifyReply) {
 
 /** GET /api/auth/teams */
 export async function getTeams(request: FastifyRequest, reply: FastifyReply) {
-  const userRole = request.headers['x-user-role'] as string;
-  const orgId = request.headers['x-user-org-id'] as string | undefined;
+  const orgId = getOrgId(request.headers);
   const teams = await prisma.team.findMany({
-    where: userRole === 'admin' ? undefined : (orgId ? { orgId } : undefined),
+    where: { orgId },
     orderBy: { createdAt: 'asc' },
     include: { _count: { select: { members: true } } },
   });
@@ -712,10 +728,10 @@ export async function getTeamMembers(request: FastifyRequest, reply: FastifyRepl
 /** POST /api/auth/teams/:id/members (admin) */
 export async function addTeamMember(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as { id: string };
-  const { userId } = request.body as any;
+  const { userId, teamRole } = request.body as any;
   try {
     await prisma.teamMember.create({
-      data: { userId, teamId: id },
+      data: { userId, teamId: id, teamRole: teamRole || 'member' },
     });
 
     const actorId = request.headers['x-user-id'] as string;

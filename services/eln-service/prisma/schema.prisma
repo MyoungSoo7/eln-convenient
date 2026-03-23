@@ -29,6 +29,7 @@ model Note {
   status        NoteStatus          @default(draft)
   authorId      String
   orgId         String
+  teamId        String?             // 소속 팀 (null = 조직 공개)
   templateId    String?
   tags          String[]
   createdAt     DateTime            @default(now())
@@ -42,6 +43,8 @@ model Note {
   @@index([orgId, authorId, type, status])
   @@index([authorId, deletedAt])
   @@index([orgId, type, status, deletedAt])
+  @@index([orgId, teamId, status])
+  @@index([orgId, teamId, authorId])
 }
 
 model NoteStatusHistory {

@@ -5,7 +5,9 @@ import swaggerUi from '@fastify/swagger-ui';
 import prismaPlugin from './plugins/prisma';
 import prisma from './lib/prisma';
 import inventoryRoutes from './routes/inventory.routes';
-import { buildFastifyErrorHandler } from '@lab/shared';
+import { buildFastifyErrorHandler, createLogger } from '@lab/shared';
+
+const serviceLogger = createLogger('inventory-service');
 
 export function buildApp(logger?: boolean): FastifyInstance {
   const app = Fastify({
@@ -13,7 +15,7 @@ export function buildApp(logger?: boolean): FastifyInstance {
   });
 
   // ── 플러그인 ─────────────────────────────────────────────
-  app.register(cors, { origin: true });
+  app.register(cors, { origin: false });
 
   app.register(swagger, {
     openapi: {
@@ -51,7 +53,7 @@ export function buildApp(logger?: boolean): FastifyInstance {
   app.register(inventoryRoutes, { prefix: '/api/inventory' });
 
   // ── 전역 에러 핸들러 ─────────────────────────────────────
-  app.setErrorHandler(buildFastifyErrorHandler());
+  app.setErrorHandler(buildFastifyErrorHandler(serviceLogger));
 
   return app;
 }

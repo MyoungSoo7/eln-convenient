@@ -20,7 +20,7 @@ export {
   type RoleNameValue,
 } from './permissions';
 
-export { getOrgId, withOrgScope } from './org-scope';
+export { getOrgId, withOrgScope, getTeamIds, getTeamRoles, isTeamLeader } from './org-scope';
 
 export {
   requireAuthFastify,

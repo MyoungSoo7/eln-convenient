@@ -171,6 +171,9 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply) {
       }
       (request.headers as any)['x-user-org-id'] = orgId;
       (request.headers as any)['x-sso-provider'] = 'keycloak';
+      // Keycloak SSO에서는 팀 정보가 JWT에 없으므로 빈 배열 주입
+      (request.headers as any)['x-user-team-ids'] = '[]';
+      (request.headers as any)['x-user-team-roles'] = '{}';
       return;
     } catch (err) {
       // JWKS fetch 오류와 토큰 검증 오류를 구분하여 로깅
@@ -212,6 +215,12 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply) {
     }
     (request.headers as any)['x-user-org-id'] = orgId;
     (request.headers as any)['x-sso-provider'] = 'local';
+    // 팀 정보 주입
+    const teams: Array<{ id: string; role: string }> = Array.isArray((payload as any).teams) ? (payload as any).teams : [];
+    (request.headers as any)['x-user-team-ids'] = JSON.stringify(teams.map(t => t.id));
+    const teamRoles: Record<string, string> = {};
+    teams.forEach(t => { teamRoles[t.id] = t.role; });
+    (request.headers as any)['x-user-team-roles'] = JSON.stringify(teamRoles);
   } catch {
     return reply.status(401).send({ ok: false, error: '유효하지 않은 토큰입니다.' });
   }

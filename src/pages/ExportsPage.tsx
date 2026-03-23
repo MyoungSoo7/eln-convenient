@@ -13,7 +13,7 @@ import {
   getExportStatus,
   type ExportJob,
 } from "@/api/signatures";
-import { getToken } from "@/lib/authToken";
+
 import { useTranslation } from "react-i18next";
 
 // ── 진행 중인 단일 내보내기 작업 폴링 컴포넌트 ──
@@ -128,43 +128,7 @@ export default function ExportsPage() {
     }
   };
 
-  // SSE: 내보내기 상태 실시간 수신 (폴링 폴백은 ExportJobPoller가 담당)
-  const handleJobDoneRef = useRef(handleJobDone);
-  handleJobDoneRef.current = handleJobDone;
-
-  useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
-    const url = `${apiBase}/events/exports`;
-
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource(url);
-      es.addEventListener('export-status', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          const finished: ExportJob = {
-            id: data.jobId,
-            noteId: data.noteId ?? '',
-            format: data.format ?? 'pdf',
-            status: data.status,
-            fileUrl: data.fileUrl,
-            createdAt: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
-          };
-          handleJobDoneRef.current(finished);
-        } catch { /* 무시 */ }
-      });
-      es.onerror = () => {
-        // SSE 실패 시 조용히 닫기 — 폴링이 폴백
-        es?.close();
-      };
-    } catch { /* SSE 미지원 환경 */ }
-
-    return () => { es?.close(); };
-  }, []);
+  // 내보내기 상태는 ExportJobPoller가 폴링으로 수신
 
   const handlePdfExport = async (noteId: string, noteTitle: string) => {
     const res = await requestPdfExport(noteId);

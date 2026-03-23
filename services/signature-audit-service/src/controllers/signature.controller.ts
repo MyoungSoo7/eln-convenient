@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
-import { AppError, ErrorCode, createLogger, getOrgId, Permission } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId, getTeamRoles, Permission } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { publishEvent } from '../lib/queue';
 import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
@@ -39,7 +39,7 @@ function sha256(data: string): string {
  * 전략: Redis Stream 이벤트 발행 우선 → 실패 시 HTTP 직접 호출 폴백
  * eln-service의 eventConsumer가 Stream에서 이벤트를 소비하여 상태 변경
  */
-async function patchNoteStatus(noteId: string, status: string, userId: string): Promise<boolean> {
+async function patchNoteStatus(noteId: string, status: string, userId: string, orgId: string): Promise<boolean> {
   // 1차: Redis Stream 이벤트 발행 (비동기, ~1ms)
   const eventId = await publishEvent('NOTE_SIGNED', {
     noteId,
@@ -63,6 +63,8 @@ async function patchNoteStatus(noteId: string, status: string, userId: string): 
         'x-user-id': userId,
         'x-user-role': 'system',
         'x-user-permissions': JSON.stringify([Permission.NOTE_STATUS]),
+        'x-internal-secret': INTERNAL_SECRET,
+        'x-user-org-id': orgId,
       },
       body: JSON.stringify({ status }),
     });
@@ -88,17 +90,37 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   const { noteId } = request.params as { noteId: string };
   const { comment, password } = request.body as any;
 
-  // 비밀번호 검증 (제공된 경우 필수 확인)
-  if (password) {
-    const verified = await verifyUserPassword(signerId, password);
-    if (!verified) {
-      throw new AppError(400, '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.', ErrorCode.SIGNATURE_PASSWORD_INVALID);
-    }
+  // 비밀번호 검증 (필수)
+  const verified = await verifyUserPassword(signerId, password);
+  if (!verified) {
+    throw new AppError(400, '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.', ErrorCode.SIGNATURE_PASSWORD_INVALID);
+  }
+
+  const orgId = getOrgId(request.headers);
+
+  // 노트 정보 조회 (자기 노트 서명 차단 + 팀 리더 서명 확인용)
+  const note = await fetchNote(noteId);
+  if (!note) {
+    throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+  }
+
+  // 자기 노트 서명 차단 (부인방지 원칙)
+  if (note.authorId === signerId) {
+    throw new AppError(403, '자신이 작성한 노트에는 서명할 수 없습니다.', ErrorCode.FORBIDDEN);
+  }
+
+  // 서명 권한 확인: reviewer/admin 또는 해당 팀 리더
+  const signerRole = request.headers['x-user-role'] as string;
+  const hasSystemSignPermission = signerRole === 'admin' || signerRole === 'reviewer';
+  const teamRoles = getTeamRoles(request.headers);
+  const isNoteTeamLeader = note.teamId && teamRoles[note.teamId] === 'leader';
+  if (!hasSystemSignPermission && !isNoteTeamLeader) {
+    throw new AppError(403, '서명 권한이 없습니다. reviewer/admin 또는 해당 팀 리더만 서명 가능합니다.', ErrorCode.AUTH_PERMISSION_DENIED);
   }
 
   // 이미 서명된 노트 중복 체크
   const latestSig = await prisma.signature.findFirst({
-    where: { noteId, status: 'valid' },
+    where: { noteId, orgId, status: 'valid' },
     orderBy: { chainIndex: 'desc' },
   });
 
@@ -115,6 +137,7 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
       id: uuidv4(),
       noteId,
       signerId,
+      orgId,
       signatureHash,
       prevHash,
       chainIndex,
@@ -130,7 +153,7 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
       entityId: noteId,
       action: 'signed',
       actorId: signerId,
-      orgId: getOrgId(request.headers),
+      orgId,
       details: {
         signatureId: signature.id,
         hash: signatureHash,
@@ -143,17 +166,17 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   });
 
   // ELN 서비스 노트 상태 → signed
-  const statusUpdated = await patchNoteStatus(noteId, 'signed', signerId);
+  const statusUpdated = await patchNoteStatus(noteId, 'signed', signerId, orgId);
 
   // 서명 알림: 노트 작성자에게 알림
   try {
-    const note = await fetchNote(noteId);
+    const note = await fetchNote(noteId, orgId);
     if (note && note.authorId && note.authorId !== signerId) {
       await prisma.notification.create({
         data: {
           id: uuidv4(),
           recipientId: note.authorId,
-          orgId: getOrgId(request.headers),
+          orgId,
           type: 'NOTE_SIGNED',
           entityType: 'note',
           entityId: noteId,
@@ -179,8 +202,9 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
 /** GET /api/signatures/:noteId — 노트의 서명 목록 조회 */
 export async function listSignatures(request: FastifyRequest, reply: FastifyReply) {
   const { noteId } = request.params as { noteId: string };
+  const orgId = getOrgId(request.headers);
   const signatures = await prisma.signature.findMany({
-    where: { noteId },
+    where: { noteId, orgId },
     orderBy: { chainIndex: 'asc' },
   });
   return { ok: true, data: signatures, total: signatures.length };
@@ -189,8 +213,9 @@ export async function listSignatures(request: FastifyRequest, reply: FastifyRepl
 /** GET /api/signatures/verify/:noteId — 해시 체인 전체 무결성 검증 */
 export async function verifySignature(request: FastifyRequest, reply: FastifyReply) {
   const { noteId } = request.params as { noteId: string };
+  const orgId = getOrgId(request.headers);
   const signatures = await prisma.signature.findMany({
-    where: { noteId, status: 'valid' },
+    where: { noteId, orgId, status: 'valid' },
     orderBy: { chainIndex: 'asc' },
   });
 
@@ -243,9 +268,10 @@ export async function revokeSignature(request: FastifyRequest, reply: FastifyRep
 
   const { reason } = request.body as any;
   const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const orgId = getOrgId(request.headers);
 
   const { signatureId } = request.params as { signatureId: string };
-  const sig = await prisma.signature.findUnique({ where: { id: signatureId } });
+  const sig = await prisma.signature.findFirst({ where: { id: signatureId, orgId } });
   if (!sig) {
     throw new AppError(404, '서명을 찾을 수 없습니다.', ErrorCode.SIGNATURE_NOT_FOUND);
   }
@@ -284,14 +310,15 @@ export async function revokeSignature(request: FastifyRequest, reply: FastifyRep
 
 /** GET /api/signatures/compliance/stats */
 export async function getComplianceStats(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request.headers);
   let signed: number, pending: number, locked: number, draft: number, totalSignatures: number;
   try {
     [signed, pending, locked, draft, totalSignatures] = await Promise.all([
-      fetchNoteCount('signed'),
-      fetchNoteCount('in_progress'),
-      fetchNoteCount('locked'),
-      fetchNoteCount('draft'),
-      prisma.signature.count({ where: { status: 'valid' } }),
+      fetchNoteCount('signed', orgId),
+      fetchNoteCount('in_progress', orgId),
+      fetchNoteCount('locked', orgId),
+      fetchNoteCount('draft', orgId),
+      prisma.signature.count({ where: { status: 'valid', orgId } }),
     ]);
   } catch (err) {
     if (err instanceof ElnServiceError) {
@@ -310,6 +337,7 @@ export async function getComplianceStats(request: FastifyRequest, reply: Fastify
 export async function getComplianceList(request: FastifyRequest, reply: FastifyReply) {
   const { status, page, limit } = request.query as unknown as { status?: string; page: number; limit: number };
 
+  const orgId = getOrgId(request.headers);
   const params: Record<string, string> = {
     type: 'note',
     page: String(page),
@@ -319,7 +347,7 @@ export async function getComplianceList(request: FastifyRequest, reply: FastifyR
 
   let noteList;
   try {
-    noteList = await fetchNotes(params);
+    noteList = await fetchNotes(params, orgId);
   } catch (err) {
     if (err instanceof ElnServiceError) {
       throw new AppError(503, '노트 데이터를 가져올 수 없습니다.', ErrorCode.SERVICE_UNAVAILABLE);
