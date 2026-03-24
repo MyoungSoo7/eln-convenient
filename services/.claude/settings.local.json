@@ -4,7 +4,8 @@
       "Bash(docker compose:*)",
       "Bash(docker exec:*)",
       "Bash(pip install:*)",
-      "Bash(python generate_spec.py)"
+      "Bash(python generate_spec.py)",
+      "Bash(npm run:*)"
     ]
   }
 }
