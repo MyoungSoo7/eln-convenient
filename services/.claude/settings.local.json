@@ -12,7 +12,8 @@
       "Bash(cd:*)",
       "Bash(npx tsc:*)",
       "Bash(ls /c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/*.xlsx)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }
