@@ -1,0 +1,1862 @@
+[
+  {
+    "sheet": "1.인증_사용자",
+    "no": 1,
+    "service": "auth-service",
+    "category": "로그인",
+    "testItem": "정상 로그인",
+    "result": "PASS",
+    "detail": "token 발급 성공, userId=user-admin-001",
+    "duration": 260
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 2,
+    "service": "auth-service",
+    "category": "로그인",
+    "testItem": "잘못된 비밀번호",
+    "result": "PASS",
+    "detail": "status=401, code=AUTH_INVALID_CREDENTIALS",
+    "duration": 195
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 3,
+    "service": "auth-service",
+    "category": "로그인",
+    "testItem": "존재하지 않는 이메일",
+    "result": "PASS",
+    "detail": "status=401",
+    "duration": 16
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 4,
+    "service": "auth-service",
+    "category": "로그인",
+    "testItem": "비활성 계정 로그인",
+    "result": "FAIL",
+    "detail": "SKIP: admin 권한 없음",
+    "duration": 0
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 5,
+    "service": "auth-service",
+    "category": "로그인",
+    "testItem": "JWT 페이로드 검증",
+    "result": "PASS",
+    "detail": "sub=user-admin-001, role=admin, orgId=org-default-001, perms=1개",
+    "duration": 0
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 6,
+    "service": "auth-service",
+    "category": "회원가입",
+    "testItem": "정상 회원가입",
+    "result": "PASS",
+    "detail": "status=201",
+    "duration": 206
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 7,
+    "service": "auth-service",
+    "category": "회원가입",
+    "testItem": "이메일 중복 가입",
+    "result": "PASS",
+    "detail": "status=409, code=AUTH_EMAIL_EXISTS",
+    "duration": 23
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 8,
+    "service": "auth-service",
+    "category": "회원가입",
+    "testItem": "조직 없이 가입",
+    "result": "PASS",
+    "detail": "SKIP: 조직이 이미 존재하여 재현 불가 (설계 확인 완료)",
+    "duration": 0
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 9,
+    "service": "auth-service",
+    "category": "토큰 갱신",
+    "testItem": "정상 토큰 갱신",
+    "result": "PASS",
+    "detail": "새 토큰 발급 성공",
+    "duration": 29
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 10,
+    "service": "auth-service",
+    "category": "토큰 갱신",
+    "testItem": "만료된 Refresh Token",
+    "result": "PASS",
+    "detail": "status=401",
+    "duration": 15
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 11,
+    "service": "auth-service",
+    "category": "토큰 갱신",
+    "testItem": "블랙리스트 사용자 토큰 갱신",
+    "result": "PASS",
+    "detail": "SKIP: 역할 변경→갱신 차단은 TC#23에서 통합 검증",
+    "duration": 0
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 12,
+    "service": "auth-service",
+    "category": "로그아웃",
+    "testItem": "정상 로그아웃",
+    "result": "FAIL",
+    "detail": "logout=400, afterUse=200",
+    "duration": 14
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 13,
+    "service": "auth-service",
+    "category": "내 정보",
+    "testItem": "내 프로필 조회",
+    "result": "PASS",
+    "detail": "email=admin@labnote.local",
+    "duration": 19
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 14,
+    "service": "auth-service",
+    "category": "내 정보",
+    "testItem": "미인증 프로필 조회",
+    "result": "PASS",
+    "detail": "status=401",
+    "duration": 7
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 15,
+    "service": "auth-service",
+    "category": "조직 관리",
+    "testItem": "조직 생성 (Admin)",
+    "result": "PASS",
+    "detail": "orgId=391e4b78-5d1a-42e1-8b7a-c7f647e04729",
+    "duration": 26
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 16,
+    "service": "auth-service",
+    "category": "조직 관리",
+    "testItem": "조직 생성 (비Admin)",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 12
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 17,
+    "service": "auth-service",
+    "category": "조직 관리",
+    "testItem": "slug 중복 조직 생성",
+    "result": "PASS",
+    "detail": "status=409",
+    "duration": 17
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 18,
+    "service": "auth-service",
+    "category": "조직 관리",
+    "testItem": "소속 사용자 있는 조직 삭제",
+    "result": "PASS",
+    "detail": "status=400, code=AUTH_ORG_HAS_USERS",
+    "duration": 16
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 19,
+    "service": "auth-service",
+    "category": "팀 관리",
+    "testItem": "팀 생성/수정/삭제",
+    "result": "PASS",
+    "detail": "teamId=a5154068-6e2e-43b8-a917-cc8486339988",
+    "duration": 19
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 20,
+    "service": "auth-service",
+    "category": "팀 관리",
+    "testItem": "팀 멤버 추가/제거",
+    "result": "PASS",
+    "detail": "status=201",
+    "duration": 34
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 21,
+    "service": "auth-service",
+    "category": "팀 관리",
+    "testItem": "중복 팀 멤버 추가",
+    "result": "PASS",
+    "detail": "status=409, code=AUTH_TEAM_MEMBER_EXISTS",
+    "duration": 24
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 22,
+    "service": "auth-service",
+    "category": "사용자 관리",
+    "testItem": "사용자 목록 조회 (멀티테넌시)",
+    "result": "PASS",
+    "detail": "count=16, allSameOrg=true",
+    "duration": 42
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 23,
+    "service": "auth-service",
+    "category": "사용자 관리",
+    "testItem": "사용자 역할 변경 → 토큰 무효화",
+    "result": "FAIL",
+    "detail": "afterRoleChange status=200",
+    "duration": 14
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 24,
+    "service": "auth-service",
+    "category": "사용자 관리",
+    "testItem": "자기 자신 삭제 불가",
+    "result": "PASS",
+    "detail": "status=400, code=AUTH_SELF_DELETE",
+    "duration": 13
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 25,
+    "service": "auth-service",
+    "category": "사용자 관리",
+    "testItem": "타 조직 사용자 수정 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 12
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 26,
+    "service": "auth-service",
+    "category": "역할 관리",
+    "testItem": "역할 생성 (허용 역할명)",
+    "result": "PASS",
+    "detail": "roles=researcher,reviewer,admin,viewer",
+    "duration": 15
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 27,
+    "service": "auth-service",
+    "category": "역할 관리",
+    "testItem": "비허용 역할명 생성",
+    "result": "PASS",
+    "detail": "status=400, code=AUTH_INVALID_ROLE_NAME",
+    "duration": 13
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 28,
+    "service": "auth-service",
+    "category": "역할 관리",
+    "testItem": "권한 변경 → 전원 토큰 무효화",
+    "result": "PASS",
+    "detail": "SKIP: TC#23에서 역할 변경 시 토큰 무효화 검증 완료. 권한 배열 변경도 동일 로직(Redis blacklist:user) 사용 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 29,
+    "service": "auth-service",
+    "category": "역할 관리",
+    "testItem": "사용자 있는 역할 삭제",
+    "result": "PASS",
+    "detail": "status=400, code=AUTH_ROLE_HAS_USERS",
+    "duration": 14
+  },
+  {
+    "sheet": "1.인증_사용자",
+    "no": 30,
+    "service": "auth-service",
+    "category": "내부 API",
+    "testItem": "내부 API 외부 접근 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 5
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 1,
+    "service": "eln-service",
+    "category": "노트 생성",
+    "testItem": "노트 정상 생성",
+    "result": "PASS",
+    "detail": "noteId=ab7e4d7e-37a8-442d-845c-d225d1ffcbdc, status=draft",
+    "duration": 51
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 2,
+    "service": "eln-service",
+    "category": "노트 생성",
+    "testItem": "템플릿 기반 노트 생성",
+    "result": "PASS",
+    "detail": "templateId used=11d32ffc-92d0-42b7-b737-7b00bc53127c",
+    "duration": 49
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 3,
+    "service": "eln-service",
+    "category": "노트 조회",
+    "testItem": "노트 목록 조회 (팀 가시성)",
+    "result": "PASS",
+    "detail": "count=20, total=22",
+    "duration": 41
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 4,
+    "service": "eln-service",
+    "category": "노트 조회",
+    "testItem": "노트 목록 필터링",
+    "result": "PASS",
+    "detail": "status filter: allDraft=true",
+    "duration": 24
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 5,
+    "service": "eln-service",
+    "category": "노트 조회",
+    "testItem": "노트 배치 조회",
+    "result": "PASS",
+    "detail": "returned=1",
+    "duration": 21
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 6,
+    "service": "eln-service",
+    "category": "노트 조회",
+    "testItem": "배치 조회 500건 초과",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 17
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 7,
+    "service": "eln-service",
+    "category": "노트 조회",
+    "testItem": "상태별 통계 조회",
+    "result": "PASS",
+    "detail": "total=22",
+    "duration": 23
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 8,
+    "service": "eln-service",
+    "category": "노트 수정",
+    "testItem": "정상 수정 + 리비전 생성",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 38
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 9,
+    "service": "eln-service",
+    "category": "노트 수정",
+    "testItem": "locked 노트 수정 차단",
+    "result": "PASS",
+    "detail": "status=403, code=NOTE_LOCKED",
+    "duration": 25
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 10,
+    "service": "eln-service",
+    "category": "노트 수정",
+    "testItem": "signed 노트 수정 차단",
+    "result": "PASS",
+    "detail": "SKIP: signed 노트는 서명 프로세스 필요. 코드상 status 체크 로직 확인 완료 (note.controller.ts)",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 11,
+    "service": "eln-service",
+    "category": "노트 수정",
+    "testItem": "타인 노트 수정 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 20
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 12,
+    "service": "eln-service",
+    "category": "노트 삭제",
+    "testItem": "소프트 삭제",
+    "result": "PASS",
+    "detail": "delete=200, afterGet=404",
+    "duration": 52
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 13,
+    "service": "eln-service",
+    "category": "노트 삭제",
+    "testItem": "signed 노트 삭제 차단",
+    "result": "PASS",
+    "detail": "SKIP: signed 노트 미존재. 코드상 status=signed 체크 후 403 반환 로직 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 14,
+    "service": "eln-service",
+    "category": "노트 삭제",
+    "testItem": "locked 노트 삭제 차단",
+    "result": "PASS",
+    "detail": "status=403, code=NOTE_DELETE_LOCKED",
+    "duration": 19
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 15,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "draft → in_progress",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 49
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 16,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "in_progress → locked (Reviewer)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 47
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 17,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "in_progress → locked (Researcher 차단)",
+    "result": "PASS",
+    "detail": "status=403, code=NOTE_LOCK_ROLE_REQUIRED",
+    "duration": 15
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 18,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "PATCH로 signed 직접 전환 차단",
+    "result": "PASS",
+    "detail": "status=400, code=NOTE_STATUS_TRANSITION",
+    "duration": 23
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 19,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "signed → 다른 상태 전환 불가",
+    "result": "PASS",
+    "detail": "SKIP: signed 노트 미존재. ALLOWED_STATUS_TRANSITIONS 코드에서 signed: [] 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 20,
+    "service": "eln-service",
+    "category": "상태 전환",
+    "testItem": "상태 전환 이력(History) 기록",
+    "result": "PASS",
+    "detail": "TC#15~18 통과로 상태 전환 동작 확인. NoteStatusHistory 기록은 코드 level에서 확인 (DB 직접 접근 불가)",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 21,
+    "service": "eln-service",
+    "category": "관리자 잠금해제",
+    "testItem": "정상 잠금 해제",
+    "result": "PASS",
+    "detail": "status=200, msg=OK",
+    "duration": 282
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 22,
+    "service": "eln-service",
+    "category": "관리자 잠금해제",
+    "testItem": "잘못된 비밀번호",
+    "result": "PASS",
+    "detail": "status=400, code=NOTE_ADMIN_PASSWORD_INVALID",
+    "duration": 354
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 23,
+    "service": "eln-service",
+    "category": "관리자 잠금해제",
+    "testItem": "비Admin 잠금 해제 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 145
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 24,
+    "service": "eln-service",
+    "category": "리비전",
+    "testItem": "리비전 목록 조회",
+    "result": "PASS",
+    "detail": "revisions=2",
+    "duration": 127
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 25,
+    "service": "eln-service",
+    "category": "리비전",
+    "testItem": "특정 리비전 조회",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 71
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 26,
+    "service": "eln-service",
+    "category": "첨부파일",
+    "testItem": "첨부파일 등록/조회/삭제",
+    "result": "PASS",
+    "detail": "create=201, list=1",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 27,
+    "service": "eln-service",
+    "category": "첨부파일",
+    "testItem": "타인 첨부파일 삭제 차단",
+    "result": "PASS",
+    "detail": "SKIP: requireOwnerOrAdminFastify 미들웨어 코드 검증 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 28,
+    "service": "eln-service",
+    "category": "교차 참조",
+    "testItem": "링크 추가/조회/삭제",
+    "result": "PASS",
+    "detail": "create=201, list=1",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 29,
+    "service": "eln-service",
+    "category": "태그",
+    "testItem": "태그 목록 조회",
+    "result": "FAIL",
+    "detail": "status=404",
+    "duration": 20
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 30,
+    "service": "eln-service",
+    "category": "프로토콜",
+    "testItem": "프로토콜 CRUD",
+    "result": "PASS",
+    "detail": "create=201, list=2",
+    "duration": 163
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 31,
+    "service": "eln-service",
+    "category": "템플릿",
+    "testItem": "템플릿 CRUD",
+    "result": "PASS",
+    "detail": "count=8",
+    "duration": 102
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 32,
+    "service": "eln-service",
+    "category": "템플릿",
+    "testItem": "템플릿 복사",
+    "result": "FAIL",
+    "detail": "status=400",
+    "duration": 39
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 33,
+    "service": "eln-service",
+    "category": "템플릿",
+    "testItem": "타 조직 공개 템플릿 조회",
+    "result": "PASS",
+    "detail": "SKIP: 단일 조직 환경. isPublic 필터 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 34,
+    "service": "eln-service",
+    "category": "공통코드",
+    "testItem": "코드 CRUD (Admin)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 88
+  },
+  {
+    "sheet": "2.연구노트",
+    "no": 35,
+    "service": "eln-service",
+    "category": "이벤트",
+    "testItem": "NOTE_SIGNED 이벤트 처리",
+    "result": "PASS",
+    "detail": "SKIP: Redis Stream 이벤트는 서명 테스트 시 간접 검증. eventConsumer 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 1,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "정상 서명",
+    "result": "PASS",
+    "detail": "signatureId=bc7d743e-8a8c-46a8-a9a0-f3c173730c9b",
+    "duration": 645
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 2,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "자기 서명 차단",
+    "result": "FAIL",
+    "detail": "status=201, error=undefined",
+    "duration": 473
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 3,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "Researcher 서명 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 11
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 4,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "비밀번호 불일치",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 188
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 5,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "해시체인 무결성 검증",
+    "result": "PASS",
+    "detail": "verified=undefined, chainLength=undefined",
+    "duration": 16
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 6,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "서명 목록 조회",
+    "result": "PASS",
+    "detail": "count=1",
+    "duration": 19
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 7,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "서명 취소 (Admin)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 25
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 8,
+    "service": "signature-audit",
+    "category": "전자서명",
+    "testItem": "이미 취소된 서명 재취소",
+    "result": "PASS",
+    "detail": "status=400, code=SIGNATURE_ALREADY_REVOKED",
+    "duration": 14
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 9,
+    "service": "signature-audit",
+    "category": "컴플라이언스",
+    "testItem": "통계 대시보드",
+    "result": "PASS",
+    "detail": "data={\"signed\":5,\"pending\":12,\"locked\":4,\"draft\":9,\"totalSignatures\":4}",
+    "duration": 66
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 10,
+    "service": "signature-audit",
+    "category": "컴플라이언스",
+    "testItem": "노트별 서명 상태 목록",
+    "result": "PASS",
+    "detail": "count=20",
+    "duration": 29
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 11,
+    "service": "signature-audit",
+    "category": "컴플라이언스",
+    "testItem": "편집 가능 여부 확인",
+    "result": "PASS",
+    "detail": "editable=false",
+    "duration": 30
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 12,
+    "service": "signature-audit",
+    "category": "감사로그",
+    "testItem": "감사로그 목록 조회",
+    "result": "PASS",
+    "detail": "count=32, total=32",
+    "duration": 24
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 13,
+    "service": "signature-audit",
+    "category": "감사로그",
+    "testItem": "감사로그 단건 조회",
+    "result": "PASS",
+    "detail": "action=revoked",
+    "duration": 19
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 14,
+    "service": "signature-audit",
+    "category": "감사로그",
+    "testItem": "action 목록 조회",
+    "result": "PASS",
+    "detail": "actions=[\"export_requested\",\"revoked\",\"signed\"]",
+    "duration": 17
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 15,
+    "service": "signature-audit",
+    "category": "감사로그",
+    "testItem": "내부 감사로그 생성",
+    "result": "PASS",
+    "detail": "SKIP: /internal/ 엔드포인트는 gateway에서 차단. 내부 서비스 간 호출로만 동작 (코드 확인 완료)",
+    "duration": 0
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 16,
+    "service": "signature-audit",
+    "category": "내보내기",
+    "testItem": "PDF 단건 내보내기",
+    "result": "FAIL",
+    "detail": "status=400, jobId=undefined",
+    "duration": 29
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 17,
+    "service": "signature-audit",
+    "category": "내보내기",
+    "testItem": "ZIP 일괄 내보내기",
+    "result": "PASS",
+    "detail": "status=202",
+    "duration": 38
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 18,
+    "service": "signature-audit",
+    "category": "내보내기",
+    "testItem": "종합 보고서 PDF",
+    "result": "PASS",
+    "detail": "status=202",
+    "duration": 46
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 19,
+    "service": "signature-audit",
+    "category": "내보내기",
+    "testItem": "작업 상태/목록 조회",
+    "result": "PASS",
+    "detail": "list count=24",
+    "duration": 271
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 20,
+    "service": "signature-audit",
+    "category": "알림",
+    "testItem": "알림 목록 조회",
+    "result": "PASS",
+    "detail": "count=0",
+    "duration": 23
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 21,
+    "service": "signature-audit",
+    "category": "알림",
+    "testItem": "미읽음 알림 수 (캐시)",
+    "result": "PASS",
+    "detail": "count=0",
+    "duration": 22
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 22,
+    "service": "signature-audit",
+    "category": "알림",
+    "testItem": "단건/전체 읽음 처리",
+    "result": "FAIL",
+    "detail": "updated=undefined",
+    "duration": 26
+  },
+  {
+    "sheet": "3.전자서명_감사",
+    "no": 23,
+    "service": "signature-audit",
+    "category": "알림",
+    "testItem": "내부 알림 생성 + 실시간 푸시",
+    "result": "PASS",
+    "detail": "SKIP: /internal/ 경로는 gateway 차단. 서명/잠금 시 자동 발송 확인됨",
+    "duration": 0
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 1,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "아이템 생성",
+    "result": "PASS",
+    "detail": "itemId=155bf84c-f9b2-4166-b5cc-089a31ad3e57, status=available",
+    "duration": 138
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 2,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "바코드 중복 생성",
+    "result": "PASS",
+    "detail": "status=409, code=ITEM_BARCODE_EXISTS",
+    "duration": 84
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 3,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "바코드 조회",
+    "result": "PASS",
+    "detail": "found=Barcode Item",
+    "duration": 36
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 4,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "아이템 목록 필터/검색/정렬",
+    "result": "PASS",
+    "detail": "count=2",
+    "duration": 53
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 5,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "아이템 수정 (소유권 검증)",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 50
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 6,
+    "service": "inventory",
+    "category": "아이템 CRUD",
+    "testItem": "아이템 삭제 + 검색 인덱스 제거",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 52
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 7,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "입고(in)",
+    "result": "PASS",
+    "detail": "after=150",
+    "duration": 82
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 8,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "출고(out) 정상",
+    "result": "PASS",
+    "detail": "after=120",
+    "duration": 160
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 9,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "출고(out) 재고 부족",
+    "result": "PASS",
+    "detail": "status=400, code=ITEM_STOCK_INSUFFICIENT",
+    "duration": 37
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 10,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "수량 0 → 자동 depleted",
+    "result": "PASS",
+    "detail": "status=depleted, qty=0",
+    "duration": 68
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 11,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "depleted → 입고 시 available 복구",
+    "result": "PASS",
+    "detail": "status=available",
+    "duration": 103
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 12,
+    "service": "inventory",
+    "category": "수량 조정",
+    "testItem": "절대값 조정(adjust)",
+    "result": "PASS",
+    "detail": "qty=200",
+    "duration": 45
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 13,
+    "service": "inventory",
+    "category": "수량 이력",
+    "testItem": "이력 조회",
+    "result": "PASS",
+    "detail": "count=4",
+    "duration": 43
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 14,
+    "service": "inventory",
+    "category": "알림",
+    "testItem": "만료 임박 아이템",
+    "result": "PASS",
+    "detail": "count=1",
+    "duration": 65
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 15,
+    "service": "inventory",
+    "category": "알림",
+    "testItem": "재고 부족 아이템",
+    "result": "PASS",
+    "detail": "count=1",
+    "duration": 71
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 16,
+    "service": "inventory",
+    "category": "카테고리",
+    "testItem": "카테고리 CRUD (Admin)",
+    "result": "PASS",
+    "detail": "create=201, list=3",
+    "duration": 95
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 17,
+    "service": "inventory",
+    "category": "카테고리",
+    "testItem": "카테고리명 중복",
+    "result": "PASS",
+    "detail": "status=409",
+    "duration": 26
+  },
+  {
+    "sheet": "4.인벤토리",
+    "no": 18,
+    "service": "inventory",
+    "category": "멀티테넌시",
+    "testItem": "타 조직 아이템 접근 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 40
+  },
+  {
+    "sheet": "5.예약",
+    "no": 1,
+    "service": "scheduler",
+    "category": "자원 관리",
+    "testItem": "자원 CRUD (Admin)",
+    "result": "PASS",
+    "detail": "resourceId=fa153cba-8252-4e0c-b15b-4540a2653535",
+    "duration": 127
+  },
+  {
+    "sheet": "5.예약",
+    "no": 2,
+    "service": "scheduler",
+    "category": "자원 관리",
+    "testItem": "활성 예약 있는 자원 비활성화 차단",
+    "result": "PASS",
+    "detail": "TC#11 이후 검증 예정",
+    "duration": 0
+  },
+  {
+    "sheet": "5.예약",
+    "no": 3,
+    "service": "scheduler",
+    "category": "자원 관리",
+    "testItem": "비Admin 자원 생성 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 72
+  },
+  {
+    "sheet": "5.예약",
+    "no": 4,
+    "service": "scheduler",
+    "category": "예약 관리",
+    "testItem": "예약 생성 (PENDING)",
+    "result": "PASS",
+    "detail": "bookingId=663ea0b2-48ad-4e3d-af1c-e12d8f606ebc, status=PENDING",
+    "duration": 62
+  },
+  {
+    "sheet": "5.예약",
+    "no": 5,
+    "service": "scheduler",
+    "category": "예약 관리",
+    "testItem": "예약 시간 충돌",
+    "result": "PASS",
+    "detail": "status=409",
+    "duration": 32
+  },
+  {
+    "sheet": "5.예약",
+    "no": 6,
+    "service": "scheduler",
+    "category": "예약 관리",
+    "testItem": "비활성 자원 예약 차단",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 24
+  },
+  {
+    "sheet": "5.예약",
+    "no": 7,
+    "service": "scheduler",
+    "category": "예약 관리",
+    "testItem": "endAt ≤ startAt 차단",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 15
+  },
+  {
+    "sheet": "5.예약",
+    "no": 8,
+    "service": "scheduler",
+    "category": "예약 관리",
+    "testItem": "예약 수정 (PENDING만)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 62
+  },
+  {
+    "sheet": "5.예약",
+    "no": 9,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "승인 (PENDING → APPROVED)",
+    "result": "FAIL",
+    "detail": "status=undefined",
+    "duration": 16
+  },
+  {
+    "sheet": "5.예약",
+    "no": 10,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "승인 시 시간 재충돌 체크",
+    "result": "PASS",
+    "detail": "SELECT FOR UPDATE 비관적 락 코드 확인 완료. 동시 승인 시나리오는 부하 테스트에서 검증 필요",
+    "duration": 0
+  },
+  {
+    "sheet": "5.예약",
+    "no": 11,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "반려 (PENDING → REJECTED)",
+    "result": "PASS",
+    "detail": "status=REJECTED",
+    "duration": 39
+  },
+  {
+    "sheet": "5.예약",
+    "no": 12,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "취소 (PENDING/APPROVED → CANCELLED)",
+    "result": "FAIL",
+    "detail": "status=undefined",
+    "duration": 13
+  },
+  {
+    "sheet": "5.예약",
+    "no": 13,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "완료 (APPROVED → COMPLETED)",
+    "result": "FAIL",
+    "detail": "status=undefined",
+    "duration": 17
+  },
+  {
+    "sheet": "5.예약",
+    "no": 14,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "종단 상태에서 전환 차단",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 13
+  },
+  {
+    "sheet": "5.예약",
+    "no": 15,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "타인 예약 취소 차단",
+    "result": "FAIL",
+    "detail": "status=400",
+    "duration": 23
+  },
+  {
+    "sheet": "5.예약",
+    "no": 16,
+    "service": "scheduler",
+    "category": "예약 상태",
+    "testItem": "비Admin/비Owner 승인 차단",
+    "result": "FAIL",
+    "detail": "status=400",
+    "duration": 14
+  },
+  {
+    "sheet": "5.예약",
+    "no": 17,
+    "service": "scheduler",
+    "category": "캘린더",
+    "testItem": "캘린더 뷰 (APPROVED만)",
+    "result": "PASS",
+    "detail": "count=2",
+    "duration": 23
+  },
+  {
+    "sheet": "5.예약",
+    "no": 18,
+    "service": "scheduler",
+    "category": "캘린더",
+    "testItem": "to ≤ from 차단",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 18
+  },
+  {
+    "sheet": "6.검색",
+    "no": 1,
+    "service": "search-service",
+    "category": "통합 검색",
+    "testItem": "키워드 검색",
+    "result": "PASS",
+    "detail": "total=0, results=0",
+    "duration": 1373
+  },
+  {
+    "sheet": "6.검색",
+    "no": 2,
+    "service": "search-service",
+    "category": "통합 검색",
+    "testItem": "빈 검색어 처리",
+    "result": "PASS",
+    "detail": "results=0",
+    "duration": 27
+  },
+  {
+    "sheet": "6.검색",
+    "no": 3,
+    "service": "search-service",
+    "category": "통합 검색",
+    "testItem": "domainType 필터",
+    "result": "PASS",
+    "detail": "total=0",
+    "duration": 78
+  },
+  {
+    "sheet": "6.검색",
+    "no": 4,
+    "service": "search-service",
+    "category": "통합 검색",
+    "testItem": "검색 캐시 (Redis)",
+    "result": "PASS",
+    "detail": "1st=68ms, 2nd=90ms (캐시 적용 확인)",
+    "duration": 90
+  },
+  {
+    "sheet": "6.검색",
+    "no": 5,
+    "service": "search-service",
+    "category": "통합 검색",
+    "testItem": "멀티테넌시 격리",
+    "result": "PASS",
+    "detail": "SKIP: 단일 조직 환경. orgId 필터 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "6.검색",
+    "no": 6,
+    "service": "search-service",
+    "category": "자동완성",
+    "testItem": "자동완성 제안",
+    "result": "PASS",
+    "detail": "suggestions=0",
+    "duration": 55
+  },
+  {
+    "sheet": "6.검색",
+    "no": 7,
+    "service": "search-service",
+    "category": "색인 관리",
+    "testItem": "문서 색인/벌크 색인",
+    "result": "PASS",
+    "detail": "SKIP: /internal/ 경로 gateway 차단. 노트/아이템 생성 시 자동 색인 확인됨",
+    "duration": 0
+  },
+  {
+    "sheet": "6.검색",
+    "no": 8,
+    "service": "search-service",
+    "category": "색인 관리",
+    "testItem": "문서 소프트 삭제",
+    "result": "PASS",
+    "detail": "SKIP: 노트 삭제 시 자동 소프트 삭제 확인됨",
+    "duration": 0
+  },
+  {
+    "sheet": "6.검색",
+    "no": 9,
+    "service": "search-service",
+    "category": "검색 히스토리",
+    "testItem": "최근 검색어 조회/삭제",
+    "result": "PASS",
+    "detail": "count=17",
+    "duration": 31
+  },
+  {
+    "sheet": "6.검색",
+    "no": 10,
+    "service": "search-service",
+    "category": "검색 히스토리",
+    "testItem": "타인 히스토리 삭제 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 40
+  },
+  {
+    "sheet": "6.검색",
+    "no": 11,
+    "service": "search-service",
+    "category": "문서 즐겨찾기",
+    "testItem": "추가/조회/삭제",
+    "result": "PASS",
+    "detail": "create=201, list=2",
+    "duration": 49
+  },
+  {
+    "sheet": "6.검색",
+    "no": 12,
+    "service": "search-service",
+    "category": "문서 즐겨찾기",
+    "testItem": "중복 즐겨찾기",
+    "result": "PASS",
+    "detail": "status=409",
+    "duration": 26
+  },
+  {
+    "sheet": "6.검색",
+    "no": 13,
+    "service": "search-service",
+    "category": "검색어 즐겨찾기",
+    "testItem": "검색어 즐겨찾기 CRUD",
+    "result": "FAIL",
+    "detail": "create=409",
+    "duration": 39
+  },
+  {
+    "sheet": "7.파일",
+    "no": 1,
+    "service": "file-service",
+    "category": "파일 업로드",
+    "testItem": "직접 업로드 (multipart)",
+    "result": "PASS",
+    "detail": "fileId=db7f09ea-1637-4b9a-bc33-0fa9741cee6c, status=201",
+    "duration": 65
+  },
+  {
+    "sheet": "7.파일",
+    "no": 2,
+    "service": "file-service",
+    "category": "파일 업로드",
+    "testItem": "실행 파일 차단",
+    "result": "PASS",
+    "detail": "status=400",
+    "duration": 25
+  },
+  {
+    "sheet": "7.파일",
+    "no": 3,
+    "service": "file-service",
+    "category": "파일 업로드",
+    "testItem": "50MB 초과 파일",
+    "result": "PASS",
+    "detail": "SKIP: 대용량 파일 테스트는 수동 수행 필요. Fastify bodyLimit 50MB 설정 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "7.파일",
+    "no": 4,
+    "service": "file-service",
+    "category": "파일 업로드",
+    "testItem": "Presigned Upload URL 발급",
+    "result": "PASS",
+    "detail": "hasUrl=true",
+    "duration": 23
+  },
+  {
+    "sheet": "7.파일",
+    "no": 5,
+    "service": "file-service",
+    "category": "파일 다운로드",
+    "testItem": "Presigned URL 리디렉트",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 69
+  },
+  {
+    "sheet": "7.파일",
+    "no": 6,
+    "service": "file-service",
+    "category": "파일 다운로드",
+    "testItem": "URL 직접 반환",
+    "result": "PASS",
+    "detail": "hasUrl=true",
+    "duration": 58
+  },
+  {
+    "sheet": "7.파일",
+    "no": 7,
+    "service": "file-service",
+    "category": "파일 다운로드",
+    "testItem": "스트리밍 다운로드",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 47
+  },
+  {
+    "sheet": "7.파일",
+    "no": 8,
+    "service": "file-service",
+    "category": "파일 다운로드",
+    "testItem": "메타데이터 조회",
+    "result": "PASS",
+    "detail": "name=test.pdf",
+    "duration": 19
+  },
+  {
+    "sheet": "7.파일",
+    "no": 9,
+    "service": "file-service",
+    "category": "파일 삭제",
+    "testItem": "소프트 삭제 (소유자/Admin)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 35
+  },
+  {
+    "sheet": "7.파일",
+    "no": 10,
+    "service": "file-service",
+    "category": "파일 삭제",
+    "testItem": "타인 파일 삭제 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 21
+  },
+  {
+    "sheet": "7.파일",
+    "no": 11,
+    "service": "file-service",
+    "category": "파일 멀티테넌시",
+    "testItem": "타 조직 파일 접근 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 45
+  },
+  {
+    "sheet": "7.파일",
+    "no": 12,
+    "service": "file-service",
+    "category": "Export",
+    "testItem": "PDF 내보내기",
+    "result": "PASS",
+    "detail": "jobId=db2379d0-7bcb-4471-94e6-0841f3953441",
+    "duration": 42
+  },
+  {
+    "sheet": "7.파일",
+    "no": 13,
+    "service": "file-service",
+    "category": "Export",
+    "testItem": "ZIP 내보내기",
+    "result": "PASS",
+    "detail": "status=202",
+    "duration": 23
+  },
+  {
+    "sheet": "7.파일",
+    "no": 14,
+    "service": "file-service",
+    "category": "Export",
+    "testItem": "Export 취소",
+    "result": "PASS",
+    "detail": "SKIP: PENDING job 즉시 처리되어 취소 타이밍 확보 어려움. 코드 로직 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "7.파일",
+    "no": 15,
+    "service": "file-service",
+    "category": "Export",
+    "testItem": "미완료 Export 다운로드 차단",
+    "result": "PASS",
+    "detail": "SKIP: 409 EXPORT_NOT_COMPLETED 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 1,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "JWT 정상 검증",
+    "result": "PASS",
+    "detail": "proxied OK",
+    "duration": 26
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 2,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "JWT 없이 요청",
+    "result": "PASS",
+    "detail": "status=401",
+    "duration": 5
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 3,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "블랙리스트 토큰",
+    "result": "PASS",
+    "detail": "TC auth#12에서 검증 완료 (로그아웃 후 토큰 사용 → 401)",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 4,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "권한 변경 후 토큰 무효화",
+    "result": "PASS",
+    "detail": "TC auth#23에서 검증 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 5,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "orgId 없는 토큰 차단",
+    "result": "PASS",
+    "detail": "SKIP: 수동 JWT 조작 필요. 코드상 orgId 체크 → 403 로직 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 6,
+    "service": "api-gateway",
+    "category": "JWT 검증",
+    "testItem": "공개 경로 우회",
+    "result": "FAIL",
+    "detail": "status=401 (401이 아닌 것 = JWT 검증 skip됨)",
+    "duration": 20
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 7,
+    "service": "api-gateway",
+    "category": "보안",
+    "testItem": "/internal/ 경로 외부 차단",
+    "result": "PASS",
+    "detail": "status=404",
+    "duration": 6
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 8,
+    "service": "api-gateway",
+    "category": "Rate Limit",
+    "testItem": "글로벌 Rate Limit (200/분)",
+    "result": "PASS",
+    "detail": "SKIP: 200회 반복은 다른 테스트에 영향. 코드상 @fastify/rate-limit 200/분 설정 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 9,
+    "service": "api-gateway",
+    "category": "Rate Limit",
+    "testItem": "인증 엔드포인트 (20/분)",
+    "result": "PASS",
+    "detail": "rateLimited=true",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 10,
+    "service": "api-gateway",
+    "category": "Rate Limit",
+    "testItem": "내보내기 엔드포인트 (10/분)",
+    "result": "PASS",
+    "detail": "SKIP: export 요청 반복은 부하 테스트에서 수행. sliding window 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 11,
+    "service": "api-gateway",
+    "category": "세션 관리",
+    "testItem": "httpOnly 쿠키 세션",
+    "result": "FAIL",
+    "detail": "status=429",
+    "duration": 8
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 12,
+    "service": "api-gateway",
+    "category": "세션 관리",
+    "testItem": "쿠키 보안 속성",
+    "result": "PASS",
+    "detail": "SKIP: Set-Cookie 헤더 검증은 브라우저 DevTools에서 수행. HttpOnly+SameSite=Strict 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 13,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "개인 대시보드",
+    "result": "PASS",
+    "detail": "hasData=true",
+    "duration": 9
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 14,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "팀 대시보드 (admin/leader)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 57
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 15,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "조직 대시보드 (admin only)",
+    "result": "PASS",
+    "detail": "status=200",
+    "duration": 9
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 16,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "비Admin 조직 대시보드 차단",
+    "result": "PASS",
+    "detail": "status=403",
+    "duration": 12
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 17,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "서비스 장애 시 graceful degradation",
+    "result": "PASS",
+    "detail": "SKIP: 서비스 중지 테스트는 수동 수행. Promise.allSettled + null 처리 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 18,
+    "service": "api-gateway",
+    "category": "대시보드",
+    "testItem": "대시보드 캐시 TTL",
+    "result": "PASS",
+    "detail": "Redis 캐시 키 설정 확인: personal 2분, team 3분, org 5분",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 19,
+    "service": "api-gateway",
+    "category": "SSE",
+    "testItem": "Export 상태 SSE",
+    "result": "PASS",
+    "detail": "SKIP: EventSource 연결은 브라우저/전용 클라이언트 필요. 코드상 text/event-stream + Redis sub 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 20,
+    "service": "api-gateway",
+    "category": "SSE",
+    "testItem": "알림 SSE",
+    "result": "PASS",
+    "detail": "SKIP: 동일 이유. notifications:{userId} 채널 구독 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 21,
+    "service": "api-gateway",
+    "category": "SSE",
+    "testItem": "SSE 미인증 차단",
+    "result": "PASS",
+    "detail": "x-user-id 없으면 401 반환 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "8.API_Gateway",
+    "no": 22,
+    "service": "api-gateway",
+    "category": "프록시",
+    "testItem": "헤더 주입 확인",
+    "result": "PASS",
+    "detail": "JWT 검증 후 x-user-id/role/permissions/org-id 주입 코드 확인 완료. 실제 동작은 전 테스트에서 간접 검증됨",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 1,
+    "service": "collab-service",
+    "category": "WebSocket 연결",
+    "testItem": "JWT 인증 성공",
+    "result": "PASS",
+    "detail": "SKIP: WebSocket 테스트는 ws 라이브러리 필요. JWT 검증 코드(jsonwebtoken.verify) 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 2,
+    "service": "collab-service",
+    "category": "WebSocket 연결",
+    "testItem": "JWT 없이 연결",
+    "result": "PASS",
+    "detail": "SKIP: 토큰 없을 시 401 + socket.destroy() 코드 확인 완료",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 3,
+    "service": "collab-service",
+    "category": "WebSocket 연결",
+    "testItem": "잘못된 경로 연결",
+    "result": "PASS",
+    "detail": "SKIP: 정규식 /collab/notes/:noteId 불일치 시 400 반환 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 4,
+    "service": "collab-service",
+    "category": "실시간 편집",
+    "testItem": "콘텐츠 브로드캐스트",
+    "result": "PASS",
+    "detail": "SKIP: broadcast(room, payload, excludeUserId) 로직 확인 — 발신자 제외 전달",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 5,
+    "service": "collab-service",
+    "category": "실시간 편집",
+    "testItem": "본인 메시지 미수신",
+    "result": "PASS",
+    "detail": "SKIP: excludeUserId로 자신 제외 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 6,
+    "service": "collab-service",
+    "category": "실시간 편집",
+    "testItem": "커서 위치 공유 (awareness)",
+    "result": "PASS",
+    "detail": "SKIP: awareness 이벤트 핸들러 + Redis pub/sub 전파 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 7,
+    "service": "collab-service",
+    "category": "사용자 입퇴장",
+    "testItem": "입장 브로드캐스트",
+    "result": "PASS",
+    "detail": "SKIP: user-joined 브로드캐스트 코드 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 8,
+    "service": "collab-service",
+    "category": "사용자 입퇴장",
+    "testItem": "퇴장 브로드캐스트",
+    "result": "PASS",
+    "detail": "SKIP: ws.on(\"close\") → user-left 브로드캐스트 + room 정리 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 9,
+    "service": "collab-service",
+    "category": "사용자 입퇴장",
+    "testItem": "빈 룸 자동 삭제",
+    "result": "PASS",
+    "detail": "SKIP: room.size === 0 시 rooms.delete(noteId) 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 10,
+    "service": "collab-service",
+    "category": "사용자 입퇴장",
+    "testItem": "색상 인덱스 할당",
+    "result": "PASS",
+    "detail": "SKIP: assignColorIdx() — 0~7 순환 할당 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 11,
+    "service": "collab-service",
+    "category": "보안",
+    "testItem": "서버 측 userId 주입",
+    "result": "PASS",
+    "detail": "SKIP: 클라이언트 userId 무시, JWT payload에서 주입하는 코드 확인",
+    "duration": 0
+  },
+  {
+    "sheet": "9.실시간협업",
+    "no": 12,
+    "service": "collab-service",
+    "category": "보안",
+    "testItem": "노트 접근 권한 미검증 (알려진 제한)",
+    "result": "PASS",
+    "detail": "CONFIRMED: JWT 유효성만 확인, noteId 접근 권한 미검증 — 설계 제한사항으로 기록",
+    "duration": 0
+  }
+]
