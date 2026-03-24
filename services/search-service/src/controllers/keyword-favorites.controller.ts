@@ -10,19 +10,16 @@ export async function addKeywordFavorite(request: FastifyRequest, reply: Fastify
   const userId = (request.headers['x-user-id'] as string)?.trim();
   const { keyword } = request.body as { keyword: string };
 
-  try {
-    const fav = await prisma.searchKeywordFavorite.create({
-      data: { id: uuidv4(), userId, orgId: getOrgId(request.headers), keyword: keyword.trim() },
-    });
-    reply.code(201);
-    return { ok: true, data: fav };
-  } catch (err: any) {
-    if (err?.code === 'P2002') {
-      throw new AppError(409, '이미 즐겨찾기에 추가된 검색어입니다.', ErrorCode.SEARCH_FAVORITE_EXISTS);
-    }
-    logger.error({ err }, '즐겨찾기 추가 중 오류');
-    throw err;
-  }
+  const orgId = getOrgId(request.headers);
+  const trimmedKeyword = keyword.trim();
+
+  const fav = await prisma.searchKeywordFavorite.upsert({
+    where: { userId_keyword: { userId, keyword: trimmedKeyword } },
+    update: {},
+    create: { id: uuidv4(), userId, orgId, keyword: trimmedKeyword },
+  });
+  reply.code(201);
+  return { ok: true, data: fav };
 }
 
 /** GET /api/search/keyword-favorites */

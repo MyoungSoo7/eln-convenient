@@ -38,7 +38,7 @@ viewer@labnote.local Reviewer1234!  Researcher1234!
 | 서비스 | 포트 | 책임 |
 |--------|------|------|
 | **api-gateway** | 8000 | 단일 진입점, 라우팅, JWT 검증 (jose JWKS + 로컬 JWT 듀얼 모드), Rate Limit, 대시보드 집계 |
-| **auth-service** | 8001 | 조직/팀/사용자 CRUD, RBAC, 토큰 발급(jsonwebtoken + bcryptjs), SSO 훅(Keycloak) |
+| **auth-service** | 8001 | 조직/팀/사용자 CRUD, RBAC, 토큰 발급(jsonwebtoken + bcryptjs) |
 | **eln-service** | 8002 | 연구노트/프로토콜 CRUD, 버전관리, 상태 흐름, 태그, 첨부메타, 링크, 템플릿 |
 | **signature-audit-service** | 8003 | 전자서명(해시체인), 감사로그, PDF/ZIP/보고서 변환(Puppeteer+BullMQ), 알림 |
 | **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드, 수량관리, 재고/유효기간 알림 |

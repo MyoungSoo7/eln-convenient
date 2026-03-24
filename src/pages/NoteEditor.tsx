@@ -25,7 +25,7 @@ import {
 import { signNote } from "@/api/signatures";
 import { uploadFile, getFileDownloadUrl } from "@/api/files";
 import { listItems } from "@/api/inventory";
-import { type InventoryItem } from "@/lib/mockData";
+import { type InventoryItem } from "@/lib/types";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",

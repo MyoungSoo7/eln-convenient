@@ -25,7 +25,7 @@
   "alerts": "만료/주의 항목",
   "alertsTooltip": "재고 부족이거나 만료 임박/만료된 항목을 표시합니다.",
   "noAlerts": "만료/주의 항목 없음",
-  "emptyNotes": "등록된 연구노트가 없습니다.",
+  "emptyNotes": "연구노트가 없습니다.",
   "emptyBookings": "예정된 예약이 없습니다.",
   "approved": "승인",
   "pending": "대기",

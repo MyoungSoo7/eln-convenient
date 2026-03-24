@@ -6,10 +6,10 @@
  * 병렬 호출하여 집계한 데이터를 단일 엔드포인트로 반환.
  */
 import apiClient, { type ApiResponse } from './client';
-import type { Note } from '@/lib/mockData';
+import type { Note } from '@/lib/types';
 import type { BackendBooking } from './scheduler';
 import type { ExpiringItem } from './inventory';
-import type { InventoryItem } from '@/lib/mockData';
+import type { InventoryItem } from '@/lib/types';
 
 export interface DashboardNoteStats {
   draft: number | null;

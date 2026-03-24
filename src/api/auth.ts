@@ -4,7 +4,7 @@
  */
 import apiClient, { type ApiResponse } from './client';
 import { setToken, clearToken, setStoredUser, storeRefreshToken } from '@/lib/authToken';
-import { currentUser } from '@/lib/mockData';
+import { currentUser } from '@/lib/types';
 
 export interface User {
   id: string;

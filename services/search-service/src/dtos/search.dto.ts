@@ -59,5 +59,5 @@ export const AddKeywordFavoriteBodySchema = z.object({
 
 // ─── 공통 파라미터 ──────────────────────────────
 export const IdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });

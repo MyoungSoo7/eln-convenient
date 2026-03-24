@@ -3,7 +3,7 @@
  * 경로: /api/inventory/*
  */
 import apiClient, { type ApiResponse } from './client';
-import { type InventoryItem, type InventoryHistory } from '@/lib/mockData';
+import { type InventoryItem, type InventoryHistory } from '@/lib/types';
 
 export type { InventoryItem, InventoryHistory };
 

@@ -200,7 +200,7 @@ export async function copyTemplate(request: FastifyRequest, reply: FastifyReply)
         description:  original.description,
         content:      original.content,
         category:     original.category,
-        sections:     original.sections as object,
+        sections:     original.sections ?? [],
         tags:         original.tags,
         createdBy:    userId,
         isPublic:     false,      // 복사본은 기본 비공개

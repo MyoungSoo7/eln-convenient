@@ -20,7 +20,7 @@ export const PresignedUploadQuerySchema = z.object({
 
 // ─── 파일 조회/삭제 ──────────────────────────────
 export const FileIdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });
 
 // ─── Export ──────────────────────────────────────
@@ -49,7 +49,7 @@ export const ListExportsQuerySchema = z.object({
 });
 
 export const JobIdParamsSchema = z.object({
-  jobId: z.string().uuid(),
+  jobId: z.string().min(1),
 });
 
 export interface PresignedUploadResponseDto {

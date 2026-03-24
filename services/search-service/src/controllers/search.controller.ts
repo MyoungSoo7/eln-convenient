@@ -97,7 +97,7 @@ export async function search(request: FastifyRequest, reply: FastifyReply) {
       { term: { docStatus: 'active' } },
     ];
 
-    filters.push({ term: { orgId } });
+    filters.push({ term: { 'orgId.keyword': orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
@@ -220,7 +220,7 @@ export async function suggest(request: FastifyRequest, reply: FastifyReply) {
   try {
     const filters: object[] = [{ term: { docStatus: 'active' } }];
 
-    filters.push({ term: { orgId } });
+    filters.push({ term: { 'orgId.keyword': orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock, Trash2, FileText } from "lucide-react";
-import { type Note } from "@/lib/mockData";
+import { type Note } from "@/lib/types";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import {
   DropdownMenu,

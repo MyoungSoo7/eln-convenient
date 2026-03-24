@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── 공통 ────────────────────────────────────────
 export const UuidParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });
 
 // ─── 인증 ────────────────────────────────────────

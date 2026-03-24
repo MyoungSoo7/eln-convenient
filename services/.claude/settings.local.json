@@ -5,7 +5,14 @@
       "Bash(docker exec:*)",
       "Bash(pip install:*)",
       "Bash(python generate_spec.py)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool)",
+      "Bash(grep:*)",
+      "Bash(cd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls /c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/*.xlsx)",
+      "Bash(python3:*)"
     ]
   }
 }

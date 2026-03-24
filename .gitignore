@@ -24,6 +24,6 @@ dist-ssr
 *.sw?
 
 .env
-research/
+docs/research/
 .idea/
 *.iml

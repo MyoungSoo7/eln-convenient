@@ -9,6 +9,7 @@ import redis from '../lib/redis';
 const PROXY_TABLE: Record<string, string> = {
   '/api/auth':       process.env.AUTH_SERVICE_URL       || 'http://auth-service:8001',
   '/api/notes':      process.env.ELN_SERVICE_URL        || 'http://eln-service:8002',
+  '/api/tags':       process.env.ELN_SERVICE_URL        || 'http://eln-service:8002',
   '/api/protocols':  process.env.ELN_SERVICE_URL        || 'http://eln-service:8002',
   '/api/templates':  process.env.ELN_SERVICE_URL        || 'http://eln-service:8002',
   '/api/codes':      process.env.ELN_SERVICE_URL        || 'http://eln-service:8002',
@@ -39,6 +40,8 @@ async function endpointRateLimitHook(request: FastifyRequest, reply: FastifyRepl
   if (!redis) return;
 
   const path = request.url;
+  // session 엔드포인트는 auth rate limit에서 제외 (별도 관리)
+  if (path.startsWith('/api/auth/session')) return;
   const rule = ENDPOINT_RATE_LIMITS.find((r) => path.startsWith(r.prefix));
   if (!rule) return;
 

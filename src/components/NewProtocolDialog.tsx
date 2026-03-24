@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, X, GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { createTemplate, listCodes, type TemplateRecord } from "@/api/notes";
 
 interface NewProtocolDialogProps {
@@ -18,6 +19,7 @@ interface NewProtocolDialogProps {
 }
 
 export default function NewProtocolDialog({ open, onOpenChange, onCreated }: NewProtocolDialogProps) {
+  const { t } = useTranslation('protocols');
   const categoriesQuery = useQuery({
     queryKey: ['codes', 'TEMPLATE_CATEGORY'],
     queryFn: async () => {
@@ -70,15 +72,15 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
 
   const handleSubmit = async () => {
     if (!title.trim()) {
-      toast.error("프로토콜 제목을 입력해주세요.");
+      toast.error(t('dialog.templateTitleRequired'));
       return;
     }
     if (!category) {
-      toast.error("카테고리를 선택해주세요.");
+      toast.error(t('dialog.categoryRequired'));
       return;
     }
     if (sections.length === 0) {
-      toast.error("최소 하나의 섹션을 추가해주세요.");
+      toast.error(t('dialog.sectionRequired'));
       return;
     }
 
@@ -95,13 +97,13 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
 
     if (res.ok && res.data) {
       onCreated(res.data);
-      toast.success("프로토콜이 생성되었습니다.", {
-        description: `"${res.data.title}" 템플릿이 등록되었습니다.`,
+      toast.success(t('dialog.createSuccess'), {
+        description: t('dialog.createSuccessDesc', { title: res.data.title }),
       });
       resetForm();
       onOpenChange(false);
     } else {
-      toast.error(res.error ?? "프로토콜 생성에 실패했습니다.");
+      toast.error(res.error ?? t('dialog.createFailed'));
     }
   };
 
@@ -109,22 +111,22 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
     <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>새 프로토콜 생성</DialogTitle>
+          <DialogTitle>{t('dialog.createTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
           {/* 제목 */}
           <div className="space-y-2">
-            <Label htmlFor="proto-title">프로토콜 제목 <span className="text-destructive">*</span></Label>
-            <Input id="proto-title" placeholder="예: Western Blot 표준 프로토콜" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label htmlFor="proto-title">{t('dialog.templateTitle')} <span className="text-destructive">*</span></Label>
+            <Input id="proto-title" placeholder={t('dialog.templateTitlePlaceholder')} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
           {/* 카테고리 */}
           <div className="space-y-2">
-            <Label>카테고리 <span className="text-destructive">*</span></Label>
+            <Label>{t('dialog.category')} <span className="text-destructive">*</span></Label>
             <Select value={category} onValueChange={setCategory}>
               <SelectTrigger>
-                {categoriesQuery.isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SelectValue placeholder="카테고리 선택" />}
+                {categoriesQuery.isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SelectValue placeholder={t('dialog.categoryPlaceholder')} />}
               </SelectTrigger>
               <SelectContent>
                 {categories.map((c) => (
@@ -136,13 +138,13 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
 
           {/* 설명 */}
           <div className="space-y-2">
-            <Label htmlFor="proto-desc">설명</Label>
-            <Textarea id="proto-desc" placeholder="프로토콜에 대한 간단한 설명을 입력하세요." value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            <Label htmlFor="proto-desc">{t('dialog.description')}</Label>
+            <Textarea id="proto-desc" placeholder={t('dialog.descriptionPlaceholder')} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
 
           {/* 섹션 구성 */}
           <div className="space-y-2">
-            <Label>섹션 구성 <span className="text-destructive">*</span></Label>
+            <Label>{t('dialog.sections')} <span className="text-destructive">*</span></Label>
             <div className="space-y-1.5">
               {sections.map((s, i) => (
                 <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5 text-sm">
@@ -156,16 +158,16 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
               ))}
             </div>
             <div className="flex gap-2 mt-2">
-              <Input placeholder="새 섹션 이름" value={newSection} onChange={(e) => setNewSection(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSection())} className="text-sm" />
+              <Input placeholder={t('dialog.newSectionPlaceholder')} value={newSection} onChange={(e) => setNewSection(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSection())} className="text-sm" />
               <Button type="button" variant="outline" size="sm" onClick={addSection} className="shrink-0">
-                <Plus className="h-3.5 w-3.5 mr-1" /> 추가
+                <Plus className="h-3.5 w-3.5 mr-1" /> {t('dialog.add')}
               </Button>
             </div>
           </div>
 
           {/* 태그 */}
           <div className="space-y-2">
-            <Label>태그</Label>
+            <Label>{t('dialog.tags')}</Label>
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((t) => (
@@ -177,16 +179,16 @@ export default function NewProtocolDialog({ open, onOpenChange, onCreated }: New
               </div>
             )}
             <div className="flex gap-2">
-              <Input placeholder="태그 입력 후 Enter" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())} className="text-sm" />
-              <Button type="button" variant="outline" size="sm" onClick={addTag} className="shrink-0">추가</Button>
+              <Input placeholder={t('dialog.tagPlaceholder')} value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())} className="text-sm" />
+              <Button type="button" variant="outline" size="sm" onClick={addTag} className="shrink-0">{t('dialog.add')}</Button>
             </div>
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>취소</Button>
+          <Button variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>{t('dialog.cancel')}</Button>
           <Button onClick={handleSubmit} disabled={submitting} className="gradient-primary text-primary-foreground">
-            {submitting ? "저장 중..." : "생성"}
+            {submitting ? t('dialog.saving') : t('dialog.create')}
           </Button>
         </DialogFooter>
       </DialogContent>

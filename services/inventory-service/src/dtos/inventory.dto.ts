@@ -68,7 +68,7 @@ export type CreateCategoryDto = z.infer<typeof CreateCategorySchema>;
 
 // ─── 쿼리 스키마 ────────────────────────────────
 export const UuidParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });
 
 export const GetItemsQuerySchema = z.object({

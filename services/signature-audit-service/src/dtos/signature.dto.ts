@@ -52,15 +52,15 @@ export const AuditIdParamsSchema = z.object({
 // ── Export schemas ──
 
 export const ExportPdfParamsSchema = z.object({
-  noteId: z.string().uuid('noteId must be a valid UUID'),
+  noteId: z.string().min(1, 'noteId is required'),
 });
 
 export const ExportZipBodySchema = z.object({
-  noteIds: z.array(z.string().uuid('each noteId must be a valid UUID')).min(1, 'noteIds must contain at least one item'),
+  noteIds: z.array(z.string().min(1)).min(1, 'noteIds must contain at least one item'),
 });
 
 export const ExportReportBodySchema = z.object({
-  noteIds: z.array(z.string().uuid('each noteId must be a valid UUID')).min(1, 'noteIds must contain at least one item'),
+  noteIds: z.array(z.string().min(1)).min(1, 'noteIds must contain at least one item'),
 });
 
 export const ExportStatusParamsSchema = z.object({
