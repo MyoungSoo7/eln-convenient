@@ -15,12 +15,42 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 /**
+ * 외부 요청에서 내부 전용 헤더를 제거한다.
+ * Gateway만이 JWT 검증 후 이 헤더들을 주입할 수 있어야 한다.
+ * 클라이언트가 위조한 x-user-*, x-internal-secret 헤더가 내부 서비스로 전달되는 것을 방지.
+ */
+const INTERNAL_HEADERS = [
+  'x-user-id',
+  'x-user-role',
+  'x-user-email',
+  'x-user-permissions',
+  'x-user-org-id',
+  'x-user-team-ids',
+  'x-user-team-roles',
+  'x-internal-secret',
+] as const;
+
+function stripInternalHeaders(request: FastifyRequest): void {
+  for (const header of INTERNAL_HEADERS) {
+    delete (request.headers as any)[header];
+  }
+}
+
+/**
  * JWT 검증 미들웨어 — 로컬 JWT_SECRET 검증
+ *
+ * 보안 흐름:
+ *   1. 모든 요청에서 내부 전용 헤더(x-user-*, x-internal-secret) 즉시 제거
+ *   2. JWT 검증 성공 시에만 x-user-* 헤더 주입
+ *   3. 공개 경로는 헤더 제거 후 통과 (인증 없이, 내부 헤더도 없이)
  *
  * 성공 시 주입 헤더:
  *   x-user-id, x-user-role, x-user-email, x-user-permissions, x-user-org-id
  */
 export async function authHook(request: FastifyRequest, reply: FastifyReply) {
+  // ── 1단계: 외부 요청의 내부 전용 헤더 무조건 제거 (스푸핑 방지) ──
+  stripInternalHeaders(request);
+
   const path = request.url;
 
   if (PUBLIC_PATHS.some((p) => path.startsWith(p))) return;

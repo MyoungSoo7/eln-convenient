@@ -994,7 +994,7 @@ async function sheet5_Scheduler() {
     const id = cr.data?.data?.id;
     if (!id) throw new Error('booking creation failed');
     const r = await http('POST', `/api/scheduler/bookings/${id}/reject`, {
-      token: adminTk, body: { reason: '테스트 거절' }
+      token: adminTk, body: { reason: '테스트 거절' },
     });
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
@@ -1015,8 +1015,8 @@ async function sheet5_Scheduler() {
       token: resTk, body: { resourceId, title: 'Complete me', startAt: start, endAt: end }
     });
     const id = cr.data?.data?.id;
-    await http('POST', `/api/scheduler/bookings/${id}/approve`, { token: adminTk });
-    const r = await http('POST', `/api/scheduler/bookings/${id}/complete`, { token: resTk });
+    await http('POST', `/api/scheduler/bookings/${id}/approve`, { token: adminTk, body: {} });
+    const r = await http('POST', `/api/scheduler/bookings/${id}/complete`, { token: resTk, body: {} });
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
 
@@ -1024,7 +1024,7 @@ async function sheet5_Scheduler() {
   await runTC('5.예약', 14, '종단 상태에서 전환 차단', async () => {
     // bookingId는 이미 CANCELLED
     if (!bookingId) throw new Error('bookingId 없음');
-    const r = await http('POST', `/api/scheduler/bookings/${bookingId}/approve`, { token: adminTk });
+    const r = await http('POST', `/api/scheduler/bookings/${bookingId}/approve`, { token: adminTk, body: {} });
     assert(r.status === 400 || r.status === 409, `Expected 400/409, got ${r.status}`);
   });
 
@@ -1040,7 +1040,7 @@ async function sheet5_Scheduler() {
       token: resTk, body: { resourceId, title: 'Approve fail', startAt: start, endAt: end }
     });
     const id = cr.data?.data?.id;
-    const r = await http('POST', `/api/scheduler/bookings/${id}/approve`, { token: resTk });
+    const r = await http('POST', `/api/scheduler/bookings/${id}/approve`, { token: resTk, body: {} });
     assert(r.status === 403, `Expected 403, got ${r.status}`);
   });
 
@@ -1205,10 +1205,10 @@ async function sheet7_File() {
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
 
-  // TC-009: 소프트 삭제
+  // TC-009: 소프트 삭제 (Admin만 file:delete 권한 보유)
   await runTC('7.파일', 9, '소프트 삭제', async () => {
     if (!fileId) { skip('7.파일', 9, '삭제', 'fileId 없음'); return; }
-    const r = await http('DELETE', `/api/files/${fileId}`, { token: resTk });
+    const r = await http('DELETE', `/api/files/${fileId}`, { token: adminTk });
     assert(r.status === 200 || r.status === 204, `Expected 200/204, got ${r.status}`);
   });
 

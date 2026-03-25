@@ -13,7 +13,17 @@
       "Bash(npx tsc:*)",
       "Bash(ls /c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/*.xlsx)",
       "Bash(python3:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(pip show:*)",
+      "Bash(python generate_manual_ppt.py)",
+      "Bash(mkdir -p \"C:\\\\vscode\\\\lab\\\\lab-companion-feature-phase1-backend-infra\\\\docs\\\\test\")",
+      "Read(//c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/**)",
+      "Bash(python generate_docx.py)",
+      "Bash(python generate_xlsx.py)",
+      "Bash(ls -la C:vscodelablab-companion-feature-phase1-backend-infradocstest/*.docx C:vscodelablab-companion-feature-phase1-backend-infradocstest/*.xlsx)",
+      "Bash(python gen_xlsx.py)",
+      "Bash(python gen_docx.py)",
+      "Bash(python gen_pptx.py)"
     ]
   }
 }

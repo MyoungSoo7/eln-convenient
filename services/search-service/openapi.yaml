@@ -1,0 +1,1815 @@
+openapi: 3.0.3
+info:
+  title: 통합검색 서비스 API
+  description: |
+    LabNote ELN 플랫폼의 통합검색 서비스입니다.
+    OpenSearch 기반 전문 검색, 자동완성, 검색 히스토리, 즐겨찾기, 검색어 즐겨찾기, 인덱스 관리 기능을 제공합니다.
+
+    ## 인증
+    - **사용자 엔드포인트**: api-gateway를 통해 JWT 검증 후 내부 헤더(`x-user-id`, `x-user-role`, `x-user-org-id`) 주입
+    - **인덱스 관리 엔드포인트**: `x-internal-secret` 헤더를 통한 내부 서비스 인증 전용
+
+    ## 응답 형식
+    모든 응답은 `{ ok: boolean, data?: T, error?: string, code?: string }` 형태로 통일됩니다.
+  version: 2.0.0
+  contact:
+    name: LabNote 개발팀
+
+servers:
+  - url: http://localhost:8006
+    description: 로컬 개발 서버
+
+tags:
+  - name: 검색
+    description: OpenSearch 기반 통합 검색 및 자동완성
+  - name: 검색기록
+    description: 사용자별 검색어 히스토리 관리
+  - name: 즐겨찾기
+    description: 문서 즐겨찾기 관리 (노트, 템플릿, 인벤토리)
+  - name: 키워드즐겨찾기
+    description: 검색어 즐겨찾기 관리
+  - name: 인덱스관리
+    description: OpenSearch 인덱스 문서 관리 (내부 서비스 전용)
+  - name: 시스템
+    description: 헬스체크 및 서비스 상태
+
+# ─────────────────────────────────────────────────────────────
+# Security Schemes
+# ─────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        api-gateway가 JWT를 검증한 후 내부 헤더(`x-user-id`, `x-user-role`, `x-user-permissions`, `x-user-org-id`)를 주입합니다.
+        클라이언트는 `Authorization: Bearer <token>` 헤더를 api-gateway에 전달합니다.
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: x-internal-secret
+      description: 내부 서비스 간 통신에 사용되는 공유 시크릿 헤더. 인덱스 관리 엔드포인트 전용.
+
+  # ─────────────────────────────────────────────────────────────
+  # Schemas
+  # ─────────────────────────────────────────────────────────────
+  schemas:
+
+    # ── 공통 ──────────────────────────────────────────────────
+    OkResponse:
+      type: object
+      description: 단순 성공 응답
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      description: 오류 응답
+      required:
+        - ok
+        - error
+        - code
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 오류 메시지
+          example: 인증이 필요합니다.
+        code:
+          type: string
+          description: 에러 코드 (ErrorCode 상수)
+          example: UNAUTHORIZED
+
+    # ── 도메인 타입 ──────────────────────────────────────────
+    DomainType:
+      type: string
+      enum:
+        - NOTE
+        - PROTOCOL
+        - TEMPLATE
+        - INVENTORY
+      description: 검색 대상 도메인 유형
+
+    DocType:
+      type: string
+      enum:
+        - notes
+        - templates
+        - inventory
+      description: 즐겨찾기 문서 유형
+
+    # ── 검색 결과 ──────────────────────────────────────────────
+    SearchResult:
+      type: object
+      description: 개별 검색 결과 항목
+      required:
+        - docId
+        - domainType
+        - title
+        - snippet
+        - score
+        - createdAt
+        - updatedAt
+      properties:
+        docId:
+          type: string
+          description: OpenSearch 문서 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        domainType:
+          $ref: '#/components/schemas/DomainType'
+        title:
+          type: string
+          description: 문서 제목
+          example: 실험 프로토콜 A
+        snippet:
+          type: string
+          description: 문서 요약 또는 본문 발췌
+          example: 이 프로토콜은 세포 배양 방법을 설명합니다.
+        score:
+          type: number
+          format: float
+          description: OpenSearch 관련도 점수
+          example: 4.25
+        highlight:
+          type: object
+          description: 검색어 하이라이트 정보. 필드명을 키로, 하이라이트된 문자열 배열을 값으로 가짐
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            title:
+              - "<em>실험</em> 프로토콜 A"
+            content:
+              - "이 <em>실험</em>은 세포 배양을..."
+        createdAt:
+          type: string
+          format: date-time
+          description: 문서 생성일시 (ISO 8601)
+          example: "2025-01-15T09:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 문서 수정일시 (ISO 8601)
+          example: "2025-03-10T14:30:00.000Z"
+
+    SearchDomainCounts:
+      type: object
+      description: 도메인별 검색 결과 수
+      properties:
+        NOTE:
+          type: integer
+          example: 12
+        PROTOCOL:
+          type: integer
+          example: 5
+        TEMPLATE:
+          type: integer
+          example: 2
+        INVENTORY:
+          type: integer
+          example: 0
+
+    SearchResponse:
+      type: object
+      description: 통합 검색 응답
+      required:
+        - ok
+        - query
+        - results
+        - total
+        - counts
+        - page
+        - size
+        - took
+      properties:
+        ok:
+          type: boolean
+          example: true
+        query:
+          type: string
+          description: 실제 검색에 사용된 검색어
+          example: 세포 배양
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        total:
+          type: integer
+          description: 전체 검색 결과 수
+          example: 17
+        counts:
+          $ref: '#/components/schemas/SearchDomainCounts'
+        page:
+          type: integer
+          description: 현재 페이지 번호 (1부터 시작)
+          example: 1
+        size:
+          type: integer
+          description: 페이지당 결과 수
+          example: 20
+        took:
+          type: integer
+          description: OpenSearch 검색 소요 시간 (밀리초)
+          example: 23
+
+    SuggestionItem:
+      type: object
+      description: 자동완성 제안 항목
+      required:
+        - text
+        - domainType
+        - docId
+      properties:
+        text:
+          type: string
+          description: 제안 문서 제목
+          example: 세포 배양 프로토콜
+        domainType:
+          $ref: '#/components/schemas/DomainType'
+        docId:
+          type: string
+          description: 문서 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+    SuggestResponse:
+      type: object
+      description: 자동완성 응답
+      required:
+        - ok
+        - query
+        - suggestions
+      properties:
+        ok:
+          type: boolean
+          example: true
+        query:
+          type: string
+          description: 입력된 검색어
+          example: 세포
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuggestionItem'
+          maxItems: 7
+
+    # ── 색인 관리 ──────────────────────────────────────────────
+    IndexDocBody:
+      type: object
+      description: 단일 문서 색인 요청 본문
+      required:
+        - id
+        - doc
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: 색인할 문서의 고유 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        doc:
+          type: object
+          description: 색인할 문서 데이터. domainType은 필수이며 나머지 필드는 자유롭게 포함 가능
+          required:
+            - domainType
+          properties:
+            domainType:
+              $ref: '#/components/schemas/DomainType'
+            title:
+              type: string
+              example: 실험 노트 제목
+            content:
+              type: string
+              example: 실험 본문 내용
+            summary:
+              type: string
+              example: 실험 요약
+            tags:
+              type: array
+              items:
+                type: string
+              example:
+                - 세포배양
+                - PCR
+            ownerId:
+              type: string
+              example: user-uuid
+            orgId:
+              type: string
+              example: org-uuid
+            visibility:
+              type: string
+              enum:
+                - public
+                - private
+                - lab
+                - project
+              example: public
+            docStatus:
+              type: string
+              enum:
+                - active
+                - deleted
+              example: active
+            createdAt:
+              type: string
+              format: date-time
+              example: "2025-01-15T09:00:00.000Z"
+            updatedAt:
+              type: string
+              format: date-time
+              example: "2025-03-10T14:30:00.000Z"
+          additionalProperties: true
+
+    BulkDocItem:
+      type: object
+      description: 벌크 색인 개별 항목
+      required:
+        - id
+        - doc
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: 문서 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        doc:
+          type: object
+          description: 색인할 문서 데이터 (키-값 자유 형식)
+          additionalProperties: true
+          example:
+            domainType: NOTE
+            title: 실험 노트
+
+    BulkIndexBody:
+      type: object
+      description: 벌크 색인 요청 본문
+      required:
+        - docs
+      properties:
+        docs:
+          type: array
+          minItems: 1
+          description: 색인할 문서 목록 (최소 1개 이상)
+          items:
+            $ref: '#/components/schemas/BulkDocItem'
+
+    IndexDocResponse:
+      type: object
+      description: 단일 문서 색인 성공 응답
+      required:
+        - ok
+        - message
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: 색인 완료 메시지
+          example: "NOTE:a1b2c3d4-e5f6-7890-abcd-ef1234567890 색인 완료"
+
+    BulkIndexResponse:
+      type: object
+      description: 벌크 색인 성공 응답
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+        indexed:
+          type: integer
+          description: 색인 처리된 문서 수
+          example: 10
+        errors:
+          type: integer
+          description: 오류 발생 수
+          example: 0
+
+    RemoveDocResponse:
+      type: object
+      description: 문서 소프트 삭제 성공 응답
+      required:
+        - ok
+        - message
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: 삭제 완료 메시지
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890 소프트 삭제 완료"
+
+    IndexStats:
+      type: object
+      description: OpenSearch 인덱스 통계 정보
+      additionalProperties: true
+      example:
+        totalDocs: 1234
+        indexName: labnote-unified
+        health: green
+
+    StatsResponse:
+      type: object
+      description: 인덱스 통계 응답
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/IndexStats'
+
+    # ── 검색 히스토리 ─────────────────────────────────────────
+    SaveHistoryBody:
+      type: object
+      description: 검색어 저장 요청 본문
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          description: 저장할 검색어
+          example: 세포 배양 프로토콜
+
+    SearchHistoryEntry:
+      type: object
+      description: 검색 히스토리 항목
+      required:
+        - id
+        - userId
+        - orgId
+        - query
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 히스토리 항목 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        userId:
+          type: string
+          description: 사용자 ID
+          example: user-uuid-1234
+        orgId:
+          type: string
+          description: 조직 ID
+          example: org-uuid-5678
+        query:
+          type: string
+          description: 검색어
+          example: 세포 배양 프로토콜
+        createdAt:
+          type: string
+          format: date-time
+          description: 검색 일시
+          example: "2025-03-20T11:30:00.000Z"
+
+    SaveHistoryResponse:
+      type: object
+      description: 검색어 저장 성공 응답
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/SearchHistoryEntry'
+
+    GetHistoryResponse:
+      type: object
+      description: 검색 히스토리 목록 응답 (최근 20개)
+      required:
+        - ok
+        - data
+        - total
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHistoryEntry'
+        total:
+          type: integer
+          description: 반환된 항목 수
+          example: 5
+
+    DeleteHistoryEntryResponse:
+      type: object
+      description: 특정 검색 기록 삭제 응답
+      required:
+        - ok
+        - message
+        - id
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: 검색 기록이 삭제되었습니다.
+        id:
+          type: string
+          format: uuid
+          description: 삭제된 항목 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+    ClearHistoryResponse:
+      type: object
+      description: 전체 검색 기록 삭제 응답
+      required:
+        - ok
+        - message
+        - count
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "검색 기록 5건이 삭제되었습니다."
+        count:
+          type: integer
+          description: 삭제된 항목 수
+          example: 5
+
+    # ── 즐겨찾기 ──────────────────────────────────────────────
+    AddFavoriteBody:
+      type: object
+      description: 즐겨찾기 추가 요청 본문
+      required:
+        - docType
+        - docId
+        - title
+      properties:
+        docType:
+          $ref: '#/components/schemas/DocType'
+        docId:
+          type: string
+          minLength: 1
+          description: 즐겨찾기할 문서 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        title:
+          type: string
+          minLength: 1
+          description: 문서 제목 (표시용)
+          example: 실험 노트 A
+
+    FavoriteEntry:
+      type: object
+      description: 즐겨찾기 항목
+      required:
+        - id
+        - userId
+        - orgId
+        - docType
+        - docId
+        - title
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 즐겨찾기 항목 ID
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        userId:
+          type: string
+          description: 사용자 ID
+          example: user-uuid-1234
+        orgId:
+          type: string
+          description: 조직 ID
+          example: org-uuid-5678
+        docType:
+          $ref: '#/components/schemas/DocType'
+        docId:
+          type: string
+          description: 즐겨찾기된 문서 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        title:
+          type: string
+          description: 문서 제목
+          example: 실험 노트 A
+        createdAt:
+          type: string
+          format: date-time
+          description: 즐겨찾기 추가 일시
+          example: "2025-03-01T08:00:00.000Z"
+
+    AddFavoriteResponse:
+      type: object
+      description: 즐겨찾기 추가 성공 응답
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/FavoriteEntry'
+
+    RemoveFavoriteResponse:
+      type: object
+      description: 즐겨찾기 제거 성공 응답
+      required:
+        - ok
+        - message
+        - id
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: 즐겨찾기가 제거되었습니다.
+        id:
+          type: string
+          format: uuid
+          description: 삭제된 즐겨찾기 ID
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+
+    GetFavoritesResponse:
+      type: object
+      description: 즐겨찾기 목록 응답
+      required:
+        - ok
+        - data
+        - total
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteEntry'
+        total:
+          type: integer
+          description: 반환된 즐겨찾기 수
+          example: 3
+
+    # ── 검색어 즐겨찾기 ──────────────────────────────────────
+    AddKeywordFavoriteBody:
+      type: object
+      description: 검색어 즐겨찾기 추가 요청 본문
+      required:
+        - keyword
+      properties:
+        keyword:
+          type: string
+          minLength: 1
+          description: 즐겨찾기할 검색어
+          example: 세포 배양
+
+    KeywordFavoriteEntry:
+      type: object
+      description: 검색어 즐겨찾기 항목
+      required:
+        - id
+        - userId
+        - orgId
+        - keyword
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 검색어 즐겨찾기 항목 ID
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+        userId:
+          type: string
+          description: 사용자 ID
+          example: user-uuid-1234
+        orgId:
+          type: string
+          description: 조직 ID
+          example: org-uuid-5678
+        keyword:
+          type: string
+          description: 즐겨찾기된 검색어
+          example: 세포 배양
+        createdAt:
+          type: string
+          format: date-time
+          description: 즐겨찾기 추가 일시
+          example: "2025-02-20T10:00:00.000Z"
+
+    AddKeywordFavoriteResponse:
+      type: object
+      description: 검색어 즐겨찾기 추가/갱신 성공 응답 (upsert)
+      required:
+        - ok
+        - data
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/KeywordFavoriteEntry'
+
+    GetKeywordFavoritesResponse:
+      type: object
+      description: 검색어 즐겨찾기 목록 응답
+      required:
+        - ok
+        - data
+        - total
+      properties:
+        ok:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeywordFavoriteEntry'
+        total:
+          type: integer
+          description: 반환된 검색어 즐겨찾기 수
+          example: 4
+
+    RemoveKeywordFavoriteResponse:
+      type: object
+      description: 검색어 즐겨찾기 삭제 성공 응답
+      required:
+        - ok
+        - message
+        - id
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: 즐겨찾기 검색어가 삭제되었습니다.
+        id:
+          type: string
+          format: uuid
+          description: 삭제된 검색어 즐겨찾기 ID
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+
+    # ── 헬스체크 ──────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      description: 서비스 헬스체크 응답
+      required:
+        - status
+        - service
+        - timestamp
+        - db
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+          description: 전체 서비스 상태
+          example: ok
+        service:
+          type: string
+          description: 서비스 이름
+          example: search-service
+        timestamp:
+          type: string
+          format: date-time
+          description: 응답 생성 시각
+          example: "2025-03-25T09:00:00.000Z"
+        db:
+          type: string
+          enum:
+            - ok
+            - error
+          description: PostgreSQL 연결 상태
+          example: ok
+
+# ─────────────────────────────────────────────────────────────
+# Paths
+# ─────────────────────────────────────────────────────────────
+paths:
+
+  # ── 시스템 ──────────────────────────────────────────────────
+  /health:
+    get:
+      tags:
+        - 시스템
+      summary: 헬스체크
+      description: 서비스 및 PostgreSQL 연결 상태를 확인합니다. 인증이 필요하지 않습니다.
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: 서비스 정상 또는 저하 상태 (DB 오류 시에도 200 반환)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ok:
+                  summary: 정상
+                  value:
+                    status: ok
+                    service: search-service
+                    timestamp: "2025-03-25T09:00:00.000Z"
+                    db: ok
+                degraded:
+                  summary: DB 오류
+                  value:
+                    status: degraded
+                    service: search-service
+                    timestamp: "2025-03-25T09:00:00.000Z"
+                    db: error
+
+  # ── 통합 검색 ────────────────────────────────────────────────
+  /api/search:
+    get:
+      tags:
+        - 검색
+      summary: 통합 검색
+      description: |
+        OpenSearch를 이용한 통합 전문 검색입니다.
+
+        - 검색 대상 필드: `title`(가중치 4), `tags`(3), `summary`(2), `content`(1)
+        - 퍼지 검색(`fuzziness: AUTO`) 지원
+        - 도메인 유형별 필터링 가능 (`domainTypes` 쿼리 파라미터)
+        - 날짜 범위 필터 지원 (`dateFrom`, `dateTo`)
+        - 검색어가 비어 있으면 빈 결과를 즉시 반환합니다.
+        - 결과는 3분간 Redis에 캐싱됩니다.
+        - 검색 시 자동으로 사용자의 검색 히스토리에 저장됩니다.
+        - 권한 필터: 본인 소유 문서 + 공개 문서 + 소속 랩/프로젝트 문서
+
+        **필요 권한**: `NOTE_READ`
+      operationId: search
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: 검색어. 비어 있으면 빈 결과 반환
+          required: false
+          schema:
+            type: string
+            default: ''
+          example: 세포 배양
+        - name: domainTypes
+          in: query
+          description: |
+            검색할 도메인 유형 목록 (쉼표 구분). 미지정 시 전체 도메인 검색.
+            가능한 값: `NOTE`, `PROTOCOL`, `TEMPLATE`, `INVENTORY`
+          required: false
+          schema:
+            type: string
+          example: "NOTE,PROTOCOL"
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: size
+          in: query
+          description: 페이지당 결과 수 (최대 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: dateFrom
+          in: query
+          description: 검색 시작 날짜 (ISO 8601 형식)
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2025-01-01T00:00:00.000Z"
+        - name: dateTo
+          in: query
+          description: 검색 종료 날짜 (ISO 8601 형식)
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2025-12-31T23:59:59.999Z"
+      responses:
+        '200':
+          description: 검색 결과 반환 (검색어가 없거나 결과가 없어도 200 반환)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                ok: true
+                query: 세포 배양
+                results:
+                  - docId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    domainType: PROTOCOL
+                    title: 세포 배양 프로토콜 v2
+                    snippet: 이 프로토콜은 HeLa 세포 배양 방법을 설명합니다.
+                    score: 5.12
+                    highlight:
+                      title:
+                        - "<em>세포 배양</em> 프로토콜 v2"
+                    createdAt: "2025-01-15T09:00:00.000Z"
+                    updatedAt: "2025-03-10T14:30:00.000Z"
+                total: 1
+                counts:
+                  NOTE: 0
+                  PROTOCOL: 1
+                  TEMPLATE: 0
+                  INVENTORY: 0
+                page: 1
+                size: 20
+                took: 18
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 인증이 필요합니다.
+                code: UNAUTHORIZED
+        '403':
+          description: 권한 없음 (NOTE_READ 권한 미보유)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 권한이 없습니다.
+                code: FORBIDDEN
+        '502':
+          description: OpenSearch 검색 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: OpenSearch 검색에 실패했습니다.
+                code: BAD_GATEWAY
+
+  /api/search/suggest:
+    get:
+      tags:
+        - 검색
+      summary: 자동완성 제안
+      description: |
+        입력 중인 검색어를 기반으로 최대 7개의 문서 제목 자동완성 후보를 반환합니다.
+
+        - `phrase_prefix` 쿼리 방식으로 빠른 제목 매칭
+        - 검색 대상 필드: `title`(가중치 3), `tags`(2)
+        - 검색어가 비어 있으면 즉시 빈 목록 반환
+        - OpenSearch 오류 발생 시 빈 목록 반환 (에러 전파 없음)
+        - 권한 필터 적용: 본인 소유 + 공개 문서만 포함
+
+        **필요 권한**: `NOTE_READ`
+      operationId: suggest
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: 자동완성할 검색어 접두어
+          required: false
+          schema:
+            type: string
+            default: ''
+          example: 세포
+      responses:
+        '200':
+          description: 자동완성 제안 목록 (오류 시에도 빈 목록으로 200 반환)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestResponse'
+              example:
+                ok: true
+                query: 세포
+                suggestions:
+                  - text: 세포 배양 프로토콜
+                    domainType: PROTOCOL
+                    docId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                  - text: 세포주 관리 노트
+                    domainType: NOTE
+                    docId: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 인증이 필요합니다.
+                code: UNAUTHORIZED
+        '403':
+          description: 권한 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 권한이 없습니다.
+                code: FORBIDDEN
+
+  # ── 검색 히스토리 ─────────────────────────────────────────
+  /api/search/history:
+    post:
+      tags:
+        - 검색기록
+      summary: 검색어 저장
+      description: |
+        사용자의 검색어를 명시적으로 히스토리에 저장합니다.
+
+        참고: 통합 검색(`GET /api/search`) 시에도 자동으로 히스토리가 저장됩니다.
+        이 엔드포인트는 검색 컴포넌트 외부에서 별도로 저장이 필요한 경우 사용합니다.
+      operationId: saveHistory
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveHistoryBody'
+            example:
+              query: 세포 배양 프로토콜
+      responses:
+        '201':
+          description: 검색어 저장 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveHistoryResponse'
+              example:
+                ok: true
+                data:
+                  id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                  userId: user-uuid-1234
+                  orgId: org-uuid-5678
+                  query: 세포 배양 프로토콜
+                  createdAt: "2025-03-25T09:00:00.000Z"
+        '400':
+          description: 잘못된 요청 (query 필드 누락 또는 빈 문자열)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: query는 필수입니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - 검색기록
+      summary: 검색 히스토리 조회
+      description: |
+        사용자의 최근 검색어를 최대 20개 반환합니다.
+        최신 검색어가 먼저 반환됩니다 (createdAt 내림차순).
+        조직 스코프(`orgId`)로 필터링됩니다.
+      operationId: getHistory
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 검색 히스토리 목록
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHistoryResponse'
+              example:
+                ok: true
+                data:
+                  - id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    userId: user-uuid-1234
+                    orgId: org-uuid-5678
+                    query: 세포 배양 프로토콜
+                    createdAt: "2025-03-25T09:00:00.000Z"
+                total: 1
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - 검색기록
+      summary: 전체 검색 기록 삭제
+      description: |
+        현재 사용자의 모든 검색 기록을 삭제합니다.
+        조직 스코프(`orgId`) 내의 기록만 삭제됩니다.
+      operationId: clearHistory
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 전체 검색 기록 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClearHistoryResponse'
+              example:
+                ok: true
+                message: 검색 기록 5건이 삭제되었습니다.
+                count: 5
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/search/history/{id}:
+    delete:
+      tags:
+        - 검색기록
+      summary: 특정 검색 기록 삭제
+      description: |
+        ID로 특정 검색 기록 항목을 삭제합니다.
+        본인의 검색 기록만 삭제할 수 있습니다. 타인의 기록 삭제 시 403을 반환합니다.
+      operationId: deleteHistoryEntry
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: 삭제할 검색 기록 항목 ID (UUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      responses:
+        '200':
+          description: 검색 기록 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteHistoryEntryResponse'
+              example:
+                ok: true
+                message: 검색 기록이 삭제되었습니다.
+                id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 본인의 기록이 아님
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 본인의 검색 기록만 삭제할 수 있습니다.
+                code: SEARCH_PERMISSION_DENIED
+        '404':
+          description: 검색 기록을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 검색 기록을 찾을 수 없습니다.
+                code: SEARCH_HISTORY_NOT_FOUND
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── 즐겨찾기 ─────────────────────────────────────────────
+  /api/search/favorites:
+    post:
+      tags:
+        - 즐겨찾기
+      summary: 즐겨찾기 추가
+      description: |
+        문서를 즐겨찾기에 추가합니다.
+        동일한 사용자가 동일한 `docType` + `docId` 조합을 다시 추가하면 409 충돌 오류가 반환됩니다.
+        지원 문서 유형: `notes`, `templates`, `inventory`
+      operationId: addFavorite
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFavoriteBody'
+            example:
+              docType: notes
+              docId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              title: 실험 노트 A
+      responses:
+        '201':
+          description: 즐겨찾기 추가 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddFavoriteResponse'
+              example:
+                ok: true
+                data:
+                  id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                  userId: user-uuid-1234
+                  orgId: org-uuid-5678
+                  docType: notes
+                  docId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                  title: 실험 노트 A
+                  createdAt: "2025-03-25T09:00:00.000Z"
+        '400':
+          description: 잘못된 요청 (필수 필드 누락 또는 유효하지 않은 docType)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: docType, docId, title은 필수입니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 이미 즐겨찾기에 추가된 항목
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 즐겨찾기에 추가된 항목입니다.
+                code: SEARCH_FAVORITE_EXISTS
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - 즐겨찾기
+      summary: 즐겨찾기 목록 조회
+      description: |
+        사용자의 즐겨찾기 목록을 최신 순으로 반환합니다.
+        `docType` 쿼리 파라미터로 특정 유형만 필터링할 수 있습니다.
+        조직 스코프(`orgId`)로 필터링됩니다.
+      operationId: getFavorites
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: docType
+          in: query
+          description: 필터링할 문서 유형. 미지정 시 전체 반환
+          required: false
+          schema:
+            $ref: '#/components/schemas/DocType'
+          example: notes
+      responses:
+        '200':
+          description: 즐겨찾기 목록
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFavoritesResponse'
+              example:
+                ok: true
+                data:
+                  - id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    userId: user-uuid-1234
+                    orgId: org-uuid-5678
+                    docType: notes
+                    docId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    title: 실험 노트 A
+                    createdAt: "2025-03-25T09:00:00.000Z"
+                total: 1
+        '400':
+          description: 유효하지 않은 docType 파라미터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/search/favorites/{id}:
+    delete:
+      tags:
+        - 즐겨찾기
+      summary: 즐겨찾기 제거
+      description: |
+        ID로 즐겨찾기 항목을 제거합니다.
+        본인의 즐겨찾기만 삭제할 수 있습니다. 타인의 즐겨찾기 삭제 시 403을 반환합니다.
+      operationId: removeFavorite
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: 삭제할 즐겨찾기 항목 ID (UUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+      responses:
+        '200':
+          description: 즐겨찾기 제거 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveFavoriteResponse'
+              example:
+                ok: true
+                message: 즐겨찾기가 제거되었습니다.
+                id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 본인의 즐겨찾기가 아님
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 본인의 즐겨찾기만 삭제할 수 있습니다.
+                code: SEARCH_PERMISSION_DENIED
+        '404':
+          description: 즐겨찾기 항목을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 즐겨찾기를 찾을 수 없습니다.
+                code: SEARCH_FAVORITE_NOT_FOUND
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── 검색어 즐겨찾기 ──────────────────────────────────────
+  /api/search/keyword-favorites:
+    post:
+      tags:
+        - 키워드즐겨찾기
+      summary: 검색어 즐겨찾기 추가
+      description: |
+        검색어를 즐겨찾기에 추가합니다. 동일한 검색어가 이미 존재하면 upsert 처리됩니다 (중복 오류 없음).
+        검색어는 앞뒤 공백이 자동으로 제거됩니다.
+        같은 사용자가 동일 keyword를 다시 추가하면 기존 항목을 그대로 반환합니다.
+      operationId: addKeywordFavorite
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddKeywordFavoriteBody'
+            example:
+              keyword: 세포 배양
+      responses:
+        '201':
+          description: 검색어 즐겨찾기 추가 성공 (또는 기존 항목 반환)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddKeywordFavoriteResponse'
+              example:
+                ok: true
+                data:
+                  id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                  userId: user-uuid-1234
+                  orgId: org-uuid-5678
+                  keyword: 세포 배양
+                  createdAt: "2025-03-25T09:00:00.000Z"
+        '400':
+          description: 잘못된 요청 (keyword 필드 누락 또는 빈 문자열)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: keyword는 필수입니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - 키워드즐겨찾기
+      summary: 검색어 즐겨찾기 목록 조회
+      description: |
+        사용자의 검색어 즐겨찾기 목록을 최신 순으로 반환합니다.
+        조직 스코프(`orgId`)로 필터링됩니다.
+      operationId: getKeywordFavorites
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 검색어 즐겨찾기 목록
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetKeywordFavoritesResponse'
+              example:
+                ok: true
+                data:
+                  - id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    userId: user-uuid-1234
+                    orgId: org-uuid-5678
+                    keyword: 세포 배양
+                    createdAt: "2025-03-25T09:00:00.000Z"
+                total: 1
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/search/keyword-favorites/{id}:
+    delete:
+      tags:
+        - 키워드즐겨찾기
+      summary: 검색어 즐겨찾기 삭제
+      description: |
+        ID로 검색어 즐겨찾기 항목을 삭제합니다.
+        본인의 즐겨찾기만 삭제할 수 있습니다. 타인의 항목 삭제 시 403을 반환합니다.
+      operationId: removeKeywordFavorite
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: 삭제할 검색어 즐겨찾기 항목 ID (UUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+      responses:
+        '200':
+          description: 검색어 즐겨찾기 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveKeywordFavoriteResponse'
+              example:
+                ok: true
+                message: 즐겨찾기 검색어가 삭제되었습니다.
+                id: c3d4e5f6-a7b8-9012-cdef-123456789012
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 본인의 즐겨찾기가 아님
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 본인의 즐겨찾기만 삭제할 수 있습니다.
+                code: SEARCH_PERMISSION_DENIED
+        '404':
+          description: 검색어 즐겨찾기 항목을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 즐겨찾기를 찾을 수 없습니다.
+                code: SEARCH_FAVORITE_NOT_FOUND
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── 인덱스 관리 (내부 서비스 전용) ─────────────────────────
+  /api/search/index:
+    post:
+      tags:
+        - 인덱스관리
+      summary: 단일 문서 색인
+      description: |
+        OpenSearch에 단일 문서를 색인(추가 또는 갱신)합니다.
+
+        **내부 서비스 전용**: `x-internal-secret` 헤더 인증이 필요합니다.
+        색인 후 Redis 검색 캐시가 자동으로 무효화됩니다.
+
+        `doc.docStatus`를 명시하지 않으면 `active`로 기본 설정됩니다.
+        색인 주체 서비스: eln-service, inventory-service 등
+      operationId: indexDoc
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexDocBody'
+            example:
+              id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              doc:
+                domainType: NOTE
+                title: 신규 실험 노트
+                content: 실험 내용 본문
+                summary: 실험 요약
+                tags:
+                  - PCR
+                  - 유전자분석
+                ownerId: user-uuid-1234
+                orgId: org-uuid-5678
+                visibility: public
+                docStatus: active
+                createdAt: "2025-03-25T09:00:00.000Z"
+                updatedAt: "2025-03-25T09:00:00.000Z"
+      responses:
+        '200':
+          description: 문서 색인 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexDocResponse'
+              example:
+                ok: true
+                message: "NOTE:a1b2c3d4-e5f6-7890-abcd-ef1234567890 색인 완료"
+        '400':
+          description: 잘못된 요청 (id 또는 doc.domainType 누락)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: id, doc 필드가 필요합니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: 내부 시크릿 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 내부 서비스 인증에 실패했습니다.
+                code: UNAUTHORIZED
+        '502':
+          description: OpenSearch 색인 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: OpenSearch 색인에 실패했습니다.
+                code: BAD_GATEWAY
+
+  /api/search/index/bulk:
+    post:
+      tags:
+        - 인덱스관리
+      summary: 벌크 문서 색인
+      description: |
+        여러 문서를 한 번에 OpenSearch에 색인합니다.
+
+        **내부 서비스 전용**: `x-internal-secret` 헤더 인증이 필요합니다.
+        `docs` 배열은 최소 1개 이상이어야 합니다.
+        색인 후 Redis 검색 캐시가 자동으로 무효화됩니다.
+        초기 데이터 마이그레이션, 재색인(reindex) 시 사용합니다.
+      operationId: bulkIndexDocs
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIndexBody'
+            example:
+              docs:
+                - id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                  doc:
+                    domainType: NOTE
+                    title: 노트 1
+                    orgId: org-uuid-5678
+                - id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                  doc:
+                    domainType: INVENTORY
+                    title: 시약 A
+                    orgId: org-uuid-5678
+      responses:
+        '200':
+          description: 벌크 색인 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkIndexResponse'
+              example:
+                ok: true
+                indexed: 2
+                errors: 0
+        '400':
+          description: 잘못된 요청 (docs 배열 누락 또는 빈 배열)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: docs(배열) 필드가 필요합니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: 내부 시크릿 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: OpenSearch 벌크 색인 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: OpenSearch 벌크 색인에 실패했습니다.
+                code: BAD_GATEWAY
+
+  /api/search/index/{id}:
+    delete:
+      tags:
+        - 인덱스관리
+      summary: 문서 소프트 삭제
+      description: |
+        OpenSearch에서 문서를 소프트 삭제합니다. 물리적 삭제가 아닌 `docStatus: deleted`로 마킹합니다.
+        소프트 삭제된 문서는 검색 결과에 노출되지 않습니다 (`docStatus: active` 필터 적용).
+
+        **내부 서비스 전용**: `x-internal-secret` 헤더 인증이 필요합니다.
+        삭제 후 Redis 검색 캐시가 자동으로 무효화됩니다.
+      operationId: removeDoc
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: id
+          in: path
+          description: 소프트 삭제할 문서 ID
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      responses:
+        '200':
+          description: 문서 소프트 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveDocResponse'
+              example:
+                ok: true
+                message: "a1b2c3d4-e5f6-7890-abcd-ef1234567890 소프트 삭제 완료"
+        '401':
+          description: 내부 시크릿 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: OpenSearch 삭제 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: OpenSearch 삭제에 실패했습니다.
+                code: BAD_GATEWAY
+
+  /api/search/stats:
+    get:
+      tags:
+        - 인덱스관리
+      summary: 인덱스 통계 조회
+      description: |
+        OpenSearch 통합 인덱스의 통계 정보를 반환합니다.
+        전체 문서 수, 인덱스 상태 등의 정보를 포함합니다.
+
+        **내부 서비스 전용**: `x-internal-secret` 헤더 인증이 필요합니다.
+      operationId: getStats
+      security:
+        - InternalSecret: []
+      responses:
+        '200':
+          description: 인덱스 통계 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                ok: true
+                data:
+                  totalDocs: 1234
+                  indexName: labnote-unified
+                  health: green
+        '401':
+          description: 내부 시크릿 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: OpenSearch 통계 조회 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: OpenSearch 통계 조회에 실패했습니다.
+                code: BAD_GATEWAY

@@ -1,0 +1,1284 @@
+openapi: 3.0.3
+info:
+  title: Scheduler Service API
+  description: |-
+    LabNote ELN — 장비 및 회의실 예약 서비스.
+
+    ## 인증
+    모든 엔드포인트는 API Gateway가 주입하는 내부 헤더(`x-user-id`, `x-user-role`,
+    `x-user-permissions`, `x-user-org-id`)를 통해 인증·권한이 적용됩니다.
+    외부 클라이언트는 Bearer JWT 토큰을 `Authorization` 헤더에 포함해야 합니다.
+
+    ## 예약 상태 전이
+    ```
+    PENDING → APPROVED → COMPLETED
+            → REJECTED
+            → CANCELLED
+    APPROVED → CANCELLED
+    ```
+
+    ## 권한
+    - `SCHEDULER_READ` — 자원·예약 조회
+    - `SCHEDULER_WRITE` — 예약 생성·수정·취소·완료
+    - `ADMIN` 역할 — 자원 생성·수정·비활성화, 예약 승인·반려
+  version: 2.0.0
+  contact:
+    name: LabNote ELN 팀
+
+servers:
+  - url: http://localhost:8005
+    description: 로컬 개발 서버
+
+tags:
+  - name: 헬스체크
+    description: 서비스 상태 확인
+  - name: 자원
+    description: 자원 관리 — 장비(EQUIPMENT) 및 회의실(ROOM)
+  - name: 예약
+    description: 예약 생성·조회·상태 전이 관리
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ───────────────────────────────────────────────────────────
+  # 헬스체크
+  # ───────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags:
+        - 헬스체크
+      summary: 서비스 상태 확인
+      description: 스케줄러 서비스의 생존 여부를 확인합니다. 인증이 필요하지 않습니다.
+      security: []
+      operationId: getHealth
+      responses:
+        '200':
+          description: 서비스 정상 동작 중
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                service: scheduler-service
+                timestamp: '2026-03-25T09:00:00.000Z'
+
+  # ───────────────────────────────────────────────────────────
+  # 자원 (Resources)
+  # ───────────────────────────────────────────────────────────
+
+  /api/scheduler/resources:
+    get:
+      tags:
+        - 자원
+      summary: 자원 목록 조회
+      description: |-
+        조직 내 등록된 자원(장비/회의실) 목록을 반환합니다.
+        기본적으로 활성화된(`isActive=true`) 자원만 조회합니다.
+        `SCHEDULER_READ` 권한이 필요합니다.
+      operationId: listResources
+      parameters:
+        - name: type
+          in: query
+          description: 자원 유형 필터 (`EQUIPMENT` 또는 `ROOM`)
+          required: false
+          schema:
+            $ref: '#/components/schemas/ResourceType'
+        - name: isActive
+          in: query
+          description: 활성화 여부 필터 (기본값 `true`)
+          required: false
+          schema:
+            type: string
+            enum: [true, false]
+          example: 'true'
+      responses:
+        '200':
+          description: 자원 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Resource'
+                      total:
+                        type: integer
+                        description: 반환된 자원 수
+              example:
+                ok: true
+                data:
+                  - id: res-uuid-1
+                    name: NMR 분광기
+                    orgId: org-uuid-1
+                    type: EQUIPMENT
+                    location: B동 203호
+                    description: 핵자기공명 분광기
+                    capacity: null
+                    ownerId: user-uuid-admin
+                    isActive: true
+                    createdAt: '2026-01-10T08:00:00.000Z'
+                total: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 자원
+      summary: 자원 등록
+      description: |-
+        새 장비 또는 회의실을 등록합니다.
+        `ADMIN` 역할이 필요합니다.
+      operationId: createResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResourceBody'
+            example:
+              name: 전자현미경
+              type: EQUIPMENT
+              location: A동 101호
+              description: 주사전자현미경 (SEM)
+              ownerId: user-uuid-admin
+      responses:
+        '201':
+          description: 자원 등록 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/resources/{id}:
+    get:
+      tags:
+        - 자원
+      summary: 자원 상세 조회
+      description: |-
+        특정 자원의 상세 정보와 전체 예약 건수를 반환합니다.
+        `SCHEDULER_READ` 권한이 필요합니다.
+      operationId: getResource
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 자원 상세 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Resource'
+                          - type: object
+                            properties:
+                              _count:
+                                type: object
+                                properties:
+                                  bookings:
+                                    type: integer
+                                    description: 해당 자원의 전체 예약 수
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - 자원
+      summary: 자원 수정
+      description: |-
+        자원 정보를 수정합니다. 전달된 필드만 업데이트됩니다(부분 업데이트).
+        `isActive`를 `false`로 설정하여 비활성화할 수 있습니다(진행 중인 예약이 없어야 함).
+        `ADMIN` 역할이 필요합니다.
+      operationId: updateResource
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateResourceBody'
+            example:
+              location: B동 304호
+              isActive: true
+      responses:
+        '200':
+          description: 자원 수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - 자원
+      summary: 자원 비활성화 (소프트 삭제)
+      description: |-
+        자원을 비활성화합니다(`isActive = false`). 물리적 삭제는 수행하지 않습니다.
+        `PENDING` 또는 `APPROVED` 상태의 예약이 존재하면 비활성화할 수 없습니다.
+        `ADMIN` 역할이 필요합니다.
+      operationId: deleteResource
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 자원 비활성화 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: string
+                    description: 비활성화된 자원 ID
+                  message:
+                    type: string
+                    example: 자원이 비활성화되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 진행 중인 예약이 존재하여 비활성화 불가
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: '진행 중인 예약이 2건 있어 비활성화할 수 없습니다.'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # 예약 (Bookings)
+  # ───────────────────────────────────────────────────────────
+
+  /api/scheduler/bookings:
+    get:
+      tags:
+        - 예약
+      summary: 예약 목록 조회
+      description: |-
+        조직 내 예약 목록을 필터·페이지네이션과 함께 반환합니다.
+        `SCHEDULER_READ` 권한이 필요합니다.
+      operationId: listBookings
+      parameters:
+        - name: resourceId
+          in: query
+          description: 특정 자원 ID로 필터링
+          required: false
+          schema:
+            type: string
+        - name: userId
+          in: query
+          description: 특정 사용자 ID로 필터링
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 예약 상태로 필터링
+          required: false
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: from
+          in: query
+          description: 조회 시작 날짜/시간 (ISO 8601, `startAt >= from`)
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: '2026-03-01T00:00:00.000Z'
+        - name: to
+          in: query
+          description: 조회 종료 날짜/시간 (ISO 8601, `startAt <= to`)
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: '2026-03-31T23:59:59.999Z'
+        - name: page
+          in: query
+          description: 페이지 번호 (기본값 1)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: 페이지당 항목 수 (기본값 20, 최대 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 예약 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BookingWithResource'
+                      total:
+                        type: integer
+                        description: 필터 조건에 맞는 전체 예약 수
+                      page:
+                        type: integer
+                        description: 현재 페이지 번호
+                      limit:
+                        type: integer
+                        description: 페이지당 항목 수
+              example:
+                ok: true
+                data: []
+                total: 0
+                page: 1
+                limit: 20
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 예약
+      summary: 예약 생성
+      description: |-
+        새 예약을 생성합니다. 초기 상태는 `PENDING`입니다.
+
+        생성 전 `PENDING` 및 `APPROVED` 상태의 기존 예약과 시간 충돌을 검사합니다.
+        충돌이 있으면 409 응답을 반환합니다.
+        `SCHEDULER_WRITE` 권한이 필요합니다.
+      operationId: createBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingBody'
+            example:
+              resourceId: res-uuid-1
+              title: 주간 팀 미팅
+              description: 3월 연구 진행 상황 공유
+              startAt: '2026-03-25T09:00:00.000Z'
+              endAt: '2026-03-25T10:00:00.000Z'
+      responses:
+        '201':
+          description: 예약 생성 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 자원을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 자원을 찾을 수 없습니다.
+        '409':
+          $ref: '#/components/responses/ConflictBooking'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/bookings/{id}:
+    get:
+      tags:
+        - 예약
+      summary: 예약 상세 조회
+      description: |-
+        특정 예약의 상세 정보를 자원 정보와 함께 반환합니다.
+        `SCHEDULER_READ` 권한이 필요합니다.
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 예약 상세 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - 예약
+      summary: 예약 내용 수정
+      description: |-
+        `PENDING` 상태의 예약만 수정할 수 있습니다.
+        본인의 예약만 수정 가능하며, `ADMIN`은 모든 예약을 수정할 수 있습니다.
+        시간(`startAt`/`endAt`)을 변경하면 충돌 재검사가 수행됩니다.
+        `SCHEDULER_WRITE` 권한이 필요합니다.
+      operationId: updateBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookingBody'
+            example:
+              title: 수정된 미팅 제목
+              startAt: '2026-03-25T10:00:00.000Z'
+              endAt: '2026-03-25T11:00:00.000Z'
+      responses:
+        '200':
+          description: 예약 수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ConflictBooking'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/bookings/{id}/approve:
+    post:
+      tags:
+        - 예약
+      summary: 예약 승인
+      description: |-
+        `PENDING` 상태의 예약을 `APPROVED`로 전환합니다.
+
+        비관적 락(FOR UPDATE)과 트랜잭션을 사용하여 동시 승인 경쟁 조건을 방지합니다.
+        승인 시점에 `APPROVED` 상태 예약과 재충돌 검사를 수행합니다.
+
+        **권한**: `ADMIN` 역할 또는 해당 자원의 `ownerId`와 일치하는 사용자.
+        승인 후 예약자에게 알림이 발송됩니다.
+      operationId: approveBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 예약 승인 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          description: 유효하지 않은 상태 전이 (예. 이미 APPROVED 상태)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: '유효하지 않은 상태 전이: APPROVED → APPROVED. 가능한 전이: COMPLETED, CANCELLED'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 승인 권한 없음 (ADMIN 또는 자원 담당자만 가능)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 승인 권한이 없습니다.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 승인 시점 시간 충돌 (다른 예약이 먼저 승인됨)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - type: object
+                    properties:
+                      conflict:
+                        type: object
+                        description: 충돌한 예약 정보
+              example:
+                ok: false
+                error: 승인 시점에 시간 충돌이 발생했습니다. 다른 예약이 먼저 승인되었습니다.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/bookings/{id}/reject:
+    post:
+      tags:
+        - 예약
+      summary: 예약 반려
+      description: |-
+        `PENDING` 상태의 예약을 `REJECTED`로 전환합니다.
+        선택적으로 반려 사유를 입력할 수 있습니다.
+
+        **권한**: `ADMIN` 역할 또는 해당 자원의 `ownerId`와 일치하는 사용자.
+      operationId: rejectBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectBookingBody'
+            example:
+              reason: 해당 시간대에 긴급 점검이 예정되어 있습니다.
+      responses:
+        '200':
+          description: 예약 반려 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          description: 유효하지 않은 상태 전이
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 반려 권한 없음 (ADMIN 또는 자원 담당자만 가능)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 반려 권한이 없습니다.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/bookings/{id}/cancel:
+    post:
+      tags:
+        - 예약
+      summary: 예약 취소
+      description: |-
+        `PENDING` 또는 `APPROVED` 상태의 예약을 `CANCELLED`로 전환합니다.
+        본인의 예약만 취소 가능하며, `ADMIN`은 모든 예약을 취소할 수 있습니다.
+        `SCHEDULER_WRITE` 권한이 필요합니다.
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 예약 취소 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          description: 유효하지 않은 상태 전이 (예. 이미 종료된 예약)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 취소 권한 없음 (본인 또는 ADMIN만 가능)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 본인의 예약만 취소할 수 있습니다.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/bookings/{id}/complete:
+    post:
+      tags:
+        - 예약
+      summary: 예약 완료 처리
+      description: |-
+        `APPROVED` 상태의 예약을 `COMPLETED`로 전환합니다.
+        본인의 예약만 완료 처리 가능하며, `ADMIN`은 모든 예약을 완료 처리할 수 있습니다.
+        `SCHEDULER_WRITE` 권한이 필요합니다.
+      operationId: completeBooking
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 예약 완료 처리 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BookingWithResource'
+        '400':
+          description: 유효하지 않은 상태 전이 (APPROVED 상태가 아님)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 완료 처리 권한 없음 (본인 또는 ADMIN만 가능)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 본인의 예약만 완료 처리할 수 있습니다.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/scheduler/calendar:
+    get:
+      tags:
+        - 예약
+      summary: 캘린더 뷰 조회
+      description: |-
+        지정한 기간 내의 `APPROVED` 상태 예약을 자원별·시간순으로 반환합니다.
+        캘린더 UI 렌더링에 최적화된 엔드포인트입니다.
+        `SCHEDULER_READ` 권한이 필요합니다.
+      operationId: getCalendar
+      parameters:
+        - name: from
+          in: query
+          description: 조회 시작 날짜/시간 (ISO 8601, 필수)
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: '2026-03-01T00:00:00.000Z'
+        - name: to
+          in: query
+          description: 조회 종료 날짜/시간 (ISO 8601, 필수, `from`보다 이후여야 함)
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: '2026-03-31T23:59:59.999Z'
+        - name: type
+          in: query
+          description: 자원 유형 필터 (`EQUIPMENT` 또는 `ROOM`)
+          required: false
+          schema:
+            $ref: '#/components/schemas/ResourceType'
+      responses:
+        '200':
+          description: 캘린더 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BookingWithResource'
+                        description: 자원 ID 및 시작 시간 기준 정렬된 APPROVED 예약 목록
+                      total:
+                        type: integer
+                        description: 반환된 예약 수
+        '400':
+          description: 잘못된 날짜 형식 또는 `to`가 `from`보다 이전
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidDate:
+                  summary: 유효하지 않은 날짜 형식
+                  value:
+                    ok: false
+                    error: '유효하지 않은 날짜 형식: 2026-13-01'
+                invalidRange:
+                  summary: 날짜 범위 오류
+                  value:
+                    ok: false
+                    error: to는 from보다 이후여야 합니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+# ───────────────────────────────────────────────────────────────
+# Components
+# ───────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API Gateway가 발급한 JWT 액세스 토큰
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      description: 리소스 UUID
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청 (유효성 검사 실패 또는 비즈니스 규칙 위반)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: endAt은 startAt보다 이후여야 합니다.
+
+    Unauthorized:
+      description: 인증 실패 (JWT 토큰 누락 또는 만료)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증이 필요합니다.
+
+    Forbidden:
+      description: 권한 부족
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 해당 작업을 수행할 권한이 없습니다.
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            resourceNotFound:
+              summary: 자원 없음
+              value:
+                ok: false
+                error: 자원을 찾을 수 없습니다.
+            bookingNotFound:
+              summary: 예약 없음
+              value:
+                ok: false
+                error: 예약을 찾을 수 없습니다.
+
+    ConflictBooking:
+      description: 해당 시간대에 이미 예약이 존재함
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - type: object
+                properties:
+                  conflict:
+                    type: object
+                    description: 충돌한 기존 예약의 핵심 정보
+                    properties:
+                      bookingId:
+                        type: string
+                        format: uuid
+                        description: 충돌 예약 ID
+                      startAt:
+                        type: string
+                        format: date-time
+                        description: 충돌 예약 시작 시간
+                      endAt:
+                        type: string
+                        format: date-time
+                        description: 충돌 예약 종료 시간
+          example:
+            ok: false
+            error: 해당 시간대에 이미 예약이 존재합니다.
+            conflict:
+              bookingId: 550e8400-e29b-41d4-a716-446655440001
+              startAt: '2026-03-25T09:00:00.000Z'
+              endAt: '2026-03-25T10:00:00.000Z'
+
+    InternalServerError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 내부 서버 오류가 발생했습니다.
+
+  schemas:
+
+    # ── 공통 ────────────────────────────────────────────────
+
+    OkTrue:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          description: 요청 성공 여부
+
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+          description: 요청 성공 여부
+        error:
+          type: string
+          description: 오류 메시지
+        code:
+          type: string
+          description: 오류 코드 (AppError.code)
+
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: scheduler-service
+        timestamp:
+          type: string
+          format: date-time
+          description: 응답 시각 (ISO 8601)
+
+    # ── Enum ────────────────────────────────────────────────
+
+    ResourceType:
+      type: string
+      enum:
+        - EQUIPMENT
+        - ROOM
+      description: |-
+        자원 유형
+        - `EQUIPMENT`: 장비 (예. 현미경, 분광기)
+        - `ROOM`: 회의실
+
+    BookingStatus:
+      type: string
+      enum:
+        - PENDING
+        - APPROVED
+        - REJECTED
+        - CANCELLED
+        - COMPLETED
+      description: |-
+        예약 상태
+        - `PENDING`: 승인 대기
+        - `APPROVED`: 승인 완료
+        - `REJECTED`: 반려
+        - `CANCELLED`: 취소
+        - `COMPLETED`: 사용 완료
+
+    # ── Resource ────────────────────────────────────────────
+
+    Resource:
+      type: object
+      required:
+        - id
+        - name
+        - orgId
+        - type
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 자원 고유 ID
+        name:
+          type: string
+          maxLength: 100
+          description: 자원 이름
+          example: NMR 분광기
+        orgId:
+          type: string
+          description: 소속 조직 ID
+        type:
+          $ref: '#/components/schemas/ResourceType'
+        location:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: 자원 위치
+          example: B동 203호
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: 자원 설명
+        capacity:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 수용 인원 (ROOM 유형에서 사용)
+          example: 10
+        ownerId:
+          type: string
+          nullable: true
+          description: 예약 승인 담당자 ID (null이면 ADMIN이 승인)
+        isActive:
+          type: boolean
+          description: 활성화 여부
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 일시
+
+    CreateResourceBody:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 자원 이름
+        type:
+          $ref: '#/components/schemas/ResourceType'
+        location:
+          type: string
+          maxLength: 200
+          description: 자원 위치
+        description:
+          type: string
+          maxLength: 1000
+          description: 자원 설명
+        capacity:
+          type: integer
+          minimum: 1
+          description: 수용 인원 (ROOM 유형)
+        ownerId:
+          type: string
+          description: 예약 승인 담당자 사용자 ID
+
+    UpdateResourceBody:
+      type: object
+      description: 전달된 필드만 업데이트됩니다 (부분 업데이트).
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 자원 이름
+        type:
+          $ref: '#/components/schemas/ResourceType'
+        location:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: 자원 위치
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: 자원 설명
+        capacity:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 수용 인원 (ROOM 유형)
+        isActive:
+          type: boolean
+          description: 활성화 여부
+        ownerId:
+          type: string
+          nullable: true
+          description: 예약 승인 담당자 사용자 ID
+
+    # ── Booking ─────────────────────────────────────────────
+
+    Booking:
+      type: object
+      required:
+        - id
+        - resourceId
+        - orgId
+        - userId
+        - title
+        - startAt
+        - endAt
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 예약 고유 ID
+        resourceId:
+          type: string
+          format: uuid
+          description: 예약 대상 자원 ID
+        orgId:
+          type: string
+          description: 소속 조직 ID
+        userId:
+          type: string
+          description: 예약자 사용자 ID
+        title:
+          type: string
+          maxLength: 200
+          description: 예약 제목
+          example: 주간 팀 미팅
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: 예약 설명
+        startAt:
+          type: string
+          format: date-time
+          description: 예약 시작 일시
+        endAt:
+          type: string
+          format: date-time
+          description: 예약 종료 일시
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        approvedBy:
+          type: string
+          nullable: true
+          description: 승인한 사용자 ID
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 승인 일시
+        rejectedReason:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: 반려 사유
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 취소 일시
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 완료 처리 일시
+        createdAt:
+          type: string
+          format: date-time
+          description: 예약 생성 일시
+
+    BookingWithResource:
+      allOf:
+        - $ref: '#/components/schemas/Booking'
+        - type: object
+          properties:
+            resource:
+              $ref: '#/components/schemas/Resource'
+              description: 예약 대상 자원 정보 (조인 포함)
+
+    CreateBookingBody:
+      type: object
+      required:
+        - resourceId
+        - title
+        - startAt
+        - endAt
+      properties:
+        resourceId:
+          type: string
+          format: uuid
+          description: 예약할 자원 ID
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 예약 제목
+        description:
+          type: string
+          maxLength: 1000
+          description: 예약 설명 (선택)
+        startAt:
+          type: string
+          format: date-time
+          description: 예약 시작 일시 (ISO 8601)
+        endAt:
+          type: string
+          format: date-time
+          description: 예약 종료 일시 (ISO 8601, `startAt`보다 이후여야 함)
+
+    UpdateBookingBody:
+      type: object
+      description: 전달된 필드만 업데이트됩니다. `PENDING` 상태의 예약에만 적용됩니다.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 예약 제목
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: 예약 설명
+        startAt:
+          type: string
+          format: date-time
+          description: 예약 시작 일시 (ISO 8601)
+        endAt:
+          type: string
+          format: date-time
+          description: 예약 종료 일시 (ISO 8601)
+
+    RejectBookingBody:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: 반려 사유 (선택)

@@ -1,0 +1,2209 @@
+openapi: 3.0.3
+info:
+  title: ELN 서비스 API
+  description: |
+    LabNote 전자연구노트(ELN) 코어 서비스.
+    연구노트, 프로토콜, 템플릿, 첨부파일, 링크, 리비전, 태그, 공통코드를 관리합니다.
+
+    ## 인증
+    모든 엔드포인트는 Bearer JWT 토큰이 필요합니다.
+    api-gateway가 JWT를 검증하고 다음 헤더를 주입합니다:
+    - `x-user-id`: 사용자 ID
+    - `x-user-role`: 사용자 역할 (`admin` | `reviewer` | `researcher`)
+    - `x-user-permissions`: 권한 목록 (쉼표 구분)
+    - `x-user-org-id`: 조직 ID
+
+    ## 노트 상태 흐름
+    ```
+    draft ↔ in_progress → locked (Reviewer/Admin만)
+                        → signed (서명 서비스 이벤트, 자동 전환)
+    locked → draft      (Admin 잠금 해제 전용 엔드포인트)
+    signed              (불변 — 어떤 전환도 불가)
+    ```
+  version: 1.0.0
+  contact:
+    name: LabNote 개발팀
+
+servers:
+  - url: http://localhost:8002
+    description: 로컬 개발 서버
+  - url: http://eln-service:8002
+    description: Docker 내부 네트워크
+
+tags:
+  - name: 노트
+    description: 연구노트 CRUD 및 상태 관리
+  - name: 프로토콜
+    description: 프로토콜(type=template) 관리 — 노트 핸들러 재사용
+  - name: 태그
+    description: 연구노트/프로토콜 태그 목록 조회
+  - name: 첨부파일
+    description: 노트 첨부파일 관리
+  - name: 링크
+    description: 노트 간 교차 참조 링크 관리
+  - name: 리비전
+    description: 노트 버전 이력 조회
+  - name: 템플릿
+    description: 템플릿 CRUD 및 추천/복사
+  - name: 코드
+    description: 공통 코드 관리 (카테고리 등)
+  - name: 헬스체크
+    description: 서비스 상태 확인
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ──────────────────────────────────────────────────────────
+  # 헬스체크
+  # ──────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [헬스체크]
+      summary: 서비스 헬스체크
+      description: DB 연결 상태 및 이벤트 컨슈머 실행 여부를 확인합니다.
+      security: []
+      responses:
+        '200':
+          description: 서비스 상태 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ──────────────────────────────────────────────────────────
+  # 태그
+  # ──────────────────────────────────────────────────────────
+
+  /api/tags:
+    get:
+      tags: [태그]
+      summary: 태그 목록 조회
+      description: 조직 내 삭제되지 않은 노트/프로토콜에서 사용 중인 모든 고유 태그를 반환합니다. DB 레벨에서 중복 제거 및 알파벳 정렬이 적용됩니다.
+      parameters:
+        - name: type
+          in: query
+          description: 조회할 노트 타입
+          schema:
+            $ref: '#/components/schemas/NoteType'
+          example: note
+      responses:
+        '200':
+          description: 태그 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+                        example: ['PCR', '세포배양', '단백질정제']
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ──────────────────────────────────────────────────────────
+  # 연구노트
+  # ──────────────────────────────────────────────────────────
+
+  /api/notes:
+    get:
+      tags: [노트]
+      summary: 연구노트 목록 조회
+      description: |
+        조직 내 연구노트 목록을 페이지네이션하여 반환합니다.
+        - Admin: 조직 전체 노트 조회 가능
+        - Researcher/Reviewer: 본인 노트 + 소속 팀 노트 + 팀 미지정(공개) 노트만 조회
+      parameters:
+        - name: status
+          in: query
+          description: 상태 필터
+          schema:
+            $ref: '#/components/schemas/NoteStatus'
+        - name: tag
+          in: query
+          description: 태그 필터 (정확히 일치하는 태그가 있는 노트)
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: 제목/본문 전문 검색 (대소문자 무시)
+          schema:
+            type: string
+        - name: templateId
+          in: query
+          description: 특정 템플릿으로 생성된 노트만 조회
+          schema:
+            type: string
+            format: uuid
+        - name: authorId
+          in: query
+          description: 특정 작성자의 노트만 조회 (대시보드 집계용)
+          schema:
+            type: string
+            format: uuid
+        - name: teamId
+          in: query
+          description: 특정 팀의 노트만 조회 (대시보드 집계용)
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: 페이지당 항목 수
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 연구노트 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Note'
+                      total:
+                        type: integer
+                        description: 전체 노트 수
+                      page:
+                        type: integer
+                        description: 현재 페이지
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [노트]
+      summary: 연구노트 생성
+      description: |
+        새 연구노트를 생성합니다. 생성 시 리비전 1이 자동으로 기록됩니다.
+        `templateId`를 지정하면 해당 템플릿의 `useCount`가 1 증가합니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: 생성된 연구노트
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/notes/stats:
+    get:
+      tags: [노트]
+      summary: 연구노트 상태별 통계
+      description: 조직 내 노트를 상태별로 집계하여 카운트를 반환합니다. `/api/notes/:id` 라우트보다 앞에 위치합니다.
+      parameters:
+        - name: type
+          in: query
+          description: 집계할 노트 타입
+          schema:
+            $ref: '#/components/schemas/NoteType'
+          example: note
+        - name: authorId
+          in: query
+          description: 특정 작성자 필터 (대시보드 집계용)
+          schema:
+            type: string
+            format: uuid
+        - name: teamId
+          in: query
+          description: 특정 팀 필터 (대시보드 집계용)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 상태별 노트 통계
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/notes/batch:
+    post:
+      tags: [노트]
+      summary: 연구노트 일괄 조회
+      description: 여러 노트 ID를 한 번에 조회합니다. 최대 500개까지 허용됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesBatchRequest'
+      responses:
+        '200':
+          description: 요청한 ID에 해당하는 노트 목록 (존재하지 않는 ID는 결과에서 제외)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/notes/{id}:
+    get:
+      tags: [노트]
+      summary: 연구노트 단건 조회
+      description: ID로 연구노트를 조회합니다. 첨부파일 및 링크 목록이 함께 반환됩니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 연구노트 상세 (첨부파일, 링크 포함)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteWithRelations'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [노트]
+      summary: 연구노트 수정
+      description: |
+        연구노트 내용을 수정합니다. 수정 시 새 리비전이 자동으로 기록됩니다.
+        - 소유자(authorId) 또는 Admin만 수정 가능
+        - `locked` 또는 `signed` 상태의 노트는 수정 불가
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: 수정된 연구노트
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [노트]
+      summary: 연구노트 삭제
+      description: |
+        연구노트를 소프트 삭제합니다(`deletedAt` 설정).
+        - 소유자 또는 Admin만 삭제 가능
+        - `signed` 또는 `locked` 상태의 노트는 삭제 불가
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 노트가 삭제되었습니다.
+                      id:
+                        type: string
+                        format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/notes/{id}/status:
+    patch:
+      tags: [노트]
+      summary: 연구노트 상태 변경
+      description: |
+        연구노트 상태를 전환합니다. 허용되지 않는 전환은 400 오류를 반환합니다.
+
+        **일반 사용자 허용 전환:**
+        | 현재 상태 | 변경 가능 상태 |
+        |-----------|--------------|
+        | draft | in_progress |
+        | in_progress | draft, locked (Reviewer/Admin만) |
+        | signed | 전환 불가 |
+        | locked | 전환 불가 (admin-unlock 엔드포인트 사용) |
+
+        **시스템 전용 전환** (`x-user-role: system`):
+        - `in_progress` → `signed` (서명 서비스 이벤트로 자동 호출)
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeStatusRequest'
+      responses:
+        '200':
+          description: 상태 변경 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+                      message:
+                        type: string
+                        example: 상태가 "in_progress"(으)로 변경되었습니다.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/notes/{id}/admin-unlock:
+    post:
+      tags: [노트]
+      summary: 관리자 잠금 해제
+      description: |
+        Admin 전용 엔드포인트. `locked` 상태의 노트를 `draft`로 되돌립니다.
+        - 역할 게이트: `admin` 역할 필수
+        - 권한 게이트: `note:unlock` 권한 필수
+        - 관리자 비밀번호 검증 후 잠금 해제
+        - 상태 이력(`NoteStatusHistory`) 및 감사 로그(`AuditLog`) 이중 기록
+        - 노트 작성자에게 잠금 해제 알림 발송
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUnlockRequest'
+      responses:
+        '200':
+          description: 잠금 해제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+                      auditLog:
+                        $ref: '#/components/schemas/AdminUnlockAuditLog'
+                      message:
+                        type: string
+                        example: 관리자 권한으로 노트 잠금이 해제되었습니다.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 리비전
+  # ──────────────────────────────────────────────────────────
+
+  /api/notes/{id}/revisions:
+    get:
+      tags: [리비전]
+      summary: 노트 리비전 목록 조회
+      description: 특정 노트의 모든 리비전을 리비전 번호 오름차순으로 반환합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 리비전 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/NoteRevision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/notes/{id}/revisions/{rev}:
+    get:
+      tags: [리비전]
+      summary: 노트 리비전 단건 조회
+      description: 특정 리비전 번호의 스냅샷을 조회합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+        - name: rev
+          in: path
+          required: true
+          description: 리비전 번호 (1부터 시작)
+          schema:
+            type: integer
+            minimum: 1
+          example: 3
+      responses:
+        '200':
+          description: 리비전 스냅샷
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteRevision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 첨부파일
+  # ──────────────────────────────────────────────────────────
+
+  /api/notes/{id}/attachments:
+    get:
+      tags: [첨부파일]
+      summary: 노트 첨부파일 목록 조회
+      description: 노트에 연결된 첨부파일 목록을 생성일 오름차순으로 반환합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 첨부파일 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Attachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [첨부파일]
+      summary: 노트 첨부파일 등록
+      description: |
+        file-service에서 업로드 완료된 파일의 메타데이터를 노트에 연결합니다.
+        실제 파일 업로드는 file-service를 통해 수행하고, 반환된 `fileId`로 이 엔드포인트를 호출합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAttachmentRequest'
+      responses:
+        '201':
+          description: 등록된 첨부파일 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Attachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/notes/{id}/attachments/{attachmentId}:
+    delete:
+      tags: [첨부파일]
+      summary: 노트 첨부파일 삭제
+      description: |
+        첨부파일을 삭제합니다.
+        - 첨부파일 업로더(`uploadedBy`) 또는 노트 소유자 또는 Admin만 삭제 가능
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+        - name: attachmentId
+          in: path
+          required: true
+          description: 삭제할 첨부파일 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 첨부파일이 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 링크 (교차 참조)
+  # ──────────────────────────────────────────────────────────
+
+  /api/notes/{id}/links:
+    get:
+      tags: [링크]
+      summary: 노트 링크 목록 조회
+      description: 노트에 연결된 교차 참조 링크 목록을 반환합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 링크 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/NoteLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [링크]
+      summary: 노트 링크 추가
+      description: 노트에 인벤토리 항목, 장비, 다른 노트, 템플릿 등을 연결하는 교차 참조 링크를 추가합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddLinkRequest'
+      responses:
+        '201':
+          description: 생성된 링크
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteLink'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/notes/{id}/links/{linkId}:
+    delete:
+      tags: [링크]
+      summary: 노트 링크 삭제
+      description: |
+        교차 참조 링크를 삭제합니다.
+        - 링크 생성자(`createdBy`) 또는 노트 소유자 또는 Admin만 삭제 가능
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+        - name: linkId
+          in: path
+          required: true
+          description: 삭제할 링크 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 링크가 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 프로토콜 (type=template, note.controller 재사용)
+  # ──────────────────────────────────────────────────────────
+
+  /api/protocols:
+    get:
+      tags: [프로토콜]
+      summary: 프로토콜 목록 조회
+      description: |
+        `type=template`인 노트(프로토콜) 목록을 반환합니다.
+        `GET /api/notes` �核들러를 재사용하며 `type=template` 쿼리가 자동 주입됩니다.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/NoteStatus'
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 프로토콜 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Note'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [프로토콜]
+      summary: 프로토콜 생성
+      description: '`type=template`인 노트를 생성합니다. `type` 필드는 자동으로 `template`으로 설정됩니다.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: 생성된 프로토콜
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/protocols/{id}:
+    get:
+      tags: [프로토콜]
+      summary: 프로토콜 단건 조회
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 프로토콜 상세
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteWithRelations'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [프로토콜]
+      summary: 프로토콜 수정
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: 수정된 프로토콜
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [프로토콜]
+      summary: 프로토콜 삭제
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 노트가 삭제되었습니다.
+                      id:
+                        type: string
+                        format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/protocols/{id}/status:
+    patch:
+      tags: [프로토콜]
+      summary: 프로토콜 상태 변경
+      description: 프로토콜의 상태를 변경합니다. 전환 규칙은 연구노트와 동일합니다.
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeStatusRequest'
+      responses:
+        '200':
+          description: 상태 변경 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Note'
+                      message:
+                        type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/protocols/{id}/revisions:
+    get:
+      tags: [프로토콜]
+      summary: 프로토콜 리비전 목록 조회
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        '200':
+          description: 리비전 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/NoteRevision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/protocols/{id}/revisions/{rev}:
+    get:
+      tags: [프로토콜]
+      summary: 프로토콜 리비전 단건 조회
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+        - name: rev
+          in: path
+          required: true
+          description: 리비전 번호
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 리비전 스냅샷
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteRevision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 템플릿
+  # ──────────────────────────────────────────────────────────
+
+  /api/templates:
+    get:
+      tags: [템플릿]
+      summary: 템플릿 목록 조회
+      description: |
+        조직 내 템플릿과 다른 조직의 공개(isPublic=true) 템플릿을 함께 반환합니다.
+        정렬 기준: `useCount`(인기순), `copyCount`(복사 많은 순), `createdAt`(최신순, 기본), `title`(가나다순)
+      parameters:
+        - name: category
+          in: query
+          description: 카테고리 필터
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: 제목/설명/태그 검색 (대소문자 무시)
+          schema:
+            type: string
+        - name: publicOnly
+          in: query
+          description: 공개 템플릿만 조회
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - name: sortBy
+          in: query
+          description: 정렬 기준
+          schema:
+            type: string
+            enum: [useCount, copyCount, createdAt, title]
+            default: createdAt
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 템플릿 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Template'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [템플릿]
+      summary: 템플릿 생성
+      description: 새 템플릿을 생성합니다. 생성된 템플릿은 검색 인덱스에 등록됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: 생성된 템플릿
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Template'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/templates/recommend:
+    post:
+      tags: [템플릿]
+      summary: 템플릿 추천
+      description: 카테고리 기준으로 가장 많이 사용된 템플릿 상위 5개를 반환합니다.
+      parameters:
+        - name: category
+          in: query
+          description: 추천 카테고리 필터
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 추천 템플릿 목록 (최대 5개)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Template'
+                        maxItems: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/templates/{id}:
+    get:
+      tags: [템플릿]
+      summary: 템플릿 단건 조회
+      description: 조직 내 템플릿 또는 공개 템플릿을 조회합니다.
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: 템플릿 상세
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Template'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [템플릿]
+      summary: 템플릿 수정
+      description: |
+        템플릿을 수정합니다.
+        - 템플릿 작성자(`createdBy`) 또는 Admin만 수정 가능
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateRequest'
+      responses:
+        '200':
+          description: 수정된 템플릿
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Template'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [템플릿]
+      summary: 템플릿 삭제
+      description: |
+        템플릿을 삭제합니다.
+        - 템플릿 작성자(`createdBy`) 또는 Admin만 삭제 가능
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 템플릿이 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/templates/{id}/copy:
+    post:
+      tags: [템플릿]
+      summary: 템플릿 복사
+      description: |
+        원본 템플릿을 복사하여 새 템플릿을 생성합니다.
+        - 복사본 제목: `{원본제목} (복사본)`
+        - 복사본은 기본 비공개(`isPublic=false`)
+        - 복사본의 `useCount`/`copyCount`는 0으로 초기화
+        - 원본 템플릿의 `copyCount`가 1 증가
+        - `copiedFromId`에 원본 템플릿 ID가 기록됨
+        - 원본과 복사본 업데이트는 트랜잭션으로 처리
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '201':
+          description: 생성된 복사 템플릿
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Template'
+                      originalId:
+                        type: string
+                        format: uuid
+                        description: 원본 템플릿 ID
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────────────────
+  # 공통 코드
+  # ──────────────────────────────────────────────────────────
+
+  /api/codes:
+    get:
+      tags: [코드]
+      summary: 공통 코드 목록 조회
+      description: 조직 내 활성화된 공통 코드 목록을 `sortOrder` 오름차순으로 반환합니다. `group` 파라미터로 필터링 가능합니다.
+      parameters:
+        - name: group
+          in: query
+          description: 코드 그룹 필터 (예&#58; TEMPLATE_CATEGORY)
+          schema:
+            type: string
+          example: TEMPLATE_CATEGORY
+      responses:
+        '200':
+          description: 코드 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Code'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [코드]
+      summary: 공통 코드 생성
+      description: 새 공통 코드를 생성합니다. Admin 역할 전용입니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCodeRequest'
+      responses:
+        '201':
+          description: 생성된 코드
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Code'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/codes/groups:
+    get:
+      tags: [코드]
+      summary: 코드 그룹 목록 조회
+      description: 조직 내 모든 코드 그룹과 각 그룹의 코드 수를 반환합니다. Admin 역할 전용입니다.
+      responses:
+        '200':
+          description: 코드 그룹 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CodeGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/codes/{id}:
+    put:
+      tags: [코드]
+      summary: 공통 코드 수정
+      description: 기존 공통 코드를 수정합니다. Admin 역할 전용입니다.
+      parameters:
+        - $ref: '#/components/parameters/CodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCodeRequest'
+      responses:
+        '200':
+          description: 수정된 코드
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Code'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      tags: [코드]
+      summary: 공통 코드 삭제
+      description: 공통 코드를 영구 삭제합니다. Admin 역할 전용입니다.
+      parameters:
+        - $ref: '#/components/parameters/CodeId'
+      responses:
+        '200':
+          description: 삭제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 코드가 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ══════════════════════════════════════════════════════════════
+# 컴포넌트
+# ══════════════════════════════════════════════════════════════
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: api-gateway에서 검증된 JWT 토큰
+
+  parameters:
+    NoteId:
+      name: id
+      in: path
+      required: true
+      description: 노트 ID (UUID)
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+    TemplateId:
+      name: id
+      in: path
+      required: true
+      description: 템플릿 ID (UUID)
+      schema:
+        type: string
+        format: uuid
+
+    CodeId:
+      name: id
+      in: path
+      required: true
+      description: 코드 ID (UUID)
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+
+    # ── 열거형 ──────────────────────────────────────────────
+
+    NoteType:
+      type: string
+      enum: [note, template]
+      description: |
+        노트 타입
+        - `note`: 연구노트
+        - `template`: 프로토콜(노트 라우터에서 사용하는 template 타입)
+      example: note
+
+    NoteStatus:
+      type: string
+      enum: [draft, in_progress, locked, signed]
+      description: |
+        노트 상태
+        - `draft`: 초안
+        - `in_progress`: 진행 중
+        - `locked`: 잠금 (Reviewer/Admin이 잠금)
+        - `signed`: 서명 완료 (불변)
+      example: draft
+
+    LinkTargetType:
+      type: string
+      enum: [inventory, equipment, template, note]
+      description: 링크 대상 타입
+
+    # ── 공통 섹션 ────────────────────────────────────────────
+
+    Section:
+      type: object
+      required: [type, title, content]
+      description: 노트/템플릿의 구조화된 섹션
+      properties:
+        type:
+          type: string
+          minLength: 1
+          description: 섹션 타입 (예&#58; text, table, image, chart)
+          example: text
+        title:
+          type: string
+          minLength: 1
+          description: 섹션 제목
+          example: 실험 목적
+        content:
+          type: string
+          description: 섹션 내용 (Markdown 또는 HTML)
+          example: 본 실험의 목적은 ...
+        order:
+          type: integer
+          description: 섹션 순서 (오름차순)
+          example: 1
+
+    # ── 노트 ────────────────────────────────────────────────
+
+    Note:
+      type: object
+      description: 연구노트 또는 프로토콜 엔티티
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 노트 ID
+        type:
+          $ref: '#/components/schemas/NoteType'
+        title:
+          type: string
+          description: 노트 제목
+          example: PCR 실험 결과 기록
+        content:
+          type: string
+          description: 노트 본문 (Markdown 또는 HTML)
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+          description: 구조화된 섹션 목록
+        status:
+          $ref: '#/components/schemas/NoteStatus'
+        authorId:
+          type: string
+          format: uuid
+          description: 노트 작성자 ID
+        orgId:
+          type: string
+          description: 조직 ID (멀티테넌시)
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 소속 팀 ID (null이면 조직 공개)
+        templateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 생성 시 사용한 템플릿 ID
+        tags:
+          type: array
+          items:
+            type: string
+          description: 태그 목록
+          example: ['PCR', 'DNA추출']
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 일시
+        updatedAt:
+          type: string
+          format: date-time
+          description: 최종 수정 일시
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 소프트 삭제 일시 (null이면 활성)
+
+    NoteWithRelations:
+      allOf:
+        - $ref: '#/components/schemas/Note'
+        - type: object
+          description: 첨부파일 및 링크를 포함한 노트 상세
+          properties:
+            attachments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Attachment'
+              description: 첨부파일 목록
+            links:
+              type: array
+              items:
+                $ref: '#/components/schemas/NoteLink'
+              description: 교차 참조 링크 목록
+
+    NoteStats:
+      type: object
+      description: 상태별 노트 통계
+      properties:
+        draft:
+          type: integer
+          description: 초안 상태 노트 수
+          example: 12
+        in_progress:
+          type: integer
+          description: 진행 중 상태 노트 수
+          example: 5
+        locked:
+          type: integer
+          description: 잠금 상태 노트 수
+          example: 2
+        signed:
+          type: integer
+          description: 서명 완료 상태 노트 수
+          example: 8
+        total:
+          type: integer
+          description: 전체 노트 수
+          example: 27
+
+    NoteRevision:
+      type: object
+      description: 노트 리비전(버전 스냅샷)
+      properties:
+        id:
+          type: string
+          format: uuid
+        noteId:
+          type: string
+          format: uuid
+          description: 부모 노트 ID
+        revision:
+          type: integer
+          description: 리비전 번호 (1부터 증가)
+          example: 3
+        content:
+          type: string
+          description: 해당 리비전의 노트 본문 스냅샷
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+          description: 해당 리비전의 섹션 스냅샷
+        changedBy:
+          type: string
+          format: uuid
+          description: 변경자 사용자 ID
+        changeSummary:
+          type: string
+          description: 변경 요약
+          example: 결론 섹션 추가
+        createdAt:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      description: 노트 첨부파일 메타데이터
+      properties:
+        id:
+          type: string
+          format: uuid
+        noteId:
+          type: string
+          format: uuid
+        fileId:
+          type: string
+          format: uuid
+          description: file-service에서 발급한 파일 ID
+        fileName:
+          type: string
+          description: 원본 파일명
+          example: gel_electrophoresis_20240315.png
+        mimeType:
+          type: string
+          nullable: true
+          description: MIME 타입
+          example: image/png
+        sizeBytes:
+          type: integer
+          nullable: true
+          description: 파일 크기 (바이트)
+          example: 204800
+        uploadedBy:
+          type: string
+          format: uuid
+          description: 업로드한 사용자 ID
+        createdAt:
+          type: string
+          format: date-time
+
+    NoteLink:
+      type: object
+      description: 노트 교차 참조 링크
+      properties:
+        id:
+          type: string
+          format: uuid
+        noteId:
+          type: string
+          format: uuid
+        targetType:
+          $ref: '#/components/schemas/LinkTargetType'
+        targetId:
+          type: string
+          format: uuid
+          description: 연결 대상 엔티티 ID
+        label:
+          type: string
+          nullable: true
+          description: 링크 표시 레이블
+          example: 사용 시약 목록
+        createdBy:
+          type: string
+          format: uuid
+          description: 링크 생성자 사용자 ID
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── 템플릿 ──────────────────────────────────────────────
+
+    Template:
+      type: object
+      description: 노트/프로토콜 생성용 템플릿
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: 템플릿 제목
+          example: PCR 실험 표준 프로토콜
+        description:
+          type: string
+          description: 템플릿 설명
+          example: PCR 실험의 표준 절차를 정의한 템플릿입니다.
+        content:
+          type: string
+          description: 템플릿 기본 본문
+        category:
+          type: string
+          description: 템플릿 카테고리
+          example: 분자생물학
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+          description: 기본 섹션 구성
+        tags:
+          type: array
+          items:
+            type: string
+          example: ['PCR', '표준절차']
+        createdBy:
+          type: string
+          format: uuid
+          description: 템플릿 작성자 ID
+        orgId:
+          type: string
+          description: 조직 ID
+        isPublic:
+          type: boolean
+          description: 공개 여부 (true이면 다른 조직에서도 조회/사용 가능)
+          example: false
+        useCount:
+          type: integer
+          description: 이 템플릿으로 노트/프로토콜이 생성된 횟수
+          example: 42
+        copyCount:
+          type: integer
+          description: 이 템플릿이 복사된 횟수
+          example: 7
+        copiedFromId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 복사 원본 템플릿 ID (null이면 원본)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ── 공통 코드 ────────────────────────────────────────────
+
+    Code:
+      type: object
+      description: 공통 코드 (카테고리, 드롭다운 선택지 등)
+      properties:
+        id:
+          type: string
+          format: uuid
+        group:
+          type: string
+          description: 코드 그룹 (예&#58; TEMPLATE_CATEGORY)
+          example: TEMPLATE_CATEGORY
+        value:
+          type: string
+          description: 코드 실제 값
+          example: molecular_biology
+        label:
+          type: string
+          description: 표시명 (null이면 value를 표시명으로 사용)
+          example: 분자생물학
+        sortOrder:
+          type: integer
+          description: 정렬 순서
+          example: 10
+        isActive:
+          type: boolean
+          description: 활성화 여부
+          example: true
+
+    CodeGroup:
+      type: object
+      description: 코드 그룹 요약
+      properties:
+        group:
+          type: string
+          description: 그룹명
+          example: TEMPLATE_CATEGORY
+        count:
+          type: integer
+          description: 해당 그룹의 코드 수
+          example: 8
+
+    # ── 요청 스키마 ──────────────────────────────────────────
+
+    CreateNoteRequest:
+      type: object
+      required: [title]
+      description: 연구노트 생성 요청 (CreateNoteSchema)
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 노트 제목
+          example: 2024-03 PCR 실험
+        type:
+          $ref: '#/components/schemas/NoteType'
+        content:
+          type: string
+          description: 노트 본문
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+        templateId:
+          type: string
+          format: uuid
+          description: 템플릿 ID (템플릿 기반 생성 시)
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+          example: ['PCR', 'DNA']
+
+    UpdateNoteRequest:
+      type: object
+      description: 연구노트 수정 요청 (UpdateNoteSchema) — 모든 필드 선택적
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: 노트 제목
+        content:
+          type: string
+          description: 노트 본문
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+        tags:
+          type: array
+          items:
+            type: string
+        changeSummary:
+          type: string
+          description: 변경 요약 (리비전에 기록)
+          example: 결론 섹션 추가
+
+    ChangeStatusRequest:
+      type: object
+      required: [status]
+      description: 노트 상태 변경 요청 (ChangeStatusSchema)
+      properties:
+        status:
+          $ref: '#/components/schemas/NoteStatus'
+
+    AdminUnlockRequest:
+      type: object
+      required: [adminPassword]
+      description: 관리자 잠금 해제 요청 (AdminUnlockSchema)
+      properties:
+        adminPassword:
+          type: string
+          minLength: 1
+          description: 관리자 계정 비밀번호 (auth-service에서 검증)
+          format: password
+        reason:
+          type: string
+          description: 잠금 해제 사유 (상태 이력에 기록)
+          example: 연구원 요청으로 내용 수정 필요
+
+    AddAttachmentRequest:
+      type: object
+      description: 첨부파일 등록 요청
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: file-service에서 발급된 파일 ID
+        fileName:
+          type: string
+          description: 원본 파일명
+          example: result_image.png
+        mimeType:
+          type: string
+          description: MIME 타입
+          example: image/png
+        sizeBytes:
+          type: integer
+          description: 파일 크기 (바이트)
+          example: 204800
+
+    AddLinkRequest:
+      type: object
+      required: [targetType, targetId]
+      description: 교차 참조 링크 추가 요청 (AddLinkSchema)
+      properties:
+        targetType:
+          $ref: '#/components/schemas/LinkTargetType'
+        targetId:
+          type: string
+          minLength: 1
+          description: 연결 대상 ID
+          example: 550e8400-e29b-41d4-a716-446655440001
+        label:
+          type: string
+          description: 링크 표시 레이블
+          example: 사용 시약
+
+    NotesBatchRequest:
+      type: object
+      required: [ids]
+      description: 노트 일괄 조회 요청 (NotesBatchBodySchema)
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 500
+          description: 조회할 노트 ID 목록 (최대 500개)
+
+    CreateTemplateRequest:
+      type: object
+      required: [title]
+      description: 템플릿 생성 요청 (CreateTemplateSchema)
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: 템플릿 제목
+          example: 세포 배양 표준 절차
+        category:
+          type: string
+          description: 카테고리
+          example: 세포생물학
+        description:
+          type: string
+          description: 템플릿 설명
+        content:
+          type: string
+          description: 기본 본문
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        isPublic:
+          type: boolean
+          default: false
+          description: 공개 여부
+
+    UpdateTemplateRequest:
+      type: object
+      description: 템플릿 수정 요청 (UpdateTemplateSchema) — 모든 필드 선택적
+      properties:
+        title:
+          type: string
+          minLength: 1
+        category:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+        tags:
+          type: array
+          items:
+            type: string
+        isPublic:
+          type: boolean
+
+    CreateCodeRequest:
+      type: object
+      required: [group, value]
+      description: 공통 코드 생성 요청
+      properties:
+        group:
+          type: string
+          description: 코드 그룹명
+          example: TEMPLATE_CATEGORY
+        value:
+          type: string
+          description: 코드 값 (그룹 내 고유)
+          example: molecular_biology
+        label:
+          type: string
+          description: 표시명 (미지정 시 value 사용)
+          example: 분자생물학
+        sortOrder:
+          type: integer
+          default: 0
+          description: 정렬 순서
+
+    UpdateCodeRequest:
+      type: object
+      description: 공통 코드 수정 요청 — 모든 필드 선택적
+      properties:
+        value:
+          type: string
+          description: 코드 값
+        label:
+          type: string
+          nullable: true
+          description: 표시명 (null로 설정 시 value를 표시명으로 사용)
+        sortOrder:
+          type: integer
+          description: 정렬 순서
+        isActive:
+          type: boolean
+          description: 활성화 여부
+
+    # ── 응답 공통 ────────────────────────────────────────────
+
+    OkResponse:
+      type: object
+      required: [ok]
+      description: 표준 성공 응답 래퍼
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      description: 표준 오류 응답
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 오류 메시지
+          example: 노트를 찾을 수 없습니다.
+        code:
+          type: string
+          description: 오류 코드 (ErrorCode 상수)
+          example: NOTE_NOT_FOUND
+
+    AdminUnlockAuditLog:
+      type: object
+      description: 관리자 잠금 해제 감사 로그 요약
+      properties:
+        action:
+          type: string
+          example: admin_unlock
+        noteId:
+          type: string
+          format: uuid
+        adminId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          example: 연구원 요청으로 내용 수정 필요
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      description: 서비스 헬스체크 응답
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: 전체 상태 (DB와 이벤트 컨슈머 모두 정상이어야 ok)
+          example: ok
+        service:
+          type: string
+          example: eln-service
+        timestamp:
+          type: string
+          format: date-time
+        db:
+          type: string
+          enum: [ok, error]
+          description: PostgreSQL 연결 상태
+          example: ok
+        eventConsumer:
+          type: string
+          enum: [ok, stopped]
+          description: Redis Stream 이벤트 컨슈머 실행 상태
+          example: ok
+
+  responses:
+    Unauthorized:
+      description: 인증 실패 — JWT 토큰이 없거나 유효하지 않습니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증이 필요합니다.
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: 권한 없음 — 해당 작업을 수행할 권한이 없습니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 접근 권한이 없습니다.
+            code: FORBIDDEN
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 노트를 찾을 수 없습니다.
+            code: NOTE_NOT_FOUND
+
+    ValidationError:
+      description: 요청 유효성 검사 실패 — Zod 스키마 검증 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: title은 필수입니다.
+            code: VALIDATION_ERROR
+
+    Conflict:
+      description: 충돌 — 이미 존재하는 리소스입니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 이미 존재하는 코드입니다.
+            code: VALIDATION_ERROR
+
+    InternalServerError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 서버 내부 오류가 발생했습니다.
+            code: INTERNAL_SERVER_ERROR

@@ -639,7 +639,7 @@ export async function getTags(request: FastifyRequest, reply: FastifyReply) {
   const rows = await prisma.$queryRaw<{ tag: string }[]>`
     SELECT DISTINCT UNNEST(tags) AS tag
     FROM "Note"
-    WHERE type = ${noteType}::text AND "deletedAt" IS NULL AND "orgId" = ${orgId}
+    WHERE type = ${noteType}::"NoteType" AND "deletedAt" IS NULL AND "orgId" = ${orgId}
     ORDER BY tag
   `;
   return { ok: true, data: rows.map((r) => r.tag) };
