@@ -1,3 +1,4 @@
+import '@lab/shared/dist/tracing';
 import { buildApp } from './app';
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────

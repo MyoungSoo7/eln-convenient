@@ -1,0 +1,1915 @@
+openapi: 3.0.3
+info:
+  title: 전자서명/감사로그 서비스 API
+  description: |-
+    LabNote ELN 전자서명, 감사로그, 내보내기(PDF/ZIP/보고서), 알림 관리 서비스.
+
+    ## 인증 방식
+    - **Bearer JWT**: api-gateway가 검증 후 `x-user-id`, `x-user-role`, `x-user-permissions`, `x-user-org-id` 헤더를 주입한다.
+    - **x-internal-secret**: 서비스 간 내부 호출 전용. 외부에서 직접 호출 불가.
+
+    ## 응답 형식
+    모든 응답은 `{ ok: boolean, data: T, error?: string }` 형태를 따른다.
+
+    ## 해시 체인 서명
+    전자서명은 SHA-256 기반 해시 체인으로 무결성을 보장한다.
+    `sha256(noteId:signerId:timestamp:prevHash:comment)`
+  version: 1.0.0
+  contact:
+    name: LabNote ELN 개발팀
+
+servers:
+  - url: http://localhost:8003
+    description: 로컬 개발 서버
+
+tags:
+  - name: 서명
+    description: 전자서명 생성, 검증, 취소 및 컴플라이언스 조회
+  - name: 감사로그
+    description: 시스템 전체 행위 이력 조회 (감사 추적)
+  - name: 내보내기
+    description: 연구노트 PDF/ZIP/보고서 내보내기 작업 관리
+  - name: 알림
+    description: 사용자 알림 조회 및 읽음 처리
+  - name: 헬스체크
+    description: 서비스 상태 확인
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ────────────────────────────────────────────
+  # 헬스체크
+  # ────────────────────────────────────────────
+
+  /health:
+    get:
+      tags:
+        - 헬스체크
+      summary: 서비스 헬스체크
+      description: 서비스 및 데이터베이스 연결 상태를 반환한다.
+      security: []
+      operationId: getHealth
+      responses:
+        '200':
+          description: 서비스 상태 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                정상:
+                  value:
+                    status: ok
+                    service: signature-audit-service
+                    timestamp: '2026-03-25T10:00:00.000Z'
+                    db: ok
+                DB오류:
+                  value:
+                    status: degraded
+                    service: signature-audit-service
+                    timestamp: '2026-03-25T10:00:00.000Z'
+                    db: error
+
+  # ────────────────────────────────────────────
+  # 서명 — 컴플라이언스 (고정 경로 우선)
+  # ────────────────────────────────────────────
+
+  /api/signatures/compliance/stats:
+    get:
+      tags:
+        - 서명
+      summary: 컴플라이언스 통계 조회
+      description: |-
+        조직 내 노트 상태별 개수 및 유효 서명 총 수를 반환한다.
+        대시보드 컴플라이언스 현황 위젯에서 사용한다.
+      operationId: getComplianceStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 컴플라이언스 통계
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ComplianceStats'
+              example:
+                ok: true
+                data:
+                  signed: 42
+                  pending: 15
+                  locked: 8
+                  draft: 31
+                  totalSignatures: 67
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/signatures/compliance/list:
+    get:
+      tags:
+        - 서명
+      summary: 컴플라이언스 노트 목록 조회
+      description: |-
+        조직 내 노트 목록과 각 노트의 최신 서명 정보를 함께 반환한다.
+        상태 필터와 페이지네이션을 지원한다.
+      operationId: getComplianceList
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: 노트 상태 필터
+          required: false
+          schema:
+            type: string
+            enum: [draft, in_progress, signed, locked]
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: 페이지당 항목 수 (최대 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 컴플라이언스 노트 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ComplianceNoteItem'
+                      total:
+                        type: integer
+                        description: 전체 항목 수
+                      page:
+                        type: integer
+                        description: 현재 페이지
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/signatures/editable/{noteId}:
+    get:
+      tags:
+        - 서명
+      summary: 노트 편집 가능 여부 조회
+      description: |-
+        특정 노트가 현재 편집 가능한 상태인지 확인한다.
+        `draft`, `in_progress` 상태만 편집 가능하며, `locked`, `signed` 상태는 불가.
+      operationId: getNoteEditable
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/noteIdPath'
+      responses:
+        '200':
+          description: 노트 편집 가능 여부
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NoteEditableResult'
+              examples:
+                편집가능:
+                  value:
+                    ok: true
+                    data:
+                      noteId: 550e8400-e29b-41d4-a716-446655440000
+                      status: in_progress
+                      editable: true
+                      reason: editable
+                서명완료:
+                  value:
+                    ok: true
+                    data:
+                      noteId: 550e8400-e29b-41d4-a716-446655440000
+                      status: signed
+                      editable: false
+                      reason: signed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ────────────────────────────────────────────
+  # 서명 — 핵심 동작 (동적 경로)
+  # ────────────────────────────────────────────
+
+  /api/signatures/sign/{noteId}:
+    post:
+      tags:
+        - 서명
+      summary: 노트 전자서명
+      description: |-
+        지정한 노트에 전자서명을 생성한다.
+
+        ## 제약 사항
+        - 서명자는 `note:sign` 권한이 있어야 한다 (reviewer/admin 또는 해당 팀 리더).
+        - 자신이 작성한 노트에는 서명 불가 (부인방지 원칙, admin 예외).
+        - 비밀번호 검증이 필수이다.
+        - 서명 성공 시 해시 체인 엔트리가 생성되고 노트 상태가 `signed`로 전환된다.
+
+        ## 해시 체인
+        `sha256(noteId:signerId:timestamp:prevHash:comment)` 형식으로 무결성 체인을 구성한다.
+      operationId: signNote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteId
+          in: path
+          description: 서명할 노트의 UUID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignNoteBody'
+            example:
+              password: mySecretPassword123
+              comment: 실험 결과 검토 후 승인합니다.
+      responses:
+        '201':
+          description: 전자서명 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Signature'
+                      message:
+                        type: string
+                        description: 완료 메시지
+                      warning:
+                        type: string
+                        description: 노트 상태 전환 지연 경고 (선택적)
+              example:
+                ok: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  noteId: 550e8400-e29b-41d4-a716-446655440000
+                  signerId: user-001
+                  orgId: org-001
+                  signatureHash: 'sha256:a1b2c3d4...'
+                  prevHash: null
+                  chainIndex: 0
+                  timestamp: '2026-03-25T10:00:00.000Z'
+                  status: valid
+                message: 전자서명이 완료되었습니다. 노트가 서명 완료 상태로 전환되었습니다.
+        '400':
+          description: 비밀번호 오류 또는 잘못된 요청
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.
+                code: SIGNATURE_PASSWORD_INVALID
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 서명 권한 없음 또는 자기 노트 서명 시도
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                자기노트:
+                  value:
+                    ok: false
+                    error: 자신이 작성한 노트에는 서명할 수 없습니다.
+                    code: FORBIDDEN
+                권한없음:
+                  value:
+                    ok: false
+                    error: 서명 권한이 없습니다. reviewer/admin 또는 해당 팀 리더만 서명 가능합니다.
+                    code: AUTH_PERMISSION_DENIED
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/signatures/verify/{noteId}:
+    get:
+      tags:
+        - 서명
+      summary: 서명 체인 무결성 검증
+      description: |-
+        노트에 연결된 서명 해시 체인 전체의 무결성을 검증한다.
+        `prevHash` 연결 및 `chainIndex` 연속성을 확인하여 위변조 여부를 판단한다.
+      operationId: verifySignature
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/noteIdPath'
+      responses:
+        '200':
+          description: 서명 체인 검증 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      noteId:
+                        type: string
+                        format: uuid
+                      verified:
+                        type: boolean
+                        description: 체인 무결성 검증 결과
+                      chainLength:
+                        type: integer
+                        description: 체인에 포함된 서명 수
+                      latestSignature:
+                        $ref: '#/components/schemas/Signature'
+                      chainErrors:
+                        type: array
+                        items:
+                          type: string
+                        description: 무결성 오류 메시지 목록 (오류 없으면 미포함)
+                      message:
+                        type: string
+                      verifiedAt:
+                        type: string
+                        format: date-time
+              examples:
+                유효:
+                  value:
+                    ok: true
+                    noteId: 550e8400-e29b-41d4-a716-446655440000
+                    verified: true
+                    chainLength: 2
+                    latestSignature:
+                      id: sig-002
+                      chainIndex: 1
+                      status: valid
+                    message: 서명 체인이 유효합니다. (2개 서명)
+                    verifiedAt: '2026-03-25T10:00:00.000Z'
+                서명없음:
+                  value:
+                    ok: true
+                    noteId: 550e8400-e29b-41d4-a716-446655440000
+                    verified: false
+                    message: 유효한 서명이 없습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/signatures/revoke/{signatureId}:
+    post:
+      tags:
+        - 서명
+      summary: 서명 취소 (관리자 전용)
+      description: |-
+        지정한 서명을 취소 상태(`revoked`)로 변경한다.
+
+        해시 체인 무결성 유지를 위해 레코드를 삭제하지 않고 `status=revoked`로 소프트 처리한다.
+        감사로그에 취소 사유가 기록된다.
+
+        **관리자(admin) 전용** 엔드포인트이다.
+      operationId: revokeSignature
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: signatureId
+          in: path
+          description: 취소할 서명의 UUID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSignatureBody'
+            example:
+              reason: 데이터 오류로 인한 서명 무효 처리
+      responses:
+        '200':
+          description: 서명 취소 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Signature'
+                      message:
+                        type: string
+              example:
+                ok: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  status: revoked
+                message: 서명이 취소되었습니다.
+        '400':
+          description: 이미 취소된 서명
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 취소된 서명입니다.
+                code: SIGNATURE_ALREADY_REVOKED
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 관리자 권한 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 서명 취소는 관리자만 가능합니다.
+                code: SIGNATURE_ADMIN_ONLY
+        '404':
+          description: 서명을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 서명을 찾을 수 없습니다.
+                code: SIGNATURE_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/signatures/{noteId}:
+    get:
+      tags:
+        - 서명
+      summary: 노트 서명 목록 조회
+      description: 특정 노트에 연결된 모든 서명을 `chainIndex` 오름차순으로 반환한다.
+      operationId: listSignatures
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/noteIdPath'
+      responses:
+        '200':
+          description: 서명 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Signature'
+                      total:
+                        type: integer
+                        description: 서명 총 수
+              example:
+                ok: true
+                data:
+                  - id: sig-001
+                    noteId: 550e8400-e29b-41d4-a716-446655440000
+                    signerId: user-001
+                    chainIndex: 0
+                    status: valid
+                total: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ────────────────────────────────────────────
+  # 감사로그
+  # ────────────────────────────────────────────
+
+  /api/audit/internal:
+    post:
+      tags:
+        - 감사로그
+      summary: 감사로그 내부 생성 (서비스 간 전용)
+      description: |-
+        다른 내부 서비스가 감사로그를 기록할 때 사용한다.
+        `x-internal-secret` 헤더 인증이 필요하며 외부에서 직접 호출할 수 없다.
+      operationId: createAuditLogInternal
+      security:
+        - internalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuditLogInternalBody'
+            example:
+              entityType: note
+              entityId: 550e8400-e29b-41d4-a716-446655440000
+              action: status_changed
+              actorId: user-001
+              details:
+                from: in_progress
+                to: locked
+              ipAddress: 10.0.0.1
+      responses:
+        '201':
+          description: 감사로그 생성 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            description: 생성된 감사로그 ID
+              example:
+                ok: true
+                data:
+                  id: log-001
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: x-internal-secret 헤더 누락 또는 불일치
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/audit/actions:
+    get:
+      tags:
+        - 감사로그
+      summary: 사용된 액션 목록 조회
+      description: 조직 내 감사로그에 기록된 고유 `action` 값 목록을 반환한다. 필터 UI에서 사용한다.
+      operationId: listAuditActions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 액션 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+              example:
+                ok: true
+                data:
+                  - export_requested
+                  - revoked
+                  - signed
+                  - status_changed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/audit:
+    get:
+      tags:
+        - 감사로그
+      summary: 감사로그 목록 조회
+      description: |-
+        조직 내 감사로그를 필터링 및 페이지네이션하여 조회한다.
+        `entityId`, `entityType`, `actorId`, `action`, 날짜 범위로 필터링 가능하다.
+      operationId: listAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityId
+          in: query
+          description: 대상 엔티티 ID 필터
+          required: false
+          schema:
+            type: string
+        - name: entityType
+          in: query
+          description: 대상 엔티티 유형 필터 (예: note, signature, export)
+          required: false
+          schema:
+            type: string
+        - name: actorId
+          in: query
+          description: 행위자 사용자 ID 필터
+          required: false
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: 액션 유형 필터 (예: signed, revoked, status_changed)
+          required: false
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          description: 조회 시작일 (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          description: 조회 종료일 (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: 페이지당 항목 수 (최대 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 감사로그 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLog'
+                      total:
+                        type: integer
+                        description: 전체 항목 수
+                      page:
+                        type: integer
+                        description: 현재 페이지
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/audit/{id}:
+    get:
+      tags:
+        - 감사로그
+      summary: 감사로그 단건 조회
+      description: 특정 감사로그 항목의 상세 정보를 조회한다.
+      operationId: getAuditLog
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: 감사로그 ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 감사로그 상세
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuditLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 감사로그를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 감사로그를 찾을 수 없습니다.
+                code: NOT_FOUND
+
+  # ────────────────────────────────────────────
+  # 내보내기
+  # ────────────────────────────────────────────
+
+  /api/export/list:
+    get:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 목록 조회
+      description: |-
+        내보내기 작업 목록을 반환한다.
+        - **admin**: 조직 전체 작업 목록 조회 가능
+        - **일반 사용자**: 본인이 요청한 작업만 조회 가능
+
+        완료된 작업은 presigned 다운로드 URL이 재발급된다.
+      operationId: listExportJobs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 내보내기 작업 목록 (최근 50건)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExportJobSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/export/pdf/{noteId}:
+    post:
+      tags:
+        - 내보내기
+      summary: 노트 PDF 내보내기 요청
+      description: |-
+        단일 노트를 PDF로 내보내는 작업을 BullMQ 대기열에 등록한다.
+        작업은 비동기로 처리되며 응답으로 `jobId`를 반환한다.
+        `/api/export/status/:jobId`로 작업 상태를 확인한다.
+      operationId: exportPdf
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteId
+          in: path
+          description: PDF로 내보낼 노트 ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: PDF 내보내기 작업 등록 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportJobCreated'
+              example:
+                ok: true
+                data:
+                  job:
+                    id: job-001
+                    jobId: job-001
+                    noteId: 550e8400-e29b-41d4-a716-446655440000
+                    format: pdf
+                    status: pending
+                    createdAt: '2026-03-25T10:00:00.000Z'
+                  jobId: job-001
+                  noteId: 550e8400-e29b-41d4-a716-446655440000
+                  status: pending
+                  message: PDF 내보내기 작업이 대기열에 추가되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/export/zip:
+    post:
+      tags:
+        - 내보내기
+      summary: 복수 노트 ZIP 내보내기 요청
+      description: |-
+        여러 노트를 개별 PDF로 변환하여 하나의 ZIP 파일로 묶어 내보내는 작업을 등록한다.
+        작업은 비동기로 처리된다.
+      operationId: exportZip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportMultiNoteBody'
+            example:
+              noteIds:
+                - 550e8400-e29b-41d4-a716-446655440000
+                - 550e8400-e29b-41d4-a716-446655440001
+      responses:
+        '202':
+          description: ZIP 내보내기 작업 등록 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportZipJobCreated'
+              example:
+                ok: true
+                data:
+                  jobId: job-002
+                  noteIds:
+                    - note-001
+                    - note-002
+                  status: pending
+                  message: ZIP 내보내기 작업이 대기열에 추가되었습니다.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/export/report:
+    post:
+      tags:
+        - 내보내기
+      summary: 프로젝트 보고서 PDF 내보내기 요청
+      description: |-
+        복수의 노트를 하나의 종합 보고서 PDF로 내보내는 작업을 등록한다.
+        ZIP과 달리 모든 노트 내용이 단일 PDF 파일에 합쳐진다.
+      operationId: exportReport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportMultiNoteBody'
+            example:
+              noteIds:
+                - 550e8400-e29b-41d4-a716-446655440000
+                - 550e8400-e29b-41d4-a716-446655440001
+      responses:
+        '202':
+          description: 보고서 PDF 작업 등록 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportZipJobCreated'
+              example:
+                ok: true
+                data:
+                  jobId: job-003
+                  noteIds:
+                    - note-001
+                    - note-002
+                  status: pending
+                  message: 프로젝트 보고서 PDF 작업이 대기열에 추가되었습니다.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/export/status/{jobId}:
+    get:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 상태 조회
+      description: |-
+        내보내기 작업의 현재 상태와 완료 시 다운로드 URL을 반환한다.
+        완료된 작업이면 presigned URL이 자동으로 재발급된다.
+
+        ## 상태 흐름
+        `pending` → `processing` → `completed` | `failed`
+      operationId: getExportStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          description: 내보내기 작업 ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 작업 상태 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportJobStatus'
+              examples:
+                대기중:
+                  value:
+                    ok: true
+                    data:
+                      jobId: job-001
+                      noteId: note-001
+                      format: pdf
+                      status: pending
+                      fileUrl: null
+                      downloadUrl: null
+                      errorMsg: null
+                      createdAt: '2026-03-25T10:00:00.000Z'
+                      completedAt: null
+                완료:
+                  value:
+                    ok: true
+                    data:
+                      jobId: job-001
+                      noteId: note-001
+                      format: pdf
+                      status: completed
+                      fileUrl: 'https://minio.example.com/exports/note-001.pdf?X-Amz-Signature=...'
+                      downloadUrl: 'https://minio.example.com/exports/note-001.pdf?X-Amz-Signature=...'
+                      errorMsg: null
+                      createdAt: '2026-03-25T10:00:00.000Z'
+                      completedAt: '2026-03-25T10:05:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 작업을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 작업을 찾을 수 없습니다.
+                code: EXPORT_NOT_FOUND
+
+  # ────────────────────────────────────────────
+  # 알림
+  # ────────────────────────────────────────────
+
+  /api/notifications/internal:
+    post:
+      tags:
+        - 알림
+      summary: 알림 내부 생성 (서비스 간 전용)
+      description: |-
+        다른 내부 서비스(eln-service, scheduler-service 등)가 사용자에게 알림을 발송할 때 사용한다.
+        `x-internal-secret` 헤더 인증이 필요하며 외부에서 직접 호출할 수 없다.
+        생성 후 Redis Pub/Sub으로 실시간 알림을 푸시한다.
+      operationId: createNotificationInternal
+      security:
+        - internalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationInternalBody'
+            example:
+              recipientId: user-001
+              type: NOTE_SIGNED
+              entityType: note
+              entityId: 550e8400-e29b-41d4-a716-446655440000
+              title: 연구노트가 서명되었습니다
+              message: "'실험결과 2026-03' 노트가 서명 처리되었습니다."
+              actorId: reviewer-001
+              actorName: 김검토자
+      responses:
+        '201':
+          description: 알림 생성 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            description: 생성된 알림 ID
+              example:
+                ok: true
+                data:
+                  id: notif-001
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: x-internal-secret 헤더 누락 또는 불일치
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/notifications/unread-count:
+    get:
+      tags:
+        - 알림
+      summary: 읽지 않은 알림 수 조회
+      description: |-
+        현재 로그인한 사용자의 읽지 않은 알림 수를 반환한다.
+        Redis에 5분간 캐싱되어 성능이 최적화된다.
+      operationId: getUnreadCount
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 읽지 않은 알림 수
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: 읽지 않은 알림 수
+                            example: 3
+              example:
+                ok: true
+                data:
+                  count: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/notifications/read-all:
+    patch:
+      tags:
+        - 알림
+      summary: 모든 알림 읽음 처리
+      description: 현재 로그인한 사용자의 읽지 않은 알림을 모두 읽음 상태로 변경한다.
+      operationId: markAllAsRead
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 전체 읽음 처리 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          updated:
+                            type: integer
+                            description: 읽음 처리된 알림 수
+              example:
+                ok: true
+                data:
+                  updated: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/notifications/{id}/read:
+    patch:
+      tags:
+        - 알림
+      summary: 알림 단건 읽음 처리
+      description: 특정 알림을 읽음 상태로 변경한다. 본인의 알림만 처리할 수 있다.
+      operationId: markAsRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: 알림 UUID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 읽음 처리 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 알림을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 알림을 찾을 수 없습니다.
+                code: NOTIFICATION_NOT_FOUND
+
+  /api/notifications:
+    get:
+      tags:
+        - 알림
+      summary: 내 알림 목록 조회
+      description: |-
+        현재 로그인한 사용자의 알림 목록을 최신 순으로 반환한다.
+        읽음/안읽음 필터와 페이지네이션을 지원한다.
+      operationId: listNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: 페이지당 항목 수 (최대 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: isRead
+          in: query
+          description: 읽음 상태 필터 (`true`: 읽은 것만, `false`: 안읽은 것만, 미지정: 전체)
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: 알림 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+                      total:
+                        type: integer
+                        description: 전체 알림 수
+                      page:
+                        type: integer
+                        description: 현재 페이지
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+# ────────────────────────────────────────────
+# 컴포넌트
+# ────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |-
+        api-gateway가 검증한 JWT를 Bearer 토큰으로 전달한다.
+        api-gateway는 검증 후 내부 서비스로 다음 헤더를 주입한다:
+        - `x-user-id`: 사용자 ID
+        - `x-user-role`: 역할 (admin, reviewer, researcher)
+        - `x-user-permissions`: 권한 목록 (JSON 배열)
+        - `x-user-org-id`: 조직 ID
+    internalSecret:
+      type: apiKey
+      in: header
+      name: x-internal-secret
+      description: 서비스 간 내부 통신 인증 헤더. 환경변수 `INTERNAL_SECRET` 값과 일치해야 한다.
+
+  parameters:
+    noteIdPath:
+      name: noteId
+      in: path
+      description: 노트 UUID
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+
+    # ── 공통 응답 래퍼 ──
+
+    OkResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: 요청 성공 여부
+          example: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 오류 메시지
+        code:
+          type: string
+          description: 오류 코드 (ErrorCode 상수)
+
+    # ── 헬스체크 ──
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+        - db
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: 서비스 전체 상태
+        service:
+          type: string
+          example: signature-audit-service
+        timestamp:
+          type: string
+          format: date-time
+        db:
+          type: string
+          enum: [ok, error]
+          description: 데이터베이스 연결 상태
+
+    # ── 서명 ──
+
+    Signature:
+      type: object
+      description: 전자서명 레코드 (해시 체인 엔트리)
+      required:
+        - id
+        - noteId
+        - signerId
+        - orgId
+        - signatureHash
+        - chainIndex
+        - timestamp
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 서명 UUID
+        noteId:
+          type: string
+          format: uuid
+          description: 서명 대상 노트 UUID
+        signerId:
+          type: string
+          description: 서명자 사용자 ID
+        orgId:
+          type: string
+          description: 조직 ID
+        signatureHash:
+          type: string
+          description: SHA-256 해시 (`sha256:` 접두사 포함)
+          example: 'sha256:a1b2c3d4e5f6...'
+        prevHash:
+          type: string
+          nullable: true
+          description: 이전 서명의 해시 (체인 연결, 첫 번째 서명은 null)
+        chainIndex:
+          type: integer
+          description: 해시 체인 내 순서 (0부터 시작)
+          minimum: 0
+        timestamp:
+          type: string
+          format: date-time
+          description: 서명 생성 시각
+        status:
+          type: string
+          enum: [valid, revoked]
+          description: 서명 상태
+
+    SignNoteBody:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          minLength: 1
+          description: 서명자 계정 비밀번호 (auth-service에서 검증)
+        comment:
+          type: string
+          description: 서명 코멘트 (선택)
+
+    RevokeSignatureBody:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          description: 서명 취소 사유
+
+    ComplianceStats:
+      type: object
+      description: 조직 내 노트 상태별 컴플라이언스 통계
+      required:
+        - signed
+        - pending
+        - locked
+        - draft
+        - totalSignatures
+      properties:
+        signed:
+          type: integer
+          description: 서명 완료 노트 수
+        pending:
+          type: integer
+          description: 진행 중(in_progress) 노트 수
+        locked:
+          type: integer
+          description: 잠금 상태 노트 수
+        draft:
+          type: integer
+          description: 초안 상태 노트 수
+        totalSignatures:
+          type: integer
+          description: 유효한 서명 총 수
+
+    ComplianceNoteItem:
+      type: object
+      description: 컴플라이언스 목록의 노트 항목
+      properties:
+        noteId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [draft, in_progress, signed, locked]
+        authorId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        isSigned:
+          type: boolean
+          description: 서명 존재 여부
+        signatureCount:
+          type: integer
+          description: 서명 수
+        latestSignature:
+          nullable: true
+          description: 가장 최근 유효 서명 요약 (없으면 null)
+          allOf:
+            - type: object
+              properties:
+                id:
+                  type: string
+                signerId:
+                  type: string
+                signatureHash:
+                  type: string
+                timestamp:
+                  type: string
+                  format: date-time
+        editable:
+          type: boolean
+          description: 편집 가능 여부 (draft/in_progress 상태)
+
+    NoteEditableResult:
+      type: object
+      description: 노트 편집 가능 여부 확인 결과
+      required:
+        - noteId
+        - status
+        - editable
+        - reason
+      properties:
+        noteId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, in_progress, signed, locked]
+          description: 현재 노트 상태
+        editable:
+          type: boolean
+          description: 편집 가능 여부
+        reason:
+          type: string
+          enum: [editable, locked, signed]
+          description: 편집 불가 이유 (editable이면 편집 가능)
+
+    # ── 감사로그 ──
+
+    AuditLog:
+      type: object
+      description: 감사로그 레코드
+      required:
+        - id
+        - entityType
+        - entityId
+        - action
+        - actorId
+        - orgId
+        - details
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: 감사로그 ID (UUID)
+        entityType:
+          type: string
+          description: 대상 엔티티 유형 (note, signature, export 등)
+          example: note
+        entityId:
+          type: string
+          description: 대상 엔티티 ID
+        action:
+          type: string
+          description: 수행된 액션 (signed, revoked, status_changed, export_requested 등)
+          example: signed
+        actorId:
+          type: string
+          description: 액션을 수행한 사용자 ID
+        orgId:
+          type: string
+          description: 조직 ID
+        details:
+          type: object
+          additionalProperties: true
+          description: 액션 상세 정보 (JSON)
+        ipAddress:
+          type: string
+          nullable: true
+          description: 요청 IP 주소
+        createdAt:
+          type: string
+          format: date-time
+          description: 기록 생성 시각
+
+    CreateAuditLogInternalBody:
+      type: object
+      description: 내부 감사로그 생성 요청 본문
+      required:
+        - entityType
+        - entityId
+        - action
+        - actorId
+      properties:
+        entityType:
+          type: string
+          minLength: 1
+          description: 대상 엔티티 유형
+        entityId:
+          type: string
+          minLength: 1
+          description: 대상 엔티티 ID
+        action:
+          type: string
+          minLength: 1
+          description: 수행된 액션
+        actorId:
+          type: string
+          minLength: 1
+          description: 액션 수행자 ID
+        details:
+          type: object
+          additionalProperties: true
+          description: 액션 상세 정보 (선택)
+        ipAddress:
+          type: string
+          description: 요청 IP 주소 (선택)
+
+    # ── 내보내기 ──
+
+    ExportJobSummary:
+      type: object
+      description: 내보내기 작업 요약 정보
+      properties:
+        jobId:
+          type: string
+          description: 작업 ID
+        noteId:
+          type: string
+          description: 대상 노트 ID (bulk ZIP/report는 'bulk' 또는 'report')
+        format:
+          type: string
+          enum: [pdf, zip, report]
+          description: 내보내기 형식
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        downloadUrl:
+          type: string
+          nullable: true
+          description: 완료 시 presigned 다운로드 URL
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ExportJobStatus:
+      type: object
+      description: 내보내기 작업 상태 상세
+      properties:
+        id:
+          type: string
+        jobId:
+          type: string
+        noteId:
+          type: string
+        format:
+          type: string
+          enum: [pdf, zip, report]
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        fileUrl:
+          type: string
+          nullable: true
+          description: 파일 다운로드 URL (presigned)
+        downloadUrl:
+          type: string
+          nullable: true
+          description: fileUrl과 동일 (편의 필드)
+        errorMsg:
+          type: string
+          nullable: true
+          description: 실패 시 오류 메시지
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ExportJobCreated:
+      type: object
+      description: 내보내기 작업 생성 응답 (단일 노트)
+      properties:
+        job:
+          type: object
+          properties:
+            id:
+              type: string
+            jobId:
+              type: string
+            noteId:
+              type: string
+            format:
+              type: string
+              enum: [pdf, zip, report]
+            status:
+              $ref: '#/components/schemas/ExportStatus'
+            createdAt:
+              type: string
+              format: date-time
+        jobId:
+          type: string
+          description: 작업 ID (편의 필드)
+        noteId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        message:
+          type: string
+          description: 안내 메시지
+
+    ExportZipJobCreated:
+      type: object
+      description: 내보내기 작업 생성 응답 (복수 노트)
+      properties:
+        job:
+          type: object
+          properties:
+            id:
+              type: string
+            jobId:
+              type: string
+            noteId:
+              type: string
+            noteIds:
+              type: array
+              items:
+                type: string
+            format:
+              type: string
+              enum: [zip, report]
+            status:
+              $ref: '#/components/schemas/ExportStatus'
+            createdAt:
+              type: string
+              format: date-time
+        jobId:
+          type: string
+        noteIds:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        message:
+          type: string
+
+    ExportMultiNoteBody:
+      type: object
+      required:
+        - noteIds
+      properties:
+        noteIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          minItems: 1
+          description: 내보낼 노트 ID 목록 (1개 이상 필수)
+
+    ExportStatus:
+      type: string
+      enum: [pending, processing, completed, failed]
+      description: |-
+        내보내기 작업 상태:
+        - `pending`: 대기 중
+        - `processing`: 처리 중 (BullMQ Worker 실행)
+        - `completed`: 완료 (다운로드 URL 제공됨)
+        - `failed`: 실패 (errorMsg 참조)
+
+    # ── 알림 ──
+
+    Notification:
+      type: object
+      description: 알림 레코드
+      required:
+        - id
+        - recipientId
+        - orgId
+        - type
+        - entityType
+        - entityId
+        - title
+        - message
+        - actorId
+        - isRead
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 알림 UUID
+        recipientId:
+          type: string
+          description: 수신자 사용자 ID
+        orgId:
+          type: string
+          description: 조직 ID
+        type:
+          type: string
+          enum: [NOTE_LOCKED, NOTE_SIGNED, NOTE_UNLOCKED, BOOKING_APPROVED]
+          description: 알림 유형
+        entityType:
+          type: string
+          description: 관련 엔티티 유형 (note, booking 등)
+        entityId:
+          type: string
+          description: 관련 엔티티 ID
+        title:
+          type: string
+          description: 알림 제목
+        message:
+          type: string
+          description: 알림 내용
+        actorId:
+          type: string
+          description: 알림을 발생시킨 사용자 ID
+        actorName:
+          type: string
+          description: 알림을 발생시킨 사용자 이름
+        isRead:
+          type: boolean
+          description: 읽음 여부
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+          description: 알림 생성 시각
+
+    CreateNotificationInternalBody:
+      type: object
+      description: 내부 알림 생성 요청 본문
+      required:
+        - recipientId
+        - type
+        - entityType
+        - entityId
+        - title
+        - message
+        - actorId
+      properties:
+        recipientId:
+          type: string
+          minLength: 1
+          description: 수신자 사용자 ID
+        type:
+          type: string
+          enum: [NOTE_LOCKED, NOTE_SIGNED, NOTE_UNLOCKED, BOOKING_APPROVED]
+          description: 알림 유형
+        entityType:
+          type: string
+          minLength: 1
+          description: 관련 엔티티 유형 (note, booking 등)
+        entityId:
+          type: string
+          minLength: 1
+          description: 관련 엔티티 ID
+        title:
+          type: string
+          minLength: 1
+          description: 알림 제목
+        message:
+          type: string
+          minLength: 1
+          description: 알림 내용
+        actorId:
+          type: string
+          minLength: 1
+          description: 알림을 발생시킨 사용자 ID
+        actorName:
+          type: string
+          description: 알림을 발생시킨 사용자 이름 (선택)
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청 (유효성 검사 실패)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 요청 데이터가 올바르지 않습니다.
+            code: VALIDATION_ERROR
+
+    Unauthorized:
+      description: 인증 필요 (JWT 없음 또는 만료)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증이 필요합니다.
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: 권한 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 이 작업을 수행할 권한이 없습니다.
+            code: AUTH_PERMISSION_DENIED
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 리소스를 찾을 수 없습니다.
+            code: NOT_FOUND
+
+    InternalError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 서버 내부 오류가 발생했습니다.
+            code: INTERNAL_SERVER_ERROR
+
+    ServiceUnavailable:
+      description: 연동 서비스 응답 불가 (eln-service 등)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 노트 데이터를 가져올 수 없습니다.
+            code: SERVICE_UNAVAILABLE

@@ -1,0 +1,1332 @@
+openapi: 3.0.3
+info:
+  title: 인벤토리 서비스 API
+  description: |
+    LabNote ELN 인벤토리 서비스 — 시약, 샘플, 장비, 자산 관리 CRUD API.
+
+    ## 인증
+    모든 엔드포인트는 Bearer JWT 토큰이 필요합니다. 토큰은 api-gateway가 검증하며,
+    내부 서비스 헤더(`x-user-id`, `x-user-role`, `x-user-permissions`, `x-user-org-id`)로 사용자 정보가 주입됩니다.
+
+    ## 멀티테넌시
+    모든 데이터 조회/수정은 요청자의 `orgId` 범위 내에서만 동작합니다.
+
+    ## 응답 형식
+    - 성공: `{ ok: true, data: T }`
+    - 실패: `{ ok: false, error: string, code: string }`
+  version: 2.0.0
+  contact:
+    name: LabNote 개발팀
+
+servers:
+  - url: http://localhost:8004
+    description: 로컬 개발 서버
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: 아이템
+    description: 인벤토리 아이템(시약·샘플·장비·자산) CRUD 및 수량 관리
+  - name: 알림
+    description: 만료 임박·재고 부족 알림 조회
+  - name: 카테고리
+    description: 아이템 분류 카테고리 관리 (Admin 전용 생성·수정·삭제)
+  - name: 시스템
+    description: 서비스 상태 확인
+
+paths:
+  /health:
+    get:
+      tags:
+        - 시스템
+      summary: 헬스체크
+      description: 서비스 및 DB 연결 상태를 반환합니다.
+      security: []
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 서비스 상태
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                service: inventory-service
+                timestamp: '2026-03-25T00:00:00.000Z'
+                db: ok
+
+  /api/inventory/items:
+    get:
+      tags:
+        - 아이템
+      summary: 아이템 목록 조회
+      description: |
+        조직 내 인벤토리 아이템 목록을 페이징·필터링·정렬하여 반환합니다.
+        `type`, `status`, `category`, 태그, 텍스트 검색(`q`)을 조합할 수 있습니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getItems
+      parameters:
+        - name: type
+          in: query
+          description: 아이템 유형 필터 (예: reagent, sample, equipment)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 아이템 상태 필터
+          schema:
+            $ref: '#/components/schemas/ItemStatus'
+        - name: category
+          in: query
+          description: 카테고리 이름 필터
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: 텍스트 검색 키워드 (name, barcode, location 대상)
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: 태그 필터 (단일 태그)
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: 페이지당 아이템 수 (최대 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortBy
+          in: query
+          description: 정렬 기준 필드
+          schema:
+            $ref: '#/components/schemas/SortField'
+        - name: sortOrder
+          in: query
+          description: 정렬 방향
+          schema:
+            $ref: '#/components/schemas/SortOrder'
+      responses:
+        '200':
+          description: 아이템 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/InventoryItem'
+                      total:
+                        type: integer
+                        description: 전체 아이템 수
+                      page:
+                        type: integer
+                        description: 현재 페이지 번호
+                      limit:
+                        type: integer
+                        description: 페이지당 아이템 수
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - 아이템
+      summary: 아이템 생성
+      description: |
+        새 인벤토리 아이템을 등록합니다. 수량이 있으면 최초 입고 이력이 자동 생성됩니다.
+        바코드는 조직 내 유일해야 합니다.
+
+        필요 권한: `INVENTORY_WRITE`
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+            example:
+              name: 에탄올 99.9%
+              type: reagent
+              category: 유기용매
+              quantity: 10
+              unit: L
+              location: 시약장 A-1
+              barcode: CHEM-2026-001
+              minQuantity: 2
+              expiryDate: '2027-12-31'
+              expiryWarningDays: 30
+              tags:
+                - 유기용매
+                - 인화성
+              metadata:
+                casNumber: 64-17-5
+                supplier: 덕산약품
+      responses:
+        '201':
+          description: 아이템 생성 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 바코드 중복
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 바코드입니다.
+                code: ITEM_BARCODE_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/items/barcode/{barcode}:
+    get:
+      tags:
+        - 아이템
+      summary: 바코드로 아이템 조회
+      description: |
+        바코드 값으로 아이템을 조회합니다. 바코드 스캐너 연동에 사용됩니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getItemByBarcode
+      parameters:
+        - name: barcode
+          in: path
+          required: true
+          description: 아이템 바코드 값
+          schema:
+            type: string
+          example: CHEM-2026-001
+      responses:
+        '200':
+          description: 아이템 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/items/{id}:
+    get:
+      tags:
+        - 아이템
+      summary: 아이템 단건 조회
+      description: |
+        UUID로 아이템 상세 정보를 조회합니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getItemById
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: 아이템 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - 아이템
+      summary: 아이템 수정
+      description: |
+        아이템 정보를 수정합니다. 소유자 또는 Admin만 수정 가능합니다.
+        상태가 변경되면 상태 변경 이력이 자동 기록됩니다.
+
+        필요 권한: `INVENTORY_WRITE` + (소유자 또는 Admin)
+      operationId: updateItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateItemRequest'
+            example:
+              status: in_use
+              location: 실험대 B-2
+              reason: 실험 진행 중
+      responses:
+        '200':
+          description: 아이템 수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 바코드 중복
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 바코드입니다.
+                code: ITEM_BARCODE_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - 아이템
+      summary: 아이템 삭제
+      description: |
+        아이템을 영구 삭제합니다. 소유자 또는 Admin만 삭제 가능합니다.
+        삭제 시 관련 입출고 이력도 함께 삭제됩니다(Cascade).
+
+        필요 권한: `INVENTORY_DELETE` + (소유자 또는 Admin)
+      operationId: deleteItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: 아이템 삭제 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 아이템이 삭제되었습니다.
+                      id:
+                        type: string
+                        format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/items/{id}/quantity:
+    post:
+      tags:
+        - 아이템
+      summary: 수량 조정 (입출고)
+      description: |
+        아이템 수량을 조정하고 입출고 이력을 기록합니다.
+
+        - `in`: 입고 — 현재 수량에 더하기
+        - `out`: 출고 — 현재 수량에서 빼기 (재고 부족 시 400 오류)
+        - `adjust`: 절대값으로 재고 설정
+
+        수량이 0이 되면 자동으로 `depleted` 상태로 전환됩니다.
+        `depleted` 상태에서 수량이 다시 생기면 자동으로 `available` 상태로 전환됩니다.
+
+        필요 권한: `INVENTORY_WRITE`
+      operationId: adjustQuantity
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustQuantityRequest'
+            example:
+              changeType: out
+              quantity: 0.5
+              reason: 실험 A-2026-03 사용
+      responses:
+        '200':
+          description: 수량 조정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+                      history:
+                        $ref: '#/components/schemas/QuantityChangeSummary'
+        '400':
+          description: 유효성 오류 또는 재고 부족
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: 유효성 오류
+                  value:
+                    ok: false
+                    error: changeType은 in | out | adjust 중 하나여야 합니다.
+                    code: VALIDATION_ERROR
+                stockInsufficient:
+                  summary: 재고 부족
+                  value:
+                    ok: false
+                    error: '재고 부족: 현재 0.3L, 출고 요청 0.5L'
+                    code: ITEM_STOCK_INSUFFICIENT
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/items/{id}/history:
+    get:
+      tags:
+        - 아이템
+      summary: 아이템 입출고 이력 조회
+      description: |
+        아이템의 수량 변경 이력(입고·출고·조정·상태변경)을 최근 100건 반환합니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getItemHistory
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: 이력 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/InventoryHistory'
+                      total:
+                        type: integer
+                        description: 반환된 이력 건수 (최대 100)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/alerts/expiring:
+    get:
+      tags:
+        - 알림
+      summary: 만료 임박 아이템 조회
+      description: |
+        지정한 일수(`days`) 이내에 유효기간이 만료되는 아이템 목록을 반환합니다.
+        이미 만료된 아이템도 포함됩니다. `disposed`, `depleted` 상태 아이템은 제외됩니다.
+
+        각 아이템에 `daysLeft`(잔여 일수), `isExpired`(이미 만료됨), `isWarning`(경고 기간 내) 필드가 추가됩니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getExpiringItems
+      parameters:
+        - name: days
+          in: query
+          description: 몇 일 이내 만료 아이템을 조회할지 (기본값 90)
+          schema:
+            type: integer
+            minimum: 1
+            default: 90
+          example: 30
+      responses:
+        '200':
+          description: 만료 임박 아이템 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExpiringItem'
+                      total:
+                        type: integer
+                        description: 반환된 아이템 수
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/alerts/low-stock:
+    get:
+      tags:
+        - 알림
+      summary: 재고 부족 아이템 조회
+      description: |
+        `minQuantity`가 설정되어 있고 현재 수량이 최소 재고 이하인 아이템 목록을 반환합니다.
+        `disposed`, `depleted` 상태 아이템은 제외됩니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getLowStockItems
+      responses:
+        '200':
+          description: 재고 부족 아이템 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/InventoryItem'
+                      total:
+                        type: integer
+                        description: 반환된 아이템 수
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/categories:
+    get:
+      tags:
+        - 카테고리
+      summary: 카테고리 목록 조회
+      description: |
+        조직 내 카테고리 목록을 이름 순으로 반환합니다. Redis 캐시(30분 TTL)가 적용됩니다.
+
+        필요 권한: `INVENTORY_READ`
+      operationId: getCategories
+      responses:
+        '200':
+          description: 카테고리 목록 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - 카테고리
+      summary: 카테고리 생성
+      description: |
+        새 카테고리를 생성합니다. 조직 내 카테고리 이름은 유일해야 합니다.
+        생성 후 Redis 카테고리 캐시가 무효화됩니다.
+
+        필요 권한: Admin 역할
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+            example:
+              name: 유기용매
+      responses:
+        '201':
+          description: 카테고리 생성 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 카테고리 이름 중복
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 존재하는 카테고리입니다.
+                code: CATEGORY_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/inventory/categories/{id}:
+    put:
+      tags:
+        - 카테고리
+      summary: 카테고리 수정
+      description: |
+        카테고리 이름을 수정합니다. 바뀐 이름이 조직 내 다른 카테고리와 중복되면 409를 반환합니다.
+        수정 후 Redis 카테고리 캐시가 무효화됩니다.
+
+        필요 권한: Admin 역할
+      operationId: updateCategory
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+            example:
+              name: 무기시약
+      responses:
+        '200':
+          description: 카테고리 수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 카테고리를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 카테고리를 찾을 수 없습니다.
+                code: CATEGORY_NOT_FOUND
+        '409':
+          description: 카테고리 이름 중복
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 존재하는 카테고리 이름입니다.
+                code: CATEGORY_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - 카테고리
+      summary: 카테고리 삭제
+      description: |
+        카테고리를 삭제합니다. 삭제 후 Redis 카테고리 캐시가 무효화됩니다.
+
+        필요 권한: Admin 역할
+      operationId: deleteCategory
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '200':
+          description: 카테고리 삭제 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkTrue'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 카테고리가 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 카테고리를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 카테고리를 찾을 수 없습니다.
+                code: CATEGORY_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        api-gateway가 발급한 JWT 액세스 토큰.
+        `Authorization: Bearer <token>` 헤더로 전달합니다.
+
+  parameters:
+    ItemId:
+      name: id
+      in: path
+      required: true
+      description: 아이템 UUID
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      description: 카테고리 UUID
+      schema:
+        type: string
+        format: uuid
+      example: 660e8400-e29b-41d4-a716-446655440001
+
+  responses:
+    BadRequest:
+      description: 요청 유효성 검증 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: name과 type은 필수입니다.
+            code: VALIDATION_ERROR
+
+    Unauthorized:
+      description: 인증 토큰 없음 또는 만료
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증이 필요합니다.
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: 권한 부족
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 권한이 없습니다.
+            code: FORBIDDEN
+
+    NotFound:
+      description: 아이템을 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 아이템을 찾을 수 없습니다.
+            code: ITEM_NOT_FOUND
+
+    InternalError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 서버 오류가 발생했습니다.
+            code: INTERNAL_ERROR
+
+  schemas:
+    # ── 공용 응답 래퍼 ──────────────────────────────────────────
+
+    OkTrue:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
+        - code
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+          description: 사람이 읽을 수 있는 오류 메시지
+        code:
+          type: string
+          description: 기계가 처리할 수 있는 오류 코드
+          example: ITEM_NOT_FOUND
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+        - db
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: 서비스 전체 상태
+        service:
+          type: string
+          example: inventory-service
+        timestamp:
+          type: string
+          format: date-time
+        db:
+          type: string
+          enum: [ok, error]
+          description: DB 연결 상태
+
+    # ── 열거형 ──────────────────────────────────────────────────
+
+    ItemStatus:
+      type: string
+      enum:
+        - available
+        - in_use
+        - depleted
+        - expired
+        - disposed
+        - maintenance
+      description: |
+        아이템 상태:
+        - `available`: 사용 가능
+        - `in_use`: 사용 중
+        - `depleted`: 재고 소진
+        - `expired`: 유효기간 만료
+        - `disposed`: 폐기됨
+        - `maintenance`: 유지보수 중
+
+    ChangeType:
+      type: string
+      enum:
+        - in
+        - out
+        - adjust
+        - status_change
+      description: |
+        변경 유형:
+        - `in`: 입고
+        - `out`: 출고
+        - `adjust`: 재고 절대값 조정
+        - `status_change`: 상태 변경
+
+    SortField:
+      type: string
+      enum:
+        - name
+        - createdAt
+        - updatedAt
+        - quantity
+        - expiryDate
+      default: createdAt
+      description: 목록 정렬 기준 필드
+
+    SortOrder:
+      type: string
+      enum:
+        - asc
+        - desc
+      default: desc
+      description: 정렬 방향
+
+    # ── 도메인 스키마 ────────────────────────────────────────────
+
+    InventoryItem:
+      type: object
+      required:
+        - id
+        - name
+        - orgId
+        - type
+        - status
+        - tags
+        - metadata
+        - expiryWarningDays
+        - createdBy
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 아이템 고유 ID
+        name:
+          type: string
+          description: 아이템 이름
+          example: 에탄올 99.9%
+        orgId:
+          type: string
+          description: 소속 조직 ID (멀티테넌시)
+        type:
+          type: string
+          description: 아이템 유형 (자유 문자열, 예: reagent, sample, equipment)
+          example: reagent
+        status:
+          $ref: '#/components/schemas/ItemStatus'
+        category:
+          type: string
+          nullable: true
+          description: 카테고리 이름
+          example: 유기용매
+        location:
+          type: string
+          nullable: true
+          description: 보관 위치
+          example: 시약장 A-1
+        barcode:
+          type: string
+          nullable: true
+          description: 바코드 값 (조직 내 유일)
+          example: CHEM-2026-001
+        quantity:
+          type: number
+          nullable: true
+          description: 현재 수량
+          example: 9.5
+        unit:
+          type: string
+          nullable: true
+          description: 수량 단위
+          example: L
+        minQuantity:
+          type: number
+          nullable: true
+          description: 최소 재고 알림 임계값
+          example: 2
+        expiryDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: 유효기간 (ISO 8601)
+          example: '2027-12-31T00:00:00.000Z'
+        expiryWarningDays:
+          type: integer
+          description: 만료 N일 전부터 경고 알림 발생
+          default: 30
+          example: 30
+        metadata:
+          type: object
+          additionalProperties: true
+          description: 추가 메타데이터 (자유 형식 JSON)
+          example:
+            casNumber: 64-17-5
+            supplier: 덕산약품
+        tags:
+          type: array
+          items:
+            type: string
+          description: 태그 목록
+          example:
+            - 유기용매
+            - 인화성
+        createdBy:
+          type: string
+          description: 생성자 사용자 ID
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 시각
+        updatedAt:
+          type: string
+          format: date-time
+          description: 최종 수정 시각
+
+    ExpiringItem:
+      allOf:
+        - $ref: '#/components/schemas/InventoryItem'
+        - type: object
+          required:
+            - daysLeft
+            - isExpired
+            - isWarning
+          properties:
+            daysLeft:
+              type: integer
+              description: 유효기간까지 남은 일수 (음수이면 이미 만료)
+              example: 5
+            isExpired:
+              type: boolean
+              description: 이미 만료됨 여부 (`daysLeft < 0`)
+              example: false
+            isWarning:
+              type: boolean
+              description: 경고 기간(`expiryWarningDays`) 이내 만료 여부
+              example: true
+
+    InventoryHistory:
+      type: object
+      required:
+        - id
+        - itemId
+        - changeType
+        - performedBy
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 이력 고유 ID
+        itemId:
+          type: string
+          format: uuid
+          description: 대상 아이템 ID
+        changeType:
+          $ref: '#/components/schemas/ChangeType'
+        quantityBefore:
+          type: number
+          nullable: true
+          description: 변경 전 수량
+          example: 10
+        quantityAfter:
+          type: number
+          nullable: true
+          description: 변경 후 수량
+          example: 9.5
+        quantityDelta:
+          type: number
+          nullable: true
+          description: 수량 변화량 (양수=입고, 음수=출고)
+          example: -0.5
+        statusBefore:
+          type: string
+          nullable: true
+          description: 변경 전 상태 (상태 변경 시에만)
+        statusAfter:
+          type: string
+          nullable: true
+          description: 변경 후 상태 (상태 변경 시에만)
+        reason:
+          type: string
+          nullable: true
+          description: 변경 사유
+          example: 실험 A-2026-03 사용
+        performedBy:
+          type: string
+          description: 작업을 수행한 사용자 ID
+        createdAt:
+          type: string
+          format: date-time
+          description: 이력 생성 시각
+
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - orgId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 카테고리 고유 ID
+        name:
+          type: string
+          description: 카테고리 이름 (조직 내 유일)
+          example: 유기용매
+        orgId:
+          type: string
+          description: 소속 조직 ID (멀티테넌시)
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 시각
+
+    QuantityChangeSummary:
+      type: object
+      required:
+        - before
+        - after
+        - delta
+      properties:
+        before:
+          type: number
+          description: 조정 전 수량
+          example: 10
+        after:
+          type: number
+          description: 조정 후 수량
+          example: 9.5
+        delta:
+          type: number
+          description: 수량 변화량 (양수=입고, 음수=출고)
+          example: -0.5
+
+    # ── 요청 바디 스키마 (Zod DTO 매핑) ─────────────────────────
+
+    CreateItemRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 아이템 이름 (필수)
+          example: 에탄올 99.9%
+        type:
+          type: string
+          minLength: 1
+          description: 아이템 유형 (필수, 자유 문자열)
+          example: reagent
+        category:
+          type: string
+          description: 카테고리 이름
+          example: 유기용매
+        quantity:
+          type: number
+          description: 초기 수량 (지정 시 입고 이력 자동 생성)
+          example: 10
+        unit:
+          type: string
+          description: 수량 단위
+          example: L
+        location:
+          type: string
+          description: 보관 위치
+          example: 시약장 A-1
+        barcode:
+          type: string
+          description: 바코드 값 (조직 내 유일)
+          example: CHEM-2026-001
+        minQuantity:
+          type: number
+          description: 최소 재고 알림 임계값
+          example: 2
+        expiryDate:
+          type: string
+          description: 유효기간 (ISO 8601 날짜 문자열)
+          example: '2027-12-31'
+        expiryWarningDays:
+          type: integer
+          minimum: 1
+          description: 만료 N일 전부터 경고 (기본값 30)
+          example: 30
+        tags:
+          type: array
+          items:
+            type: string
+          description: 태그 목록
+          default: []
+          example:
+            - 유기용매
+            - 인화성
+        metadata:
+          type: object
+          additionalProperties: true
+          description: 추가 메타데이터 (자유 형식 JSON)
+          default: {}
+          example:
+            casNumber: 64-17-5
+            supplier: 덕산약품
+
+    UpdateItemRequest:
+      type: object
+      description: 수정할 필드만 포함합니다. 포함되지 않은 필드는 변경되지 않습니다.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 아이템 이름
+        type:
+          type: string
+          minLength: 1
+          description: 아이템 유형
+        status:
+          $ref: '#/components/schemas/ItemStatus'
+        category:
+          type: string
+          nullable: true
+          description: 카테고리 이름 (null로 설정 가능)
+        quantity:
+          type: number
+          description: 수량 (직접 수정, 이력 미기록 — 이력이 필요하면 /quantity 엔드포인트 사용)
+        unit:
+          type: string
+          nullable: true
+          description: 수량 단위
+        location:
+          type: string
+          nullable: true
+          description: 보관 위치
+        barcode:
+          type: string
+          nullable: true
+          description: 바코드 값
+        minQuantity:
+          type: number
+          nullable: true
+          description: 최소 재고 알림 임계값
+        expiryDate:
+          type: string
+          nullable: true
+          description: 유효기간 (ISO 8601 날짜 문자열, null로 제거 가능)
+        expiryWarningDays:
+          type: integer
+          minimum: 1
+          description: 만료 경고 일수
+        tags:
+          type: array
+          items:
+            type: string
+          description: 태그 목록
+        metadata:
+          type: object
+          additionalProperties: true
+          description: 추가 메타데이터
+        reason:
+          type: string
+          description: 수정 사유 (상태 변경 시 이력에 기록)
+
+    AdjustQuantityRequest:
+      type: object
+      required:
+        - changeType
+        - quantity
+      properties:
+        changeType:
+          type: string
+          enum:
+            - in
+            - out
+            - adjust
+          description: |
+            수량 변경 유형:
+            - `in`: 입고 (현재 수량에 더하기)
+            - `out`: 출고 (현재 수량에서 빼기, 재고 부족 시 400)
+            - `adjust`: 절대값으로 재고 설정
+        quantity:
+          type: number
+          minimum: 0
+          description: 변경할 수량 값
+          example: 0.5
+        reason:
+          type: string
+          description: 변경 사유 (선택)
+          example: 실험 A-2026-03 사용
+
+    CreateCategoryRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 카테고리 이름 (조직 내 유일, 앞뒤 공백 자동 제거)
+          example: 유기용매

@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { exportQueue } from '../lib/queue';
 import { getExportPresignedUrl } from '../lib/fileServiceClient';
@@ -30,11 +30,11 @@ async function recordAuditLog(
 }
 
 /** POST /api/export/pdf/:noteId */
-export const exportPdf = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-  const { noteId } = req.params;
+export async function exportPdf(request: FastifyRequest, reply: FastifyReply) {
+  const requestedBy = (request.headers['x-user-id'] as string) || 'anonymous';
+  const { noteId } = request.params as { noteId: string };
 
-  const orgId = getOrgId(req);
+  const orgId = getOrgId(request.headers);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -55,9 +55,10 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
     orgId,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, orgId, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteId, format: 'pdf', jobId: job.id }, orgId, request.ip);
 
-  res.status(202).json({
+  reply.code(202);
+  return {
     ok: true,
     data: {
       job: {
@@ -73,12 +74,13 @@ export const exportPdf = asyncHandler(async (req: Request, res: Response): Promi
       status: job.status,
       message: 'PDF 내보내기 작업이 대기열에 추가되었습니다.',
     },
-  });
-});
+  };
+}
 
 /** GET /api/export/status/:jobId */
-export const getExportStatus = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const job = await prisma.exportJob.findFirst({ where: { id: req.params.jobId, orgId: getOrgId(req) } });
+export async function getExportStatus(request: FastifyRequest, reply: FastifyReply) {
+  const { jobId } = request.params as { jobId: string };
+  const job = await prisma.exportJob.findFirst({ where: { id: jobId, orgId: getOrgId(request.headers) } });
   if (!job) {
     throw new AppError(404, '작업을 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND);
   }
@@ -93,7 +95,7 @@ export const getExportStatus = asyncHandler(async (req: Request, res: Response):
     }
   }
 
-  res.json({
+  return {
     ok: true,
     data: {
       id: job.id,
@@ -107,14 +109,14 @@ export const getExportStatus = asyncHandler(async (req: Request, res: Response):
       createdAt: job.createdAt.toISOString(),
       completedAt: job.completedAt?.toISOString() ?? null,
     },
-  });
-});
+  };
+}
 
 /** POST /api/export/zip */
-export const exportZip = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-  const noteIds: string[] = req.body.noteIds;
-  const orgId = getOrgId(req);
+export async function exportZip(request: FastifyRequest, reply: FastifyReply) {
+  const requestedBy = (request.headers['x-user-id'] as string) || 'anonymous';
+  const noteIds: string[] = (request.body as any).noteIds;
+  const orgId = getOrgId(request.headers);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -137,9 +139,10 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
     orgId,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, orgId, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'zip', jobId: job.id }, orgId, request.ip);
 
-  res.status(202).json({
+  reply.code(202);
+  return {
     ok: true,
     data: {
       job: {
@@ -156,14 +159,14 @@ export const exportZip = asyncHandler(async (req: Request, res: Response): Promi
       status: job.status,
       message: 'ZIP 내보내기 작업이 대기열에 추가되었습니다.',
     },
-  });
-});
+  };
+}
 
 /** POST /api/export/report — 프로젝트 보고서 종합 PDF (복수 노트 → 1개 PDF) */
-export const exportReport = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const requestedBy = (req.headers['x-user-id'] as string) || 'anonymous';
-  const noteIds: string[] = req.body.noteIds;
-  const orgId = getOrgId(req);
+export async function exportReport(request: FastifyRequest, reply: FastifyReply) {
+  const requestedBy = (request.headers['x-user-id'] as string) || 'anonymous';
+  const noteIds: string[] = (request.body as any).noteIds;
+  const orgId = getOrgId(request.headers);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -186,9 +189,10 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
     orgId,
   });
 
-  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, orgId, req.ip);
+  await recordAuditLog('export_requested', requestedBy, job.id, { noteIds, format: 'report', jobId: job.id }, orgId, request.ip);
 
-  res.status(202).json({
+  reply.code(202);
+  return {
     ok: true,
     data: {
       job: {
@@ -205,14 +209,14 @@ export const exportReport = asyncHandler(async (req: Request, res: Response): Pr
       status: job.status,
       message: '프로젝트 보고서 PDF 작업이 대기열에 추가되었습니다.',
     },
-  });
-});
+  };
+}
 
 /** GET /api/export/list — 내 내보내기 작업 목록 */
-export const listExportJobs = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const requestedBy = req.headers['x-user-id'] as string;
-  const userRole = req.headers['x-user-role'] as string;
-  const orgId = getOrgId(req);
+export async function listExportJobs(request: FastifyRequest, reply: FastifyReply) {
+  const requestedBy = request.headers['x-user-id'] as string;
+  const userRole = request.headers['x-user-role'] as string;
+  const orgId = getOrgId(request.headers);
 
   // admin은 org 전체 조회, 일반 사용자는 본인 것만
   const where = userRole === 'admin' ? { orgId } : { requestedBy, orgId };
@@ -240,5 +244,5 @@ export const listExportJobs = asyncHandler(async (req: Request, res: Response): 
     };
   }));
 
-  res.json({ ok: true, data: jobDtos });
-});
+  return { ok: true, data: jobDtos };
+}

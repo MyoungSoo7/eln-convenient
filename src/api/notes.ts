@@ -9,7 +9,7 @@
  *   locked → draft (관리자 잠금 해제 전용)
  */
 import apiClient, { type ApiResponse } from './client';
-import { type Note } from '@/lib/mockData';
+import { type Note } from '@/lib/types';
 
 export interface NoteDetail extends Note {
   sections?: { type: string; title: string; content: string }[];

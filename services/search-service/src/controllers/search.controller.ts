@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import redis, { invalidateSearchCache } from '../lib/redis';
-import { createHttpLogger, AppError, asyncHandler, ErrorCode, getOrgId } from '@lab/shared';
+import { createHttpLogger, AppError, ErrorCode, getOrgId } from '@lab/shared';
 import type { ISearchResult, ISearchResponse, DomainType } from '../interfaces/search.interface';
 import {
   osClient,
@@ -27,7 +27,6 @@ function buildPermissionFilter(userId: string, labId?: string, projectId?: strin
     { term: { visibility: 'public' } },
   ];
 
-  // 같은 lab/project 멤버가 공유 문서를 볼 수 있도록 확장
   if (labId) {
     should.push({
       bool: {
@@ -60,23 +59,23 @@ function buildPermissionFilter(userId: string, labId?: string, projectId?: strin
 // ─── 통합 검색 ───────────────────────────────────────────
 
 /** GET /api/search?q=...&domainTypes=NOTE,PROTOCOL&page=1&size=20 */
-export const search = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const q = (req.query.q as string)?.trim() || '';
-  const domainTypesParam = req.query.domainTypes as string | undefined;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const size = Math.min(100, Math.max(1, parseInt(req.query.size as string) || 20));
+export async function search(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as Record<string, string>;
+  const q = query.q?.trim() || '';
+  const domainTypesParam = query.domainTypes;
+  const page = Math.max(1, parseInt(query.page) || 1);
+  const size = Math.min(100, Math.max(1, parseInt(query.size) || 20));
   const fromOffset = (page - 1) * size;
-  const dateFrom = req.query.dateFrom as string | undefined;
-  const dateTo = req.query.dateTo as string | undefined;
-  const userId = (req.headers['x-user-id'] as string)?.trim() || '';
-  const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
-  const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
-  const orgId = getOrgId(req);
+  const dateFrom = query.dateFrom;
+  const dateTo = query.dateTo;
+  const userId = (request.headers['x-user-id'] as string)?.trim() || '';
+  const labId = (request.headers['x-lab-id'] as string)?.trim() || '';
+  const projectId = (request.headers['x-project-id'] as string)?.trim() || '';
+  const orgId = getOrgId(request.headers);
 
   if (!q) {
     const emptyCounts = Object.fromEntries(DOMAIN_TYPES.map(t => [t, 0])) as Record<DomainType, number>;
-    res.json({ ok: true, query: q, results: [], total: 0, counts: emptyCounts, page, size, took: 0 });
-    return;
+    return { ok: true, query: q, results: [], total: 0, counts: emptyCounts, page, size, took: 0 };
   }
 
   const domainTypes = parseDomainTypes(domainTypesParam);
@@ -88,8 +87,7 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
     try {
       const cached = await redis.get(cacheKey);
       if (cached) {
-        res.json(JSON.parse(cached));
-        return;
+        return JSON.parse(cached);
       }
     } catch { /* Redis 오류 무시 */ }
   }
@@ -99,7 +97,7 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
       { term: { docStatus: 'active' } },
     ];
 
-    filters.push({ term: { orgId } });
+    filters.push({ term: { 'orgId.keyword': orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
@@ -199,30 +197,30 @@ export const search = asyncHandler(async (req: Request, res: Response): Promise<
       try { await redis.set(cacheKey, JSON.stringify(responseBody), 'EX', SEARCH_CACHE_TTL); } catch { /* 무시 */ }
     }
 
-    res.json(responseBody);
+    return responseBody;
   } catch (err) {
     logger.error({ err }, 'OpenSearch 검색 실패');
     throw new AppError(502, 'OpenSearch 검색에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-});
+}
 
 /** GET /api/search/suggest?q=... */
-export const suggest = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const q = (req.query.q as string)?.trim() || '';
-  const userId = (req.headers['x-user-id'] as string)?.trim() || '';
-  const labId = (req.headers['x-lab-id'] as string)?.trim() || '';
-  const projectId = (req.headers['x-project-id'] as string)?.trim() || '';
-  const orgId = getOrgId(req);
+export async function suggest(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as Record<string, string>;
+  const q = query.q?.trim() || '';
+  const userId = (request.headers['x-user-id'] as string)?.trim() || '';
+  const labId = (request.headers['x-lab-id'] as string)?.trim() || '';
+  const projectId = (request.headers['x-project-id'] as string)?.trim() || '';
+  const orgId = getOrgId(request.headers);
 
   if (!q) {
-    res.json({ ok: true, query: q, suggestions: [] });
-    return;
+    return { ok: true, query: q, suggestions: [] };
   }
 
   try {
     const filters: object[] = [{ term: { docStatus: 'active' } }];
 
-    filters.push({ term: { orgId } });
+    filters.push({ term: { 'orgId.keyword': orgId } });
 
     if (userId) {
       filters.push(buildPermissionFilter(userId, labId || undefined, projectId || undefined));
@@ -254,61 +252,61 @@ export const suggest = asyncHandler(async (req: Request, res: Response): Promise
       docId: hit._id,
     }));
 
-    res.json({ ok: true, query: q, suggestions });
+    return { ok: true, query: q, suggestions };
   } catch (err) {
     logger.error({ err }, '자동완성 검색 실패');
-    res.json({ ok: true, query: q, suggestions: [] });
+    return { ok: true, query: q, suggestions: [] };
   }
-});
+}
 
 // ─── 색인 관리 (내부 서비스 전용) ────────────────────────
 
 /** POST /api/search/index — 단일 문서 색인 */
-export const indexDoc = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { id, doc } = req.body;
+export async function indexDoc(request: FastifyRequest, reply: FastifyReply) {
+  const { id, doc } = request.body as any;
   try {
     await indexDocument(id, { ...doc, docStatus: doc.docStatus ?? 'active' });
     await invalidateSearchCache();
-    res.json({ ok: true, message: `${doc.domainType}:${id} 색인 완료` });
+    return { ok: true, message: `${doc.domainType}:${id} 색인 완료` };
   } catch (err) {
     logger.error({ err }, '문서 색인 실패');
     throw new AppError(502, 'OpenSearch 색인에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-});
+}
 
 /** POST /api/search/index/bulk — 벌크 색인 */
-export const bulkIndexDocs = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { docs } = req.body;
+export async function bulkIndexDocs(request: FastifyRequest, reply: FastifyReply) {
+  const { docs } = request.body as any;
   try {
     const result = await bulkIndexDocuments(docs);
     await invalidateSearchCache();
-    res.json({ ok: true, ...result });
+    return { ok: true, ...result };
   } catch (err) {
     logger.error({ err }, '벌크 색인 실패');
     throw new AppError(502, 'OpenSearch 벌크 색인에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-});
+}
 
 /** DELETE /api/search/index/:id — 문서 소프트 삭제 */
-export const removeDoc = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { id } = req.params;
+export async function removeDoc(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
   try {
     await softDeleteDocument(id);
     await invalidateSearchCache();
-    res.json({ ok: true, message: `${id} 소프트 삭제 완료` });
+    return { ok: true, message: `${id} 소프트 삭제 완료` };
   } catch (err) {
     logger.error({ err }, '문서 삭제 실패');
     throw new AppError(502, 'OpenSearch 삭제에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-});
+}
 
 /** GET /api/search/stats */
-export const statsHandler = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+export async function statsHandler(request: FastifyRequest, reply: FastifyReply) {
   try {
     const data = await getIndexStats();
-    res.json({ ok: true, data });
+    return { ok: true, data };
   } catch (err) {
     logger.error({ err }, '통계 조회 실패');
     throw new AppError(502, 'OpenSearch 통계 조회에 실패했습니다.', ErrorCode.BAD_GATEWAY);
   }
-});
+}

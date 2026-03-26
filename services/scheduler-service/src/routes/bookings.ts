@@ -1,16 +1,10 @@
 import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { BookingStatus } from '@prisma/client';
 import { requireAuth, requirePermission } from '../plugins/auth';
-import { Permission, RoleName } from '@lab/shared';
+import { Permission, RoleName, AppError, ErrorCode, getOrgId } from '@lab/shared';
 import { checkConflict } from '../lib/conflict';
 import { assertTransition, InvalidTransitionError } from '../lib/state-machine';
 import { callNotification } from '../lib/notification';
-
-function getOrgId(request: FastifyRequest): string {
-  const orgId = request.headers['x-user-org-id'] as string;
-  if (!orgId) throw { statusCode: 403, message: '조직 정보가 없습니다.' };
-  return orgId;
-}
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 
@@ -53,7 +47,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const q = request.query as Record<string, string>;
     const page  = Math.max(1, parseInt(q.page  ?? '1'));
     const limit = Math.min(100, parseInt(q.limit ?? '20'));
@@ -89,7 +83,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const booking = await fastify.prisma.booking.findFirst({
       where: { id: request.params.id, orgId },
       include: { resource: true },
@@ -117,7 +111,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const { from, to, type } = request.query as { from: string; to: string; type?: string };
 
     const fromDate = parseDate(from, reply);
@@ -161,7 +155,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const body = request.body as {
       resourceId: string; title: string; description?: string;
       startAt: string; endAt: string;
@@ -219,7 +213,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const orgId  = getOrgId(request);
+    const orgId  = getOrgId(request.headers);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const body   = request.body as Record<string, unknown>;
@@ -274,7 +268,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const orgId      = getOrgId(request);
+    const orgId      = getOrgId(request.headers);
     const approvedBy = request.headers['x-user-id'] as string;
     const role       = request.headers['x-user-role'] as string;
     const { id }     = request.params;
@@ -289,15 +283,15 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
 
         // 2. 권한 검증: admin 또는 자원 ownerId
         if (!canManageBooking(role, approvedBy, current.resource.ownerId)) {
-          throw Object.assign(new Error('승인 권한이 없습니다.'), { statusCode: 403 });
+          throw new AppError(403, '승인 권한이 없습니다.', ErrorCode.FORBIDDEN);
         }
 
         // 3. 상태 머신 검증: PENDING → APPROVED만 허용
@@ -314,10 +308,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           ['APPROVED'],  // 이미 승인된 것과만 충돌 체크
         );
         if (conflict) {
-          throw Object.assign(
-            new Error('승인 시점에 시간 충돌이 발생했습니다. 다른 예약이 먼저 승인되었습니다.'),
-            { statusCode: 409, conflict },
-          );
+          throw new AppError(409, '승인 시점에 시간 충돌이 발생했습니다. 다른 예약이 먼저 승인되었습니다.', ErrorCode.CONFLICT, [`충돌 예약: ${conflict.id}`]);
         }
 
         // 5. 승인 처리
@@ -372,7 +363,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
-    const orgId  = getOrgId(request);
+    const orgId  = getOrgId(request.headers);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -387,13 +378,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (!canManageBooking(role, userId, current.resource.ownerId)) {
-          throw Object.assign(new Error('반려 권한이 없습니다.'), { statusCode: 403 });
+          throw new AppError(403, '반려 권한이 없습니다.', ErrorCode.FORBIDDEN);
         }
 
         assertTransition(current.status, 'REJECTED');
@@ -421,7 +412,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const orgId  = getOrgId(request);
+    const orgId  = getOrgId(request.headers);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -435,13 +426,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {
-          throw Object.assign(new Error('본인의 예약만 취소할 수 있습니다.'), { statusCode: 403 });
+          throw new AppError(403, '본인의 예약만 취소할 수 있습니다.', ErrorCode.FORBIDDEN);
         }
 
         assertTransition(current.status, 'CANCELLED');
@@ -469,7 +460,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_WRITE)],
     schema: { tags: ['bookings'] },
   }, async (request, reply) => {
-    const orgId  = getOrgId(request);
+    const orgId  = getOrgId(request.headers);
     const userId = request.headers['x-user-id'] as string;
     const role   = request.headers['x-user-role'] as string;
     const { id } = request.params;
@@ -480,13 +471,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
         const current = await tx.booking.findUnique({ where: { id } });
         if (!current) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw Object.assign(new Error('예약을 찾을 수 없습니다.'), { statusCode: 404 });
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {
-          throw Object.assign(new Error('본인의 예약만 완료 처리할 수 있습니다.'), { statusCode: 403 });
+          throw new AppError(403, '본인의 예약만 완료 처리할 수 있습니다.', ErrorCode.FORBIDDEN);
         }
 
         assertTransition(current.status, 'COMPLETED');

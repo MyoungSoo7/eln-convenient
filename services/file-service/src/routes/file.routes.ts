@@ -1,48 +1,41 @@
-import { Router } from 'express';
-import multer from 'multer';
+import { FastifyPluginAsync } from 'fastify';
 import * as ctrl from '../controllers/file.controller';
 import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
-import { validate, Permission, requireOwnerOrAdmin, ErrorCode, getOrgId } from '@lab/shared';
+import { validate, Permission, requireOwnerOrAdminFastify, ErrorCode, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import { PresignedUploadQuerySchema } from '../dtos/file.dto';
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-});
+const fileRoutes: FastifyPluginAsync = async (app) => {
+  // 모든 라우트에 인증 필수
+  app.addHook('onRequest', requireAuth);
 
-const router = Router();
+  // ── 업로드 ─────────────────────────────────────────────────
+  app.post('/', {
+    preHandler: [requirePermission(Permission.FILE_UPLOAD)],
+  }, ctrl.uploadFile);
 
-router.use(requireAuth);
+  // presigned PUT URL (클라이언트 → MinIO 직접 업로드)
+  app.get('/presigned-upload', {
+    preHandler: [requirePermission(Permission.FILE_UPLOAD), validate({ query: PresignedUploadQuerySchema })],
+  }, ctrl.getPresignedUpload);
 
-// ── 업로드 ─────────────────────────────────────────────────
-router.post('/',
-  requirePermission(Permission.FILE_UPLOAD),
-  upload.single('file'),
-  ctrl.uploadFile,
-);
-// presigned PUT URL (클라이언트 → MinIO 직접 업로드)
-router.get('/presigned-upload',
-  requirePermission(Permission.FILE_UPLOAD),
-  validate({ query: PresignedUploadQuerySchema }),
-  ctrl.getPresignedUpload,
-);
+  // ── 다운로드 ───────────────────────────────────────────────
+  app.get('/:id', { preHandler: [requirePermission(Permission.FILE_READ)] }, ctrl.downloadFile);
+  app.get('/:id/url', { preHandler: [requirePermission(Permission.FILE_READ)] }, ctrl.getDownloadUrl);
+  app.get('/:id/stream', { preHandler: [requirePermission(Permission.FILE_READ)] }, ctrl.streamFile);
 
-// ── 다운로드 ───────────────────────────────────────────────
-router.get('/:id',         requirePermission(Permission.FILE_READ),   ctrl.downloadFile);   // presigned URL redirect
-router.get('/:id/url',     requirePermission(Permission.FILE_READ),   ctrl.getDownloadUrl); // presigned URL JSON 반환
-router.get('/:id/stream',  requirePermission(Permission.FILE_READ),   ctrl.streamFile);     // 서버 경유 스트리밍
+  // ── 메타 / 삭제 ────────────────────────────────────────────
+  app.get('/:id/meta', { preHandler: [requirePermission(Permission.FILE_READ)] }, ctrl.getFileMeta);
+  app.delete('/:id', {
+    preHandler: [
+      requirePermission(Permission.FILE_DELETE),
+      requireOwnerOrAdminFastify(
+        (req) => prisma.file.findFirst({ where: { id: (req as any).params.id, orgId: getOrgId(req.headers), isDeleted: false } }),
+        'uploaderId',
+        ErrorCode.FILE_PERMISSION_DENIED,
+      ),
+    ],
+  }, ctrl.deleteFile);
+};
 
-// ── 메타 / 삭제 ────────────────────────────────────────────
-router.get('/:id/meta',    requirePermission(Permission.FILE_READ),   ctrl.getFileMeta);
-router.delete('/:id',
-  requirePermission(Permission.FILE_DELETE),
-  requireOwnerOrAdmin(
-    (req) => prisma.file.findFirst({ where: { id: req.params.id, orgId: getOrgId(req), isDeleted: false } }),
-    'uploaderId',
-    ErrorCode.FILE_PERMISSION_DENIED,
-  ),
-  ctrl.deleteFile,
-);
-
-export default router;
+export default fileRoutes;

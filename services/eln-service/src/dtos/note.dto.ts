@@ -91,7 +91,7 @@ export type UpdateTemplateDto = z.infer<typeof UpdateTemplateSchema>;
 
 // ─── 쿼리 스키마 ────────────────────────────────
 export const NoteIdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });
 
 export const NotesBatchBodySchema = z.object({

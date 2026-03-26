@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf/*)",
+      "Bash(git push*github*)",
+      "Bash(drop database:*)",
+      "Bash(DROP TABLE:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-i18n-sync.sh",
+            "timeout": 15,
+            "statusMessage": "i18n 키 동기화 확인 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/rebuild-reminder.sh",
+            "timeout": 5,
+            "statusMessage": "빌드 리마인더 확인 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/prisma-migration-reminder.sh",
+            "timeout": 5,
+            "statusMessage": "Prisma 마이그레이션 확인 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-compose-env.sh",
+            "timeout": 10,
+            "statusMessage": "Docker Compose 환경변수 확인 중..."
+          }
+        ]
+      }
+    ]
+  }
+}

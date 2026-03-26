@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import * as ctrl from '../controllers/note.controller';
 import { requireAuth, requirePermission, requireRole } from '../middlewares/auth.middleware';
-import { validate, Permission, RoleName, requireOwnerOrAdmin, ErrorCode, getOrgId } from '@lab/shared';
+import { validate, Permission, RoleName, requireOwnerOrAdminFastify, ErrorCode, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import {
   CreateNoteSchema, UpdateNoteSchema, ChangeStatusSchema, AdminUnlockSchema,
@@ -9,75 +9,77 @@ import {
   GetTagsQuerySchema,
 } from '../dtos/note.dto';
 
-const router = Router();
+const injectTemplateType = async (request: FastifyRequest) => {
+  (request.query as any).type = 'template';
+};
 
-router.use(requireAuth);
+const injectTemplateBodyType = async (request: FastifyRequest) => {
+  (request.body as any).type = 'template';
+};
 
-// ─── 태그 목록 ────────────────────────────────────────────────
-router.get('/tags',                              requirePermission(Permission.NOTE_READ),    validate({ query: GetTagsQuerySchema }), ctrl.getTags);
+const noteRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('onRequest', requireAuth);
 
-// ─── 연구노트 CRUD ──────────────────────────────────────────
-router.get('/notes',                             requirePermission(Permission.NOTE_READ),    ctrl.getNotes);
-router.post('/notes',                            requirePermission(Permission.NOTE_WRITE),   validate({ body: CreateNoteSchema }), ctrl.createNote);
-// ─── N+1 최적화: GET /notes/stats는 반드시 /notes/:id 앞에 위치해야 한다.
-// Express는 등록 순서대로 매칭하므로 /notes/:id가 먼저 있으면 'stats'가 id=stats로 처리된다.
-// POST /notes/batch는 메서드가 달라 충돌이 없지만 관련 라우트로서 함께 배치한다.
-router.get('/notes/stats',  requirePermission(Permission.NOTE_READ),  validate({ query: NoteStatsQuerySchema }), ctrl.getNoteStats);
-router.post('/notes/batch', requirePermission(Permission.NOTE_READ),  validate({ body: NotesBatchBodySchema }), ctrl.getNotesBatch);
-router.get('/notes/:id',                         requirePermission(Permission.NOTE_READ),    ctrl.getNoteById);
-router.put('/notes/:id',                         requirePermission(Permission.NOTE_WRITE),   validate({ body: UpdateNoteSchema }), ctrl.updateNote);
-router.delete('/notes/:id',                      requirePermission(Permission.NOTE_DELETE),  ctrl.deleteNote);
+  // ─── 태그 목록 ────────────────────────────────────────────────
+  app.get('/tags', { preHandler: [requirePermission(Permission.NOTE_READ), validate({ query: GetTagsQuerySchema })] }, ctrl.getTags);
 
-// ─── 상태 관리 ────────────────────────────────────────────────
-router.patch('/notes/:id/status',                requirePermission(Permission.NOTE_STATUS),  validate({ body: ChangeStatusSchema }), ctrl.changeNoteStatus);
-router.post('/notes/:id/admin-unlock',
-  requireRole(RoleName.ADMIN),              // 레이어 1: 역할 게이트
-  requirePermission(Permission.NOTE_UNLOCK),  // 레이어 2: 권한 게이트
-  validate({ body: AdminUnlockSchema }),
-  ctrl.adminUnlockNote,
-);
+  // ─── 연구노트 CRUD ──────────────────────────────────────────
+  app.get('/notes', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getNotes);
+  app.post('/notes', { preHandler: [requirePermission(Permission.NOTE_WRITE), validate({ body: CreateNoteSchema })] }, ctrl.createNote);
+  // ─── N+1 최적화: GET /notes/stats는 반드시 /notes/:id 앞에 위치해야 한다.
+  app.get('/notes/stats', { preHandler: [requirePermission(Permission.NOTE_READ), validate({ query: NoteStatsQuerySchema })] }, ctrl.getNoteStats);
+  app.post('/notes/batch', { preHandler: [requirePermission(Permission.NOTE_READ), validate({ body: NotesBatchBodySchema })] }, ctrl.getNotesBatch);
+  app.get('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getNoteById);
+  app.put('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_WRITE), validate({ body: UpdateNoteSchema })] }, ctrl.updateNote);
+  app.delete('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_DELETE)] }, ctrl.deleteNote);
 
-// ─── 버전 관리 (리비전) ─────────────────────────────────────
-router.get('/notes/:id/revisions',               requirePermission(Permission.NOTE_READ),    ctrl.getRevisions);
-router.get('/notes/:id/revisions/:rev',          requirePermission(Permission.NOTE_READ),    ctrl.getRevisionById);
+  // ─── 상태 관리 ────────────────────────────────────────────────
+  app.patch('/notes/:id/status', { preHandler: [requirePermission(Permission.NOTE_STATUS), validate({ body: ChangeStatusSchema })] }, ctrl.changeNoteStatus);
+  app.post('/notes/:id/admin-unlock', {
+    preHandler: [
+      requireRole(RoleName.ADMIN),              // 레이어 1: 역할 게이트
+      requirePermission(Permission.NOTE_UNLOCK),  // 레이어 2: 권한 게이트
+      validate({ body: AdminUnlockSchema }),
+    ],
+  }, ctrl.adminUnlockNote);
 
-// ─── 첨부파일 ────────────────────────────────────────────────
-router.get('/notes/:id/attachments',             requirePermission(Permission.FILE_READ),    ctrl.getAttachments);
-router.post('/notes/:id/attachments',            requirePermission(Permission.FILE_UPLOAD),  ctrl.addAttachment);
-router.delete('/notes/:id/attachments/:attachmentId',
-  requirePermission(Permission.FILE_DELETE),
-  requireOwnerOrAdmin(
-    async (req) => {
-      const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
-      if (!note) return null;
-      return prisma.attachment.findFirst({ where: { id: req.params.attachmentId, noteId: note.id } });
-    },
-    'uploadedBy',
-    ErrorCode.ATTACHMENT_PERMISSION_DENIED,
-  ),
-  ctrl.deleteAttachment,
-);
+  // ─── 버전 관리 (리비전) ─────────────────────────────────────
+  app.get('/notes/:id/revisions', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getRevisions);
+  app.get('/notes/:id/revisions/:rev', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getRevisionById);
 
-// ─── 링크 (교차 참조) ────────────────────────────────────────
-router.get('/notes/:id/links',                   requirePermission(Permission.NOTE_READ),    ctrl.getNoteLinks);
-router.post('/notes/:id/links',                  requirePermission(Permission.NOTE_WRITE),   validate({ body: AddLinkSchema }), ctrl.createNoteLink);
-router.delete('/notes/:id/links/:linkId',        requirePermission(Permission.NOTE_WRITE),   ctrl.deleteNoteLink);
+  // ─── 첨부파일 ────────────────────────────────────────────────
+  app.get('/notes/:id/attachments', { preHandler: [requirePermission(Permission.FILE_READ)] }, ctrl.getAttachments);
+  app.post('/notes/:id/attachments', { preHandler: [requirePermission(Permission.FILE_UPLOAD)] }, ctrl.addAttachment);
+  app.delete('/notes/:id/attachments/:attachmentId', {
+    preHandler: [
+      requirePermission(Permission.FILE_DELETE),
+      requireOwnerOrAdminFastify(
+        async (req) => {
+          const note = await prisma.note.findFirst({ where: { id: (req as any).params.id, orgId: getOrgId(req.headers) } });
+          if (!note) return null;
+          return prisma.attachment.findFirst({ where: { id: (req as any).params.attachmentId, noteId: note.id } });
+        },
+        'uploadedBy',
+        ErrorCode.ATTACHMENT_PERMISSION_DENIED,
+      ),
+    ],
+  }, ctrl.deleteAttachment);
 
-// ─── 템플릿 CRUD (type=template 필터) ──────────────────────
-// note.controller.ts의 동일 핸들러 재사용, ?type=template 쿼리 자동 주입
-router.get('/protocols', requirePermission(Permission.NOTE_READ), (req, res, next) => {
-  req.query.type = 'template';
-  return ctrl.getNotes(req, res, next);
-});
-router.post('/protocols', requirePermission(Permission.NOTE_WRITE), (req, res, next) => {
-  req.body.type = 'template';
-  return ctrl.createNote(req, res, next);
-});
-router.get('/protocols/:id',    requirePermission(Permission.NOTE_READ),    ctrl.getNoteById);
-router.put('/protocols/:id',    requirePermission(Permission.NOTE_WRITE),   validate({ body: UpdateNoteSchema }), ctrl.updateNote);
-router.delete('/protocols/:id', requirePermission(Permission.NOTE_DELETE),  ctrl.deleteNote);
-router.patch('/protocols/:id/status',  requirePermission(Permission.NOTE_STATUS),  ctrl.changeNoteStatus);
-router.get('/protocols/:id/revisions', requirePermission(Permission.NOTE_READ),   ctrl.getRevisions);
-router.get('/protocols/:id/revisions/:rev', requirePermission(Permission.NOTE_READ), ctrl.getRevisionById);
+  // ─── 링크 (교차 참조) ────────────────────────────────────────
+  app.get('/notes/:id/links', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getNoteLinks);
+  app.post('/notes/:id/links', { preHandler: [requirePermission(Permission.NOTE_WRITE), validate({ body: AddLinkSchema })] }, ctrl.createNoteLink);
+  app.delete('/notes/:id/links/:linkId', { preHandler: [requirePermission(Permission.NOTE_WRITE)] }, ctrl.deleteNoteLink);
 
-export default router;
+  // ─── 템플릿 CRUD (type=template 필터) ──────────────────────
+  // note.controller.ts의 동일 핸들러 재사용, ?type=template 쿼리 자동 주입
+  app.get('/protocols', { preHandler: [requirePermission(Permission.NOTE_READ), injectTemplateType] }, ctrl.getNotes);
+  app.post('/protocols', { preHandler: [requirePermission(Permission.NOTE_WRITE), injectTemplateBodyType] }, ctrl.createNote);
+  app.get('/protocols/:id', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getNoteById);
+  app.put('/protocols/:id', { preHandler: [requirePermission(Permission.NOTE_WRITE), validate({ body: UpdateNoteSchema })] }, ctrl.updateNote);
+  app.delete('/protocols/:id', { preHandler: [requirePermission(Permission.NOTE_DELETE)] }, ctrl.deleteNote);
+  app.patch('/protocols/:id/status', { preHandler: [requirePermission(Permission.NOTE_STATUS)] }, ctrl.changeNoteStatus);
+  app.get('/protocols/:id/revisions', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getRevisions);
+  app.get('/protocols/:id/revisions/:rev', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getRevisionById);
+};
+
+export default noteRoutes;

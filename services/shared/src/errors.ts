@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
 import type { Logger } from './logger';
+import type { MinimalReply } from './middleware';
 
 // ── 통일된 에러 응답 인터페이스 ─────────────────────────────
 export interface ErrorResponse {
@@ -42,38 +42,39 @@ export function buildErrorResponse(
   return resp;
 }
 
-// ── async 핸들러 래퍼 (try-catch 누락 안전망) ────────────────
-export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
-) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next).catch(next);
-  };
+// ── Fastify 전역 에러 핸들러 빌더 ───────────────────────────
+interface FastifyLikeError extends Error {
+  statusCode?: number;
+  validation?: { message?: string }[];
 }
 
-// ── 전역 에러 핸들러 ────────────────────────────────────────
-export function globalErrorHandler(serviceName: string, logger?: Logger) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  return (err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof AppError) {
+export function buildFastifyErrorHandler(logger?: Logger) {
+  return (error: FastifyLikeError, _request: unknown, reply: MinimalReply) => {
+    const statusCode = error.statusCode ?? 500;
+
+    // AppError (비즈니스 로직 에러)
+    if (error instanceof AppError) {
       if (logger) {
-        logger.warn({ code: err.code, details: err.details }, err.message);
-      } else {
-        console.error(`[${serviceName}]`, { code: err.code, message: err.message });
+        logger.warn({ code: error.code, details: error.details }, error.message);
       }
-      res.status(err.statusCode).json(
-        buildErrorResponse(err.statusCode, err.message, err.code, err.details),
+      return reply.code(error.statusCode).send(
+        buildErrorResponse(error.statusCode, error.message, error.code, error.details),
       );
-      return;
+    }
+
+    // Fastify 스키마 검증 실패 (400)
+    if (error.validation) {
+      const details = error.validation.map((v) => v.message ?? String(v));
+      return reply.code(400).send(
+        buildErrorResponse(400, '요청 데이터가 올바르지 않습니다.', 'ERR_VALIDATION', details),
+      );
     }
 
     if (logger) {
-      logger.error({ err }, 'Unhandled error');
-    } else {
-      console.error(`[${serviceName}] Unhandled error:`, err.stack ?? err);
+      logger.error({ err: error }, 'Unhandled error');
     }
-    res.status(500).json(
-      buildErrorResponse(500, '서버 내부 오류가 발생했습니다.', 'ERR_INTERNAL'),
+    return reply.code(statusCode).send(
+      buildErrorResponse(statusCode, statusCode === 500 ? '서버 내부 오류가 발생했습니다.' : error.message, `ERR_${statusCode}`),
     );
   };
 }

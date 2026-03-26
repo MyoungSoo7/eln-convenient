@@ -1,20 +1,20 @@
-import { Router } from 'express';
+import { FastifyPluginAsync } from 'fastify';
 import * as ctrl from '../controllers/template.controller';
 import { requireAuth, requirePermission } from '../middlewares/auth.middleware';
 import { validate, Permission } from '@lab/shared';
 import { CreateTemplateSchema, UpdateTemplateSchema } from '../dtos/note.dto';
 
-const router = Router();
+const templateRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('onRequest', requireAuth);
 
-router.use(requireAuth);
+  app.get('/', { preHandler: [requirePermission(Permission.TEMPLATE_READ)] }, ctrl.listTemplates);
+  app.post('/', { preHandler: [requirePermission(Permission.TEMPLATE_WRITE), validate({ body: CreateTemplateSchema })] }, ctrl.createTemplate);
+  app.post('/recommend', { preHandler: [requirePermission(Permission.TEMPLATE_READ)] }, ctrl.recommendTemplates);
+  app.get('/:id', { preHandler: [requirePermission(Permission.TEMPLATE_READ)] }, ctrl.getTemplate);
+  app.put('/:id', { preHandler: [requirePermission(Permission.TEMPLATE_WRITE), validate({ body: UpdateTemplateSchema })] }, ctrl.updateTemplate);
+  app.delete('/:id', { preHandler: [requirePermission(Permission.TEMPLATE_WRITE)] }, ctrl.deleteTemplate);
+  // (3) 템플릿 복사
+  app.post('/:id/copy', { preHandler: [requirePermission(Permission.TEMPLATE_WRITE)] }, ctrl.copyTemplate);
+};
 
-router.get('/',               requirePermission(Permission.TEMPLATE_READ),   ctrl.listTemplates);
-router.post('/',              requirePermission(Permission.TEMPLATE_WRITE),  validate({ body: CreateTemplateSchema }), ctrl.createTemplate);
-router.post('/recommend',     requirePermission(Permission.TEMPLATE_READ),   ctrl.recommendTemplates);
-router.get('/:id',            requirePermission(Permission.TEMPLATE_READ),   ctrl.getTemplate);
-router.put('/:id',            requirePermission(Permission.TEMPLATE_WRITE),  validate({ body: UpdateTemplateSchema }), ctrl.updateTemplate);
-router.delete('/:id',         requirePermission(Permission.TEMPLATE_WRITE),  ctrl.deleteTemplate);
-// (3) 템플릿 복사
-router.post('/:id/copy',      requirePermission(Permission.TEMPLATE_WRITE),  ctrl.copyTemplate);
-
-export default router;
+export default templateRoutes;

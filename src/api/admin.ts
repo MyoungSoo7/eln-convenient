@@ -94,9 +94,10 @@ export async function deleteOrg(id: string): Promise<ApiResponse<void>> {
 
 // ─── 팀 ─────────────────────────────────────────
 
-export async function listTeams(): Promise<ApiResponse<AdminTeam[]>> {
+export async function listTeams(orgId?: string): Promise<ApiResponse<AdminTeam[]>> {
   try {
-    return await apiClient.get<AdminTeam[]>('/auth/teams');
+    const params = orgId ? { orgId } : undefined;
+    return await apiClient.get<AdminTeam[]>('/auth/teams', params);
   } catch {
     return { ok: false, data: [] as AdminTeam[], error: '팀 목록 조회에 실패했습니다.' };
   }
@@ -219,3 +220,4 @@ export async function deleteRole(id: string): Promise<ApiResponse<void>> {
     return { ok: false, data: undefined as unknown as void, error: '역할 삭제에 실패했습니다.' };
   }
 }
+

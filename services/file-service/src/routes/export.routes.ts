@@ -1,29 +1,27 @@
 // services/file-service/src/routes/export.routes.ts
-import { Router } from 'express';
-import multer from 'multer';
+import { FastifyPluginAsync } from 'fastify';
 import { requireAuth, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate } from '@lab/shared';
 import { ListExportsQuerySchema, JobIdParamsSchema } from '../dtos/file.dto';
 import * as ctrl from '../controllers/export.controller';
 
-const internalUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB (ZIP 파일 대비)
-});
+const exportRoutes: FastifyPluginAsync = async (app) => {
+  // ── 내부 서비스 전용 (인증: x-internal-secret) ──
+  // multipart는 app.ts에서 전역 등록됨 (50MB), 내부 업로드는 bodyLimit으로 제한
+  app.post('/internal/upload', { preHandler: [requireInternalSecret], bodyLimit: 200 * 1024 * 1024 }, ctrl.internalUploadExport);
 
-const router = Router();
+  app.get('/internal/presigned/:fileId', { preHandler: [requireInternalSecret] }, ctrl.internalPresignedUrl);
 
-// ── 내부 서비스 전용 (인증: x-internal-secret) ──
-router.post('/internal/upload',               requireInternalSecret, internalUpload.single('file'), ctrl.internalUploadExport);
-router.get('/internal/presigned/:fileId',     requireInternalSecret, ctrl.internalPresignedUrl);
+  // ── 사용자 API (인증: JWT/x-user-id) ──
+  app.register(async (scope) => {
+    scope.addHook('onRequest', requireAuth);
 
-// ── 사용자 API (인증: JWT/x-user-id) ──
-router.use(requireAuth);
+    scope.post('/', ctrl.createExport);
+    scope.get('/', { preHandler: [validate({ query: ListExportsQuerySchema })] }, ctrl.listExports);
+    scope.get('/:jobId', { preHandler: [validate({ params: JobIdParamsSchema })] }, ctrl.getExport);
+    scope.get('/:jobId/download', { preHandler: [validate({ params: JobIdParamsSchema })] }, ctrl.downloadExport);
+    scope.delete('/:jobId', { preHandler: [validate({ params: JobIdParamsSchema })] }, ctrl.cancelExport);
+  });
+};
 
-router.post('/',               ctrl.createExport);
-router.get('/',                validate({ query: ListExportsQuerySchema }), ctrl.listExports);
-router.get('/:jobId',          validate({ params: JobIdParamsSchema }), ctrl.getExport);
-router.get('/:jobId/download', validate({ params: JobIdParamsSchema }), ctrl.downloadExport);
-router.delete('/:jobId',       validate({ params: JobIdParamsSchema }), ctrl.cancelExport);
-
-export default router;
+export default exportRoutes;

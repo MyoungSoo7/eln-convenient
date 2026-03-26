@@ -1,25 +1,30 @@
-import { Request, Response, NextFunction } from 'express';
 import { ZodSchema, ZodError } from 'zod';
 import { buildErrorResponse } from './errors';
+import type { MinimalRequest, MinimalReply } from './middleware';
 
-// ── Zod 스키마 기반 유효성 검증 미들웨어 ────────────────────
+// ── Zod 스키마 기반 유효성 검증 preHandler ────────────────────
 interface ValidateSchemas {
   body?: ZodSchema;
   query?: ZodSchema;
   params?: ZodSchema;
 }
 
+interface ParseableRequest extends MinimalRequest {
+  body?: unknown;
+  query?: unknown;
+  params?: unknown;
+}
+
 export function validate(schemas: ValidateSchemas) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (request: ParseableRequest, reply: MinimalReply): Promise<void> => {
     try {
-      if (schemas.params) req.params = schemas.params.parse(req.params) as typeof req.params;
-      if (schemas.query) req.query = schemas.query.parse(req.query) as typeof req.query;
-      if (schemas.body) req.body = schemas.body.parse(req.body);
-      next();
+      if (schemas.params) request.params = schemas.params.parse(request.params);
+      if (schemas.query) request.query = schemas.query.parse(request.query);
+      if (schemas.body) request.body = schemas.body.parse(request.body);
     } catch (err) {
       if (err instanceof ZodError) {
         const details = err.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
-        res.status(400).json(
+        reply.code(400).send(
           buildErrorResponse(
             400,
             err.issues.map((e) => e.message).join(', '),
@@ -27,9 +32,9 @@ export function validate(schemas: ValidateSchemas) {
             details,
           ),
         );
-        return;
+      } else {
+        throw err;
       }
-      next(err);
     }
   };
 }

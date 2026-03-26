@@ -1,12 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { requireAuth, requireRole, requirePermission } from '../plugins/auth';
-import { Permission, RoleName } from '@lab/shared';
-
-function getOrgId(request: FastifyRequest): string {
-  const orgId = request.headers['x-user-org-id'] as string;
-  if (!orgId) throw { statusCode: 403, message: '조직 정보가 없습니다.' };
-  return orgId;
-}
+import { Permission, RoleName, AppError, ErrorCode, getOrgId } from '@lab/shared';
 
 // ─── JSON Schema ─────────────────────────────────────────────
 
@@ -46,7 +40,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const { type, isActive } = request.query as { type?: string; isActive?: string };
 
     const data = await fastify.prisma.resource.findMany({
@@ -66,7 +60,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requirePermission(Permission.SCHEDULER_READ)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const resource = await fastify.prisma.resource.findFirst({
       where: { id: request.params.id, orgId },
       include: { _count: { select: { bookings: true } } },
@@ -82,7 +76,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], body: resourceBody },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const body = request.body as {
       name: string; type: 'EQUIPMENT' | 'ROOM';
       location?: string; description?: string; capacity?: number; ownerId?: string;
@@ -119,7 +113,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     if (body.isActive    !== undefined) update.isActive    = Boolean(body.isActive);
     if (body.ownerId     !== undefined) update.ownerId     = body.ownerId     ?? null;
 
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const existing = await fastify.prisma.resource.findFirst({
       where: { id: request.params.id, orgId },
     });
@@ -139,7 +133,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth, requireRole(RoleName.ADMIN)],
     schema: { tags: ['resources'], params: idParam },
   }, async (request, reply) => {
-    const orgId = getOrgId(request);
+    const orgId = getOrgId(request.headers);
     const { id } = request.params;
 
     const resource = await fastify.prisma.resource.findFirst({ where: { id, orgId } });

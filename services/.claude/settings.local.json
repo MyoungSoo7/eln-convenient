@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(pip install:*)",
+      "Bash(python generate_spec.py)",
+      "Bash(npm run:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool)",
+      "Bash(grep:*)",
+      "Bash(cd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls /c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/*.xlsx)",
+      "Bash(python3:*)",
+      "Bash(docker ps:*)",
+      "Bash(pip show:*)",
+      "Bash(python generate_manual_ppt.py)",
+      "Bash(mkdir -p \"C:\\\\vscode\\\\lab\\\\lab-companion-feature-phase1-backend-infra\\\\docs\\\\test\")",
+      "Read(//c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs/**)",
+      "Bash(python generate_docx.py)",
+      "Bash(python generate_xlsx.py)",
+      "Bash(ls -la C:vscodelablab-companion-feature-phase1-backend-infradocstest/*.docx C:vscodelablab-companion-feature-phase1-backend-infradocstest/*.xlsx)",
+      "Bash(python gen_xlsx.py)",
+      "Bash(python gen_docx.py)",
+      "Bash(python gen_pptx.py)",
+      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra -maxdepth 3 -name *test*guide* -o -name *test*plan* -o -name *.xlsx)",
+      "Bash(node -e \":*)",
+      "Bash(npm install:*)",
+      "Bash(printf '{\"\"\"\"email\"\"\"\":\"\"\"\"admin@labnote.local\"\"\"\",\"\"\"\"password\"\"\"\":\"\"\"\"admin123!\"\"\"\"}')",
+      "Bash(node test-runner.js)",
+      "Bash(mv /c/vscode/lab/lab-companion-feature-phase1-backend-infra/test-runner.js /c/vscode/lab/lab-companion-feature-phase1-backend-infra/test-runner.cjs)",
+      "Bash(node test-runner.cjs)",
+      "Bash(node:*)",
+      "Bash(npm ls:*)",
+      "Bash(ISEC=\"dev-internal-secret\")",
+      "Bash(__NEW_LINE_44d604e163af55d1__ echo:*)",
+      "Bash(1 __NEW_LINE_17198a796268e7f5__ echo \"\" echo \"===== 복구 확인 =====\" docker exec labnote-postgres psql -U labnote -d labnote -c \"SET search_path TO auth; SELECT COUNT\\(*\\) as orgs FROM \"\"Organization\"\"; SELECT COUNT\\(*\\) as users FROM \"\"User\"\"; SELECT COUNT\\(*\\) as roles FROM \"\"Role\"\";\" 2)",
+      "Bash(1 __NEW_LINE_17198a796268e7f5__ echo \"\" echo \"===== 로그인 확인 =====\" printf '{\"\"\"\"email\"\"\"\":\"\"\"\"admin@labnote.local\"\"\"\",\"\"\"\"password\"\"\"\":\"\"\"\"Admin1234!\"\"\"\"}')",
+      "Bash(ls:*)"
+    ]
+  }
+}

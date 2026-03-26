@@ -1,44 +1,27 @@
-import express from 'express';
-import cors from 'cors';
-import swaggerUi from 'swagger-ui-express';
-import searchRoutes from './routes/search.routes';
-import { swaggerDocument } from './swagger';
+import '@lab/shared/dist/tracing';
+import { buildApp } from './app';
+import { setupProcessHandlers, createLogger } from '@lab/shared';
 import { ensureIndices } from './lib/opensearch';
 import prisma from './lib/prisma';
-import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-const { logger, httpLogger } = createHttpLogger('search-service');
+const logger = createLogger('search-service');
 
-setupProcessHandlers('search-service', logger, {
-  onShutdown: () => prisma.$disconnect(),
-});
+setupProcessHandlers('search-service', logger);
 
-const app = express();
-const PORT = process.env.PORT || 8006;
+const PORT = Number(process.env.PORT) || 8006;
+const HOST = '0.0.0.0';
 
-app.use(cors());
-app.use(express.json());
-app.use(httpLogger);
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+async function main(): Promise<void> {
+  const app = buildApp();
+  try {
+    await app.listen({ port: PORT, host: HOST });
+    logger.info({ port: PORT }, '서버 시작');
+    logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
+  } catch (err) {
+    logger.error(err);
+    process.exit(1);
+  }
 
-app.get('/health', async (_req, res) => {
-  let dbOk = false;
-  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
-  res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
-    service: 'search-service',
-    timestamp: new Date().toISOString(),
-    db: dbOk ? 'ok' : 'error',
-  });
-});
-
-app.use('/api/search', searchRoutes);
-
-app.use(globalErrorHandler('search-service', logger));
-
-app.listen(PORT, async () => {
-  logger.info({ port: PORT }, '서버 시작');
-  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
   try {
     await prisma.$connect();
     logger.info('PostgreSQL 연결 완료');
@@ -52,6 +35,6 @@ app.listen(PORT, async () => {
   } catch (err) {
     logger.error({ err }, 'OpenSearch 인덱스 초기화 실패');
   }
-});
+}
 
-export default app;
+main();

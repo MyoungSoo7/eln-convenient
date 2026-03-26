@@ -8,7 +8,7 @@ import { ShieldCheck, Lock, Clock, FileText, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { listNotes } from "@/api/notes";
-import { type Note } from "@/lib/mockData";
+import { type Note } from "@/lib/types";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",

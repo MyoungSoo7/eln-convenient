@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── 공통 ────────────────────────────────────────
 export const UuidParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
 });
 
 // ─── 인증 ────────────────────────────────────────
@@ -88,10 +88,3 @@ export const VerifyPasswordSchema = z.object({
 });
 export type VerifyPasswordDto = z.infer<typeof VerifyPasswordSchema>;
 
-// ─── SSO ─────────────────────────────────────────
-export const SsoHookSchema = z.object({
-  type: z.string().min(1, 'type 필드가 필요합니다.'),
-  userId: z.string().optional(),
-  details: z.record(z.string(), z.string()).optional(),
-});
-export type SsoHookDto = z.infer<typeof SsoHookSchema>;

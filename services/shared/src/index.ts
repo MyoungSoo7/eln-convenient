@@ -1,9 +1,8 @@
 export {
   AppError,
-  asyncHandler,
-  globalErrorHandler,
   setupProcessHandlers,
   buildErrorResponse,
+  buildFastifyErrorHandler,
   type ErrorResponse,
 } from './errors';
 
@@ -21,21 +20,17 @@ export {
   type RoleNameValue,
 } from './permissions';
 
-export { getOrgId, withOrgScope } from './org-scope';
-
-export {
-  requireAuth,
-  requireRole,
-  requirePermission,
-  requireOwnerOrAdmin,
-  requireInternalSecret,
-} from './middleware-express';
+export { getOrgId, withOrgScope, getTeamIds, getTeamRoles, isTeamLeader } from './org-scope';
 
 export {
   requireAuthFastify,
   requireRoleFastify,
   requirePermissionFastify,
-} from './middleware-fastify';
+  requireOwnerOrAdminFastify,
+  requireInternalSecretFastify,
+  type MinimalRequest,
+  type MinimalReply,
+} from './middleware';
 
 export {
   ServiceEventType,

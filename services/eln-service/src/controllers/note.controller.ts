@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import https from 'https';
 import http from 'http';
@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { callAuditLog } from '../lib/audit';
 import { callNotification } from '../lib/notification';
 import { searchClient } from '../lib/searchClient';
-import { AppError, asyncHandler, ErrorCode, createLogger, getOrgId } from '@lab/shared';
+import { AppError, ErrorCode, createLogger, getOrgId, getTeamIds } from '@lab/shared';
 
 const logger = createLogger('eln-service');
 
@@ -77,22 +77,42 @@ async function nextRevision(noteId: string) {
 // ─────────────────────────────────────────────
 
 /** GET /api/notes  또는  GET /api/protocols (템플릿) */
-export const getNotes = asyncHandler(async (req: Request, res: Response) => {
-  const { status, tag, search, page = '1', limit = '20', type, templateId } = req.query;
-  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-  const orgId = getOrgId(req);
+export async function getNotes(request: FastifyRequest, reply: FastifyReply) {
+  const { status, tag, search, page = '1', limit = '20', type, templateId, authorId: queryAuthorId, teamId: queryTeamId } = request.query as Record<string, string>;
+  const orgId = getOrgId(request.headers);
+  const userId = request.headers['x-user-id'] as string;
+  const userRole = request.headers['x-user-role'] as string;
 
   const where: Record<string, unknown> = {
     type: (type as NoteType) || 'note',
     orgId,
+    deletedAt: null,
   };
-  if (status) where.status = status;
-  if (tag)        where.tags = { has: tag as string };
-  if (templateId) where.templateId = templateId as string;
-  if (search) {
+
+  // authorId/teamId 쿼리 파라미터 (대시보드 집계용)
+  if (queryAuthorId) where.authorId = queryAuthorId;
+  if (queryTeamId) where.teamId = queryTeamId;
+
+  // 팀 가시성 필터: admin이 아니고 특정 authorId/teamId 필터가 없는 경우
+  if (userRole !== 'admin' && !queryAuthorId && !queryTeamId) {
+    const teamIds = getTeamIds(request.headers);
     where.OR = [
-      { title:   { contains: search as string, mode: 'insensitive' } },
-      { content: { contains: search as string, mode: 'insensitive' } },
+      { authorId: userId },
+      ...(teamIds.length > 0 ? [{ teamId: { in: teamIds } }] : []),
+      { teamId: null },
+    ];
+  }
+
+  if (status) where.status = status;
+  if (tag)        where.tags = { has: tag };
+  if (templateId) where.templateId = templateId;
+  if (search) {
+    // search는 AND 조건으로 적용 (OR와 별도)
+    where.AND = [
+      { OR: [
+        { title:   { contains: search, mode: 'insensitive' } },
+        { content: { contains: search, mode: 'insensitive' } },
+      ] },
     ];
   }
 
@@ -100,28 +120,30 @@ export const getNotes = asyncHandler(async (req: Request, res: Response) => {
     prisma.note.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
-      skip,
-      take: parseInt(limit as string),
+      skip: (parseInt(page) - 1) * parseInt(limit),
+      take: parseInt(limit),
     }),
     prisma.note.count({ where }),
   ]);
-  res.json({ ok: true, data: notes, total, page: parseInt(page as string) });
-});
+  return { ok: true, data: notes, total, page: parseInt(page) };
+}
 
 /** GET /api/notes/:id */
-export const getNoteById = asyncHandler(async (req: Request, res: Response) => {
+export async function getNoteById(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
   const note = await prisma.note.findFirst({
-    where: { id: req.params.id, orgId: getOrgId(req) },
+    where: { id, orgId: getOrgId(request.headers) },
     include: { attachments: true, links: true },
   });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
-  res.json({ ok: true, data: note });
-});
+  return { ok: true, data: note };
+}
 
 /** POST /api/notes  또는  POST /api/protocols (템플릿) */
-export const createNote = asyncHandler(async (req: Request, res: Response) => {
-  const { title, content, sections, templateId, tags, type } = req.body;
-  const authorId = (req.headers['x-user-id'] as string) || 'anonymous';
+export async function createNote(request: FastifyRequest, reply: FastifyReply) {
+  const body = request.body as any;
+  const { title, content, sections, templateId, tags, type, teamId } = body;
+  const authorId = (request.headers['x-user-id'] as string) || 'anonymous';
   const noteType: NoteType = type || 'note';
 
   const note = await prisma.note.create({
@@ -133,7 +155,8 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
       sections: sections ?? [],
       status: 'draft',
       authorId,
-      orgId: getOrgId(req),
+      orgId: getOrgId(request.headers),
+      teamId: teamId || null,
       templateId: templateId || null,
       tags: tags || [],
     },
@@ -185,19 +208,22 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
     action: 'note.created',
     actorId: authorId,
     details: { type: noteType, title: note.title, templateId: templateId || null },
-    ipAddress: req.ip,
+    ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
     logger.warn({ noteId: note.id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.created audit 기록 실패 (노트 생성은 완료)');
   });
-  res.status(201).json({ ok: true, data: note });
-});
+  reply.code(201);
+  return { ok: true, data: note };
+}
 
 /** PUT /api/notes/:id */
-export const updateNote = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
-  const userRole = req.headers['x-user-role'] as string;
+export async function updateNote(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = request.body as any;
+  const userId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const userRole = request.headers['x-user-role'] as string;
 
-  const existing = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+  const existing = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!existing) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
   if (existing.status === 'locked') {
@@ -212,9 +238,9 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(403, '노트 수정 권한이 없습니다.', ErrorCode.NOTE_PERMISSION_DENIED);
   }
 
-  const { title, content, sections, tags, changeSummary } = req.body;
+  const { title, content, sections, tags, changeSummary } = body;
   const updated = await prisma.note.update({
-    where: { id: req.params.id },
+    where: { id },
     data: {
       ...(title     !== undefined && { title }),
       ...(content   !== undefined && { content }),
@@ -223,11 +249,11 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
-  const rev = await nextRevision(req.params.id);
+  const rev = await nextRevision(id);
   await prisma.noteRevision.create({
     data: {
       id: uuidv4(),
-      noteId: req.params.id,
+      noteId: id,
       revision: rev,
       content: updated.content,
       sections: (updated.sections as object) ?? [],
@@ -238,13 +264,13 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
 
   await callAuditLog({
     entityType: 'note',
-    entityId: req.params.id,
+    entityId: id,
     action: 'note.updated',
     actorId: userId,
-    details: { changedFields: Object.keys(req.body).filter(k => ['title','content','sections','tags'].includes(k)) },
-    ipAddress: req.ip,
+    details: { changedFields: Object.keys(body).filter((k: string) => ['title','content','sections','tags'].includes(k)) },
+    ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.updated audit 기록 실패 (수정은 완료)');
+    logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.updated audit 기록 실패 (수정은 완료)');
   });
   searchClient.index({
     id: updated.id,
@@ -261,15 +287,16 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
       updatedAt: updated.updatedAt.toISOString(),
     },
   });
-  res.json({ ok: true, data: updated });
-});
+  return { ok: true, data: updated };
+}
 
 /** DELETE /api/notes/:id */
-export const deleteNote = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
-  const userRole = req.headers['x-user-role'] as string;
+export async function deleteNote(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const userId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const userRole = request.headers['x-user-role'] as string;
 
-  const existing = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+  const existing = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!existing) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
   if (existing.authorId !== userId && userRole !== 'admin') {
@@ -284,41 +311,32 @@ export const deleteNote = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(403, '잠긴 노트는 삭제할 수 없습니다. 관리자가 먼저 잠금을 해제해야 합니다.', ErrorCode.NOTE_DELETE_LOCKED);
   }
 
-  await prisma.note.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
-  searchClient.delete(req.params.id);
+  await prisma.note.update({ where: { id }, data: { deletedAt: new Date() } });
+  searchClient.delete(id);
   await callAuditLog({
     entityType: 'note',
-    entityId: req.params.id,
+    entityId: id,
     action: 'note.deleted',
     actorId: userId,
     details: { title: existing.title },
-    ipAddress: req.ip,
+    ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.deleted audit 기록 실패 (삭제는 완료)');
+    logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.deleted audit 기록 실패 (삭제는 완료)');
   });
-  res.json({ ok: true, message: '노트가 삭제되었습니다.', id: req.params.id });
-});
+  return { ok: true, message: '노트가 삭제되었습니다.', id };
+}
 
 // ─────────────────────────────────────────────
 // 상태 관리
 // ─────────────────────────────────────────────
 
 /** PATCH /api/notes/:id/status */
-export const changeNoteStatus = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
-  if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
-
-  const { status: newStatus } = req.body as ChangeStatusDto;
-  const userRole = req.headers['x-user-role'] as string;
-  // system 역할(서명 서비스 내부 호출)은 signed 전환 허용, 일반 사용자는 차단
-  const transitions = userRole === 'system'
-    ? SYSTEM_STATUS_TRANSITIONS
-    : ALLOWED_STATUS_TRANSITIONS;
-  const allowed = transitions[note.status as NoteStatus] ?? [];
-
-  if (!allowed.includes(newStatus)) {
-    throw new AppError(400, `상태 전환 불가: "${note.status}" → "${newStatus}". 허용: [${allowed.join(', ')}]`, ErrorCode.NOTE_STATUS_TRANSITION);
-  }
+export async function changeNoteStatus(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const { status: newStatus } = request.body as ChangeStatusDto;
+  const userRole = request.headers['x-user-role'] as string;
+  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const orgId = getOrgId(request.headers);
 
   // 잠금(locked) 전환은 Reviewer 또는 Admin만 가능
   if (newStatus === 'locked') {
@@ -327,80 +345,95 @@ export const changeNoteStatus = asyncHandler(async (req: Request, res: Response)
     }
   }
 
-  const updated = await prisma.note.update({
-    where: { id: req.params.id },
-    data: { status: newStatus },
-  });
+  // 트랜잭션 + FOR UPDATE: 동시 상태 전환 race condition 방지
+  const { updated, fromStatus } = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM "Note" WHERE id = ${id} FOR UPDATE`;
+    const note = await tx.note.findFirst({ where: { id, orgId } });
+    if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
-  const actorId = (req.headers['x-user-id'] as string) || 'anonymous';
+    const transitions = userRole === 'system'
+      ? SYSTEM_STATUS_TRANSITIONS
+      : ALLOWED_STATUS_TRANSITIONS;
+    const allowed = transitions[note.status as NoteStatus] ?? [];
 
-  await prisma.noteStatusHistory.create({
-    data: {
-      id: uuidv4(),
-      noteId: req.params.id,
-      fromStatus: note.status as NoteStatus,
-      toStatus: newStatus,
-      changedBy: actorId,
-      isAdminAction: false,
-    },
-  }).catch((histErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: histErr instanceof Error ? histErr.message : histErr }, '[HISTORY_WARN] note_status_history 기록 실패 (상태변경은 완료)');
-  });
+    if (!allowed.includes(newStatus)) {
+      throw new AppError(400, `상태 전환 불가: "${note.status}" → "${newStatus}". 허용: [${allowed.join(', ')}]`, ErrorCode.NOTE_STATUS_TRANSITION);
+    }
+
+    const upd = await tx.note.update({
+      where: { id },
+      data: { status: newStatus },
+    });
+
+    await tx.noteStatusHistory.create({
+      data: {
+        id: uuidv4(),
+        noteId: id,
+        fromStatus: note.status as NoteStatus,
+        toStatus: newStatus,
+        changedBy: actorId,
+        isAdminAction: false,
+      },
+    });
+
+    return { updated: upd, fromStatus: note.status };
+  }, { timeout: 5000 });
 
   await callAuditLog({
     entityType: 'note',
-    entityId: req.params.id,
+    entityId: id,
     action: 'note.status_changed',
     actorId,
-    details: { from: note.status, to: newStatus },
-    ipAddress: req.ip,
+    details: { from: fromStatus, to: newStatus },
+    ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.status_changed audit 기록 실패 (상태변경은 완료)');
+    logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.status_changed audit 기록 실패 (상태변경은 완료)');
   });
 
   // 잠금 알림: 노트 작성자에게 알림
-  if (newStatus === 'locked' && note.authorId && note.authorId !== actorId) {
+  if (newStatus === 'locked' && updated.authorId && updated.authorId !== actorId) {
     callNotification({
-      recipientId: note.authorId,
+      recipientId: updated.authorId,
       type: 'NOTE_LOCKED',
       entityType: 'note',
-      entityId: req.params.id,
+      entityId: id,
       title: '연구노트가 잠금되었습니다',
-      message: `'${note.title}' 노트가 잠금 처리되었습니다.`,
+      message: `'${updated.title}' 노트가 잠금 처리되었습니다.`,
       actorId,
     }).catch((err: unknown) => {
-      logger.warn({ noteId: req.params.id, err: err instanceof Error ? err.message : err }, '[NOTIFICATION_WARN] 잠금 알림 실패');
+      logger.warn({ noteId: id, err: err instanceof Error ? err.message : err }, '[NOTIFICATION_WARN] 잠금 알림 실패');
     });
   }
 
-  res.json({ ok: true, data: updated, message: `상태가 "${newStatus}"(으)로 변경되었습니다.` });
-});
+  return { ok: true, data: updated, message: `상태가 "${newStatus}"(으)로 변경되었습니다.` };
+}
 
 /** POST /api/notes/:id/admin-unlock */
-export const adminUnlockNote = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function adminUnlockNote(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
   if (note.status !== 'locked') {
     throw new AppError(400, '잠긴 상태의 노트만 잠금 해제할 수 있습니다.', ErrorCode.NOTE_NOT_LOCKED);
   }
 
-  const { adminPassword, reason } = req.body as AdminUnlockDto;
+  const { adminPassword, reason } = request.body as AdminUnlockDto;
 
-  const adminId = req.headers['x-user-id'] as string;
+  const adminId = request.headers['x-user-id'] as string;
   const verified = await verifyAdminPassword(adminId, adminPassword);
   if (!verified) {
     throw new AppError(400, '관리자 비밀번호가 올바르지 않습니다.', ErrorCode.NOTE_ADMIN_PASSWORD_INVALID);
   }
 
   const updated = await prisma.note.update({
-    where: { id: req.params.id },
+    where: { id },
     data: { status: 'draft' },
   });
 
   await prisma.noteStatusHistory.create({
     data: {
       id: uuidv4(),
-      noteId: req.params.id,
+      noteId: id,
       fromStatus: 'locked',
       toStatus: 'draft',
       changedBy: adminId,
@@ -408,18 +441,18 @@ export const adminUnlockNote = asyncHandler(async (req: Request, res: Response) 
       isAdminAction: true,
     },
   }).catch((histErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: histErr instanceof Error ? histErr.message : histErr }, '[HISTORY_WARN] note_status_history 기록 실패 (잠금해제는 완료)');
+    logger.warn({ noteId: id, err: histErr instanceof Error ? histErr.message : histErr }, '[HISTORY_WARN] note_status_history 기록 실패 (잠금해제는 완료)');
   });
 
   await callAuditLog({
     entityType: 'note',
-    entityId: req.params.id,
+    entityId: id,
     action: 'note.admin_unlocked',
     actorId: adminId,
     details: { reason: reason || '관리자 잠금 해제' },
-    ipAddress: req.ip,
+    ipAddress: request.ip,
   }).catch((auditErr: unknown) => {
-    logger.warn({ noteId: req.params.id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.admin_unlocked audit 기록 실패 (잠금해제는 완료)');
+    logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.admin_unlocked audit 기록 실패 (잠금해제는 완료)');
   });
 
   // 잠금 해제 알림: 노트 작성자에게 알림
@@ -428,224 +461,243 @@ export const adminUnlockNote = asyncHandler(async (req: Request, res: Response) 
       recipientId: note.authorId,
       type: 'NOTE_UNLOCKED',
       entityType: 'note',
-      entityId: req.params.id,
+      entityId: id,
       title: '연구노트 잠금이 해제되었습니다',
       message: `'${note.title}' 노트의 잠금이 관리자에 의해 해제되었습니다.`,
       actorId: adminId,
     }).catch((err: unknown) => {
-      logger.warn({ noteId: req.params.id, err: err instanceof Error ? err.message : err }, '[NOTIFICATION_WARN] 잠금해제 알림 실패');
+      logger.warn({ noteId: id, err: err instanceof Error ? err.message : err }, '[NOTIFICATION_WARN] 잠금해제 알림 실패');
     });
   }
 
-  res.json({
+  return {
     ok: true,
     data: updated,
     auditLog: {
       action: 'admin_unlock',
-      noteId: req.params.id,
-      adminId: req.headers['x-user-id'],
+      noteId: id,
+      adminId: request.headers['x-user-id'],
       reason: reason || '관리자 잠금 해제',
       timestamp: new Date().toISOString(),
     },
     message: '관리자 권한으로 노트 잠금이 해제되었습니다.',
-  });
-});
+  };
+}
 
 // ─────────────────────────────────────────────
 // 리비전 (버전 관리)
 // ─────────────────────────────────────────────
 
 /** GET /api/notes/:id/revisions */
-export const getRevisions = asyncHandler(async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId } });
+export async function getRevisions(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const orgId = getOrgId(request.headers);
+  const note = await prisma.note.findFirst({ where: { id, orgId } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
   const revisions = await prisma.noteRevision.findMany({
-    where: { noteId: req.params.id },
+    where: { noteId: id },
     orderBy: { revision: 'asc' },
   });
-  res.json({ ok: true, data: revisions });
-});
+  return { ok: true, data: revisions };
+}
 
 /** GET /api/notes/:id/revisions/:rev */
-export const getRevisionById = asyncHandler(async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId } });
+export async function getRevisionById(request: FastifyRequest, reply: FastifyReply) {
+  const { id, rev } = request.params as { id: string; rev: string };
+  const orgId = getOrgId(request.headers);
+  const note = await prisma.note.findFirst({ where: { id, orgId } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
   const revision = await prisma.noteRevision.findFirst({
-    where: { noteId: req.params.id, revision: parseInt(req.params.rev) },
+    where: { noteId: id, revision: parseInt(rev) },
   });
   if (!revision) throw new AppError(404, '리비전을 찾을 수 없습니다.', ErrorCode.REVISION_NOT_FOUND);
-  res.json({ ok: true, data: revision });
-});
+  return { ok: true, data: revision };
+}
 
 // ─────────────────────────────────────────────
 // 첨부파일
 // ─────────────────────────────────────────────
 
 /** GET /api/notes/:id/attachments */
-export const getAttachments = asyncHandler(async (req: Request, res: Response) => {
+export async function getAttachments(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
   const note = await prisma.note.findFirst({
-    where: { id: req.params.id, orgId: getOrgId(req) },
+    where: { id, orgId: getOrgId(request.headers) },
     include: { attachments: { orderBy: { createdAt: 'asc' } } },
   });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
-  res.json({ ok: true, data: note.attachments });
-});
+  return { ok: true, data: note.attachments };
+}
 
 /** POST /api/notes/:id/attachments */
-export const addAttachment = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function addAttachment(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = request.body as any;
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
   try {
     const attachment = await prisma.attachment.create({
       data: {
         id: uuidv4(),
-        noteId: req.params.id,
-        fileId: req.body.fileId || uuidv4(),
-        fileName: req.body.fileName || 'unknown',
-        mimeType: req.body.mimeType || null,
-        sizeBytes: req.body.sizeBytes || null,
-        uploadedBy: (req.headers['x-user-id'] as string) || 'anonymous',
+        noteId: id,
+        fileId: body.fileId || uuidv4(),
+        fileName: body.fileName || 'unknown',
+        mimeType: body.mimeType || null,
+        sizeBytes: body.sizeBytes || null,
+        uploadedBy: (request.headers['x-user-id'] as string) || 'anonymous',
       },
     });
-    res.status(201).json({ ok: true, data: attachment });
+    reply.code(201);
+    return { ok: true, data: attachment };
   } catch (err: any) {
     if (err?.code === 'P2003') {
       throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
     }
     throw err;
   }
-});
+}
 
 /** DELETE /api/notes/:id/attachments/:attachmentId */
-export const deleteAttachment = asyncHandler(async (req: Request, res: Response) => {
-  // 소유권 검증은 라우트의 requireOwnerOrAdmin 미들웨어에서 수행됨
-  // res.locals.resource에 attachment가 담겨 있음
-  const attachment = res.locals.resource;
+export async function deleteAttachment(request: FastifyRequest, reply: FastifyReply) {
+  // 소유권 검증은 라우트의 requireOwnerOrAdmin preHandler에서 수행됨
+  // request.routeResource에 attachment가 담겨 있음
+  const attachment = (request as any).routeResource;
   await prisma.attachment.delete({ where: { id: attachment.id } });
-  res.json({ ok: true, message: '첨부파일이 삭제되었습니다.' });
-});
+  return { ok: true, message: '첨부파일이 삭제되었습니다.' };
+}
 
 // ─────────────────────────────────────────────
 // 링크 (교차 참조)
 // ─────────────────────────────────────────────
 
 /** GET /api/notes/:id/links */
-export const getNoteLinks = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function getNoteLinks(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
-  const links = await prisma.noteLink.findMany({ where: { noteId: req.params.id } });
-  res.json({ ok: true, data: links });
-});
+  const links = await prisma.noteLink.findMany({ where: { noteId: id } });
+  return { ok: true, data: links };
+}
 
 /** POST /api/notes/:id/links */
-export const createNoteLink = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function createNoteLink(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const body = request.body as any;
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
-  const { targetType, targetId, label } = req.body;
+  const { targetType, targetId, label } = body;
   const link = await prisma.noteLink.create({
     data: {
       id: uuidv4(),
-      noteId: req.params.id,
+      noteId: id,
       targetType,
       targetId,
       label: label || null,
-      createdBy: (req.headers['x-user-id'] as string) || 'anonymous',
+      createdBy: (request.headers['x-user-id'] as string) || 'anonymous',
     },
   });
-  res.status(201).json({ ok: true, data: link });
-});
+  reply.code(201);
+  return { ok: true, data: link };
+}
 
 /** DELETE /api/notes/:id/links/:linkId */
-export const deleteNoteLink = asyncHandler(async (req: Request, res: Response) => {
-  const note = await prisma.note.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function deleteNoteLink(request: FastifyRequest, reply: FastifyReply) {
+  const { id, linkId } = request.params as { id: string; linkId: string };
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
-  const link = await prisma.noteLink.findUnique({ where: { id: req.params.linkId } });
+  const link = await prisma.noteLink.findUnique({ where: { id: linkId } });
   if (!link) throw new AppError(404, '링크를 찾을 수 없습니다.', ErrorCode.LINK_NOT_FOUND);
 
-  const userId = (req.headers['x-user-id'] as string) || '';
-  const userRole = req.headers['x-user-role'] as string;
+  const userId = (request.headers['x-user-id'] as string) || '';
+  const userRole = request.headers['x-user-role'] as string;
   const isOwner = link.createdBy === userId || note.authorId === userId;
   if (!isOwner && userRole !== 'admin') {
     throw new AppError(403, '링크 삭제 권한이 없습니다.', ErrorCode.LINK_PERMISSION_DENIED);
   }
 
-  await prisma.noteLink.delete({ where: { id: req.params.linkId } });
-  res.json({ ok: true, message: '링크가 삭제되었습니다.' });
-});
+  await prisma.noteLink.delete({ where: { id: linkId } });
+  return { ok: true, message: '링크가 삭제되었습니다.' };
+}
 
 // ─────────────────────────────────────────────
 // 태그 (전체 태그 목록)
 // ─────────────────────────────────────────────
 
 /** GET /api/tags?type=note|template */
-export const getTags = asyncHandler(async (req: Request, res: Response) => {
-  const type = (req.query.type as NoteType) || 'note';
-  const orgId = getOrgId(req);
+export async function getTags(request: FastifyRequest, reply: FastifyReply) {
+  const { type } = request.query as Record<string, string>;
+  const noteType = (type as NoteType) || 'note';
+  const orgId = getOrgId(request.headers);
   // UNNEST+DISTINCT로 DB 레벨에서 중복 제거 및 정렬.
   // 의도적 동작 변경: deletedAt IS NULL 필터 추가 → 소프트 삭제된 노트의 태그 제외.
   const rows = await prisma.$queryRaw<{ tag: string }[]>`
     SELECT DISTINCT UNNEST(tags) AS tag
     FROM "Note"
-    WHERE type = ${type}::text AND "deletedAt" IS NULL AND "orgId" = ${orgId}
+    WHERE type = ${noteType}::"NoteType" AND "deletedAt" IS NULL AND "orgId" = ${orgId}
     ORDER BY tag
   `;
-  res.json({ ok: true, data: rows.map((r) => r.tag) });
-});
+  return { ok: true, data: rows.map((r) => r.tag) };
+}
 
 // ─────────────────────────────────────────────
 // 템플릿 (note.routes.ts에서 /api/templates 이하 라우트용)
 // ─────────────────────────────────────────────
 
-export const getTemplates = asyncHandler(async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+export async function getTemplates(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request.headers);
   const templates = await prisma.template.findMany({
     where: { OR: [{ orgId }, { isPublic: true }] },
     orderBy: { createdAt: 'asc' },
   });
-  res.json({ ok: true, data: templates, total: templates.length });
-});
+  return { ok: true, data: templates, total: templates.length };
+}
 
-export const getTemplateById = asyncHandler(async (req: Request, res: Response) => {
+export async function getTemplateById(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
   const tmpl = await prisma.template.findFirst({
-    where: { id: req.params.id, OR: [{ orgId: getOrgId(req) }, { isPublic: true }] },
+    where: { id, OR: [{ orgId: getOrgId(request.headers) }, { isPublic: true }] },
   });
   if (!tmpl) throw new AppError(404, '템플릿을 찾을 수 없습니다.', ErrorCode.TEMPLATE_NOT_FOUND);
-  res.json({ ok: true, data: tmpl });
-});
+  return { ok: true, data: tmpl };
+}
 
-export const createTemplate = asyncHandler(async (req: Request, res: Response) => {
+export async function createTemplate(request: FastifyRequest, reply: FastifyReply) {
+  const body = request.body as any;
   const tmpl = await prisma.template.create({
     data: {
       id: uuidv4(),
-      title: req.body.title,
-      description: req.body.description || '',
-      content: req.body.content || '',
-      category: req.body.category || '일반',
-      sections: req.body.sections ?? [],
-      tags: req.body.tags || [],
-      createdBy: (req.headers['x-user-id'] as string) || 'anonymous',
-      orgId: getOrgId(req),
-      isPublic: req.body.isPublic ?? false,
+      title: body.title,
+      description: body.description || '',
+      content: body.content || '',
+      category: body.category || '일반',
+      sections: body.sections ?? [],
+      tags: body.tags || [],
+      createdBy: (request.headers['x-user-id'] as string) || 'anonymous',
+      orgId: getOrgId(request.headers),
+      isPublic: body.isPublic ?? false,
     },
   });
-  res.status(201).json({ ok: true, data: tmpl });
-});
+  reply.code(201);
+  return { ok: true, data: tmpl };
+}
 
 /** GET /api/notes/stats */
-export const getNoteStats = asyncHandler(async (req: Request, res: Response) => {
-  const type = (req.query.type as string) || 'note';
-  const orgId = getOrgId(req);
+export async function getNoteStats(request: FastifyRequest, reply: FastifyReply) {
+  const { type, authorId: queryAuthorId, teamId: queryTeamId } = request.query as Record<string, string>;
+  const noteType = type || 'note';
+  const orgId = getOrgId(request.headers);
+  const where: Record<string, unknown> = { type: noteType as NoteType, deletedAt: null, orgId };
+  if (queryAuthorId) where.authorId = queryAuthorId;
+  if (queryTeamId) where.teamId = queryTeamId;
   const rows = await prisma.note.groupBy({
     by: ['status'],
-    where: { type: type as NoteType, deletedAt: null, orgId },
+    where,
     _count: { _all: true },
   });
   const base = { draft: 0, in_progress: 0, locked: 0, signed: 0 };
@@ -653,15 +705,15 @@ export const getNoteStats = asyncHandler(async (req: Request, res: Response) => 
     base[row.status as keyof typeof base] = row._count._all;
   }
   const total = base.draft + base.in_progress + base.locked + base.signed;
-  res.json({ ok: true, data: { ...base, total } });
-});
+  return { ok: true, data: { ...base, total } };
+}
 
 /** POST /api/notes/batch */
-export const getNotesBatch = asyncHandler(async (req: Request, res: Response) => {
-  const { ids } = req.body;
-  const orgId = getOrgId(req);
+export async function getNotesBatch(request: FastifyRequest, reply: FastifyReply) {
+  const { ids } = request.body as any;
+  const orgId = getOrgId(request.headers);
   const notes = await prisma.note.findMany({
     where: { id: { in: ids }, deletedAt: null, orgId },
   });
-  res.json({ ok: true, data: notes });
-});
+  return { ok: true, data: notes };
+}

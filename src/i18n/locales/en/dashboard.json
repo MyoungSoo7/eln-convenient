@@ -25,6 +25,8 @@
   "alerts": "Alerts",
   "alertsTooltip": "Shows items that are low stock or expiring soon.",
   "noAlerts": "No alerts",
+  "emptyNotes": "No lab notes yet.",
+  "emptyBookings": "No upcoming bookings.",
   "approved": "Approved",
   "pending": "Pending",
   "isExpired": "Expired",

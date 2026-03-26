@@ -1,12 +1,12 @@
-import { Request, Response } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getOrgId, asyncHandler, AppError, ErrorCode, createLogger } from '@lab/shared';
+import { getOrgId, AppError, ErrorCode, createLogger } from '@lab/shared';
 import prisma from '../lib/prisma';
 
 const logger = createLogger('audit-controller');
 
 /** GET /api/audit */
-export const listAuditLogs = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+export async function listAuditLogs(request: FastifyRequest, reply: FastifyReply) {
   const {
     entityId,
     entityType,
@@ -16,7 +16,7 @@ export const listAuditLogs = asyncHandler(async (req: Request, res: Response): P
     dateTo,
     page,
     limit,
-  } = req.query as unknown as {
+  } = request.query as unknown as {
     entityId?: string;
     entityType?: string;
     actorId?: string;
@@ -29,7 +29,7 @@ export const listAuditLogs = asyncHandler(async (req: Request, res: Response): P
 
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = { orgId: getOrgId(req) };
+  const where: Record<string, unknown> = { orgId: getOrgId(request.headers) };
   if (entityId)   where.entityId   = entityId;
   if (entityType) where.entityType = entityType;
   if (actorId)    where.actorId    = actorId;
@@ -51,30 +51,31 @@ export const listAuditLogs = asyncHandler(async (req: Request, res: Response): P
     }),
     prisma.auditLog.count({ where }),
   ]);
-  res.json({ ok: true, data: logs, total, page });
-});
+  return { ok: true, data: logs, total, page };
+}
 
 /** GET /api/audit/:id */
-export const getAuditLog = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const log = await prisma.auditLog.findFirst({ where: { id: req.params.id, orgId: getOrgId(req) } });
+export async function getAuditLog(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const log = await prisma.auditLog.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!log) { throw new AppError(404, '감사로그를 찾을 수 없습니다.', ErrorCode.NOT_FOUND); }
-  res.json({ ok: true, data: log });
-});
+  return { ok: true, data: log };
+}
 
 /** GET /api/audit/actions — 사용된 action 목록 (필터 UI용) */
-export const listAuditActions = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+export async function listAuditActions(request: FastifyRequest, reply: FastifyReply) {
   const rows = await prisma.auditLog.findMany({
-    where: { orgId: getOrgId(req) },
+    where: { orgId: getOrgId(request.headers) },
     distinct: ['action'],
     select: { action: true },
     orderBy: { action: 'asc' },
   });
-  res.json({ ok: true, data: rows.map((r) => r.action) });
-});
+  return { ok: true, data: rows.map((r) => r.action) };
+}
 
 /** POST /api/audit/internal — 내부 감사로그 생성 (requireInternalSecret 미들웨어로 보호) */
-export const createAuditLogInternal = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { entityType, entityId, action, actorId, orgId, details, ipAddress } = req.body;
+export async function createAuditLogInternal(request: FastifyRequest, reply: FastifyReply) {
+  const { entityType, entityId, action, actorId, orgId, details, ipAddress } = request.body as any;
 
   const log = await prisma.auditLog.create({
     data: {
@@ -88,5 +89,6 @@ export const createAuditLogInternal = asyncHandler(async (req: Request, res: Res
       // id, createdAt: DB default 사용
     },
   });
-  res.status(201).json({ ok: true, data: { id: log.id } });
-});
+  reply.code(201);
+  return { ok: true, data: { id: log.id } };
+}

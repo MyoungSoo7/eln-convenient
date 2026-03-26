@@ -1,15 +1,10 @@
-import express from 'express';
-import cors from 'cors';
-import swaggerUi from 'swagger-ui-express';
-import noteRoutes from './routes/note.routes';
-import templateRoutes from './routes/template.routes';
-import codeRoutes from './routes/code.routes';
-import { swaggerDocument } from './swagger';
+import '@lab/shared/dist/tracing';
+import { buildApp } from './app';
+import { setupProcessHandlers, createLogger } from '@lab/shared';
+import { startEventConsumer, stopEventConsumer } from './lib/eventConsumer';
 import prisma from './lib/prisma';
-import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
-import { startEventConsumer, stopEventConsumer, isEventConsumerRunning } from './lib/eventConsumer';
 
-const { logger, httpLogger } = createHttpLogger('eln-service');
+const logger = createLogger('eln-service');
 
 setupProcessHandlers('eln-service', logger, {
   onShutdown: async () => {
@@ -18,42 +13,24 @@ setupProcessHandlers('eln-service', logger, {
   },
 });
 
-const app = express();
-const PORT = process.env.PORT || 8002;
+const PORT = Number(process.env.PORT) || 8002;
+const HOST = '0.0.0.0';
 
-app.use(cors());
-app.use(express.json());
-app.use(httpLogger);
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+async function main(): Promise<void> {
+  const app = buildApp();
+  try {
+    await app.listen({ port: PORT, host: HOST });
+    logger.info({ port: PORT }, '서버 시작');
+    logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
 
-app.get('/health', async (_req, res) => {
-  let dbOk = false;
-  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
-  const eventConsumer = isEventConsumerRunning();
-  const allOk = dbOk && eventConsumer;
-  res.status(dbOk ? 200 : 503).json({
-    status: allOk ? 'ok' : 'degraded',
-    service: 'eln-service',
-    timestamp: new Date().toISOString(),
-    db: dbOk ? 'ok' : 'error',
-    eventConsumer: eventConsumer ? 'ok' : 'stopped',
-  });
-});
+    // Redis Stream 이벤트 Consumer 시작 (비동기, 실패해도 서버 기동에 영향 없음)
+    startEventConsumer().catch((err) => {
+      logger.warn({ err }, 'Event Consumer 시작 실패 — HTTP 폴백으로 운영');
+    });
+  } catch (err) {
+    logger.error(err);
+    process.exit(1);
+  }
+}
 
-app.use('/api', noteRoutes);
-app.use('/api/templates', templateRoutes);
-app.use('/api/codes', codeRoutes);
-
-app.use(globalErrorHandler('eln-service', logger));
-
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, '서버 시작');
-  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
-
-  // Redis Stream 이벤트 Consumer 시작 (비동기, 실패해도 서버 기동에 영향 없음)
-  startEventConsumer().catch((err) => {
-    logger.warn({ err }, 'Event Consumer 시작 실패 — HTTP 폴백으로 운영');
-  });
-});
-
-export default app;
+main();

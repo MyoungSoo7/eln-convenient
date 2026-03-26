@@ -1,3 +1,4 @@
+import './tracing';
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage, createServer } from 'http';
 import { verify } from 'jsonwebtoken';

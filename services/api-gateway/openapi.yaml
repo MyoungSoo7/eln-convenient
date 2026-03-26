@@ -1,0 +1,1150 @@
+openapi: 3.0.3
+
+info:
+  title: LabNote ELN - API Gateway
+  version: 1.0.0
+  description: |
+    LabNote ELN 플랫폼의 API Gateway입니다. JWT 검증, 리버스 프록시, Rate Limit, 대시보드 집계,
+    세션 관리, SSE(Server-Sent Events) 실시간 스트림 기능을 제공합니다.
+
+    ## 인증 방식
+
+    모든 보호된 엔드포인트는 `Authorization: Bearer <accessToken>` 헤더가 필요합니다.
+    Gateway가 JWT를 검증한 뒤 내부 서비스로 다음 헤더를 주입합니다:
+    - `x-user-id` — 사용자 ID
+    - `x-user-role` — 사용자 역할 (`admin` | `reviewer` | `researcher`)
+    - `x-user-permissions` — 권한 배열 (JSON 문자열)
+    - `x-user-org-id` — 조직 ID
+    - `x-user-team-ids` — 소속 팀 ID 배열 (JSON 문자열)
+    - `x-user-team-roles` — 팀별 역할 맵 (JSON 문자열)
+
+    ## 프록시 라우팅 테이블
+
+    Gateway는 아래 경로를 각 내부 서비스로 투명하게 프록시합니다.
+    이 spec에는 Gateway 자체 엔드포인트만 포함되며, 프록시 대상 엔드포인트는 각 서비스의 openapi.yaml을 참고하십시오.
+
+    | 경로 접두사 | 대상 서비스 | 포트 |
+    |-------------|-------------|------|
+    | `/api/auth` | auth-service | 8001 |
+    | `/api/notes` | eln-service | 8002 |
+    | `/api/tags` | eln-service | 8002 |
+    | `/api/protocols` | eln-service | 8002 |
+    | `/api/templates` | eln-service | 8002 |
+    | `/api/codes` | eln-service | 8002 |
+    | `/api/signatures` | signature-audit-service | 8003 |
+    | `/api/audit` | signature-audit-service | 8003 |
+    | `/api/export` | signature-audit-service | 8003 |
+    | `/api/notifications` | signature-audit-service | 8003 |
+    | `/api/inventory` | inventory-service | 8004 |
+    | `/api/scheduler` | scheduler-service | 8005 |
+    | `/api/search` | search-service | 8006 |
+    | `/api/files` | file-service | 8008 |
+    | `/api/exports` | file-service | 8008 |
+
+    ## Rate Limit 정책
+
+    엔드포인트별 세분화된 Rate Limit이 Redis sliding window로 적용됩니다.
+    초과 시 HTTP 429를 반환합니다.
+
+    | 경로 접두사 | 최대 요청 수 | 윈도우 |
+    |-------------|-------------|--------|
+    | `/api/export` | 10회 | 60초 |
+    | `/api/search` | 60회 | 60초 |
+    | `/api/auth` (세션 제외) | 20회 | 60초 |
+    | `/api/files` | 30회 | 60초 |
+    | 그 외 전체 | 200회 | 60초 |
+
+    ## 대시보드 캐시 TTL
+
+    | 엔드포인트 | Redis 캐시 TTL |
+    |------------|---------------|
+    | `GET /api/dashboard/personal` | 2분 (120초) |
+    | `GET /api/dashboard/team/:teamId` | 3분 (180초) |
+    | `GET /api/dashboard/org` | 5분 (300초) |
+    | `GET /api/dashboard` | 5분 (300초) |
+
+servers:
+  - url: http://localhost:8000
+    description: 로컬 개발 환경
+
+tags:
+  - name: 세션
+    description: |
+      리프레시 토큰 기반 세션 관리. 리프레시 토큰은 HttpOnly 쿠키(`labnote_rt`)에 저장되며
+      클라이언트 JavaScript에서 직접 접근할 수 없습니다.
+  - name: 대시보드
+    description: |
+      여러 내부 서비스의 데이터를 집계하여 반환하는 Gateway 자체 대시보드 엔드포인트.
+      Redis 캐시를 사용하여 내부 서비스 부하를 줄입니다.
+  - name: 실시간이벤트
+    description: |
+      SSE(Server-Sent Events) 기반 실시간 이벤트 스트림. Redis pub/sub을 통해
+      내보내기 상태 변경 및 알림을 실시간으로 클라이언트에 전달합니다.
+      연결 유지를 위해 30초마다 heartbeat(`:heartbeat`)를 전송합니다.
+
+# ─────────────────────────────────────────────
+# 공통 보안 스키마
+# ─────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `POST /api/auth/login` 응답으로 받은 액세스 토큰.
+        유효 기간은 서비스 설정에 따르며, 만료 시 `POST /api/auth/session/refresh`로 갱신합니다.
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: labnote_rt
+      description: |
+        `POST /api/auth/session`으로 설정되는 HttpOnly 쿠키.
+        `POST /api/auth/session/refresh` 전용으로 사용됩니다.
+
+  schemas:
+    # ── 공통 응답 ──
+    OkTrue:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+
+    OkFalse:
+      type: object
+      required:
+        - ok
+        - error
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+          example: false
+        error:
+          type: string
+          description: 사람이 읽을 수 있는 오류 메시지
+          example: "인증이 필요합니다."
+
+    # ── 세션 ──
+    SessionSetRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: 로그인 시 auth-service가 발급한 리프레시 토큰 (JWT)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    SessionRefreshResponse:
+      allOf:
+        - $ref: '#/components/schemas/OkTrue'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: 새로 발급된 액세스 토큰 (JWT)
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # ── 대시보드 공통 ──
+    NoteStats:
+      type: object
+      description: 노트 상태별 집계
+      properties:
+        total:
+          type: integer
+          nullable: true
+          description: 전체 노트 수
+          example: 42
+        draft:
+          type: integer
+          nullable: true
+          description: 초안 상태 노트 수
+          example: 10
+        inProgress:
+          type: integer
+          nullable: true
+          description: 진행 중 상태 노트 수
+          example: 15
+        in_progress:
+          type: integer
+          nullable: true
+          description: 진행 중 상태 노트 수 (org/legacy 응답에서 사용)
+          example: 15
+        signed:
+          type: integer
+          nullable: true
+          description: 서명 완료 노트 수
+          example: 12
+        locked:
+          type: integer
+          nullable: true
+          description: 잠김 상태 노트 수
+          example: 5
+
+    # ── 개인 대시보드 ──
+    PersonalDashboardData:
+      type: object
+      required:
+        - myNotes
+        - pendingActions
+        - recentNotes
+        - myBookings
+        - myActivity
+        - generatedAt
+      properties:
+        myNotes:
+          type: object
+          description: 본인이 작성한 노트의 상태별 집계
+          required:
+            - total
+            - draft
+            - inProgress
+            - signed
+            - locked
+          properties:
+            total:
+              type: integer
+              example: 20
+            draft:
+              type: integer
+              example: 5
+            inProgress:
+              type: integer
+              example: 8
+            signed:
+              type: integer
+              example: 5
+            locked:
+              type: integer
+              example: 2
+        pendingActions:
+          type: object
+          description: 처리 대기 중인 작업 요약
+          required:
+            - unreadNotifications
+          properties:
+            unreadNotifications:
+              type: integer
+              description: 읽지 않은 알림 수
+              example: 3
+        recentNotes:
+          type: array
+          description: 최근 노트 목록 (최대 5건, eln-service 응답 그대로)
+          items:
+            type: object
+            additionalProperties: true
+        myBookings:
+          type: array
+          description: 오늘 이후 본인 예약 목록 (최대 5건, scheduler-service 응답 그대로)
+          items:
+            type: object
+            additionalProperties: true
+        myActivity:
+          type: array
+          description: 본인의 최근 감사 로그 (최대 10건, signature-audit-service 응답 그대로)
+          items:
+            type: object
+            additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+          description: 응답 생성 시각 (ISO 8601)
+          example: "2026-03-25T09:00:00.000Z"
+
+    PersonalDashboardResponse:
+      allOf:
+        - $ref: '#/components/schemas/OkTrue'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              $ref: '#/components/schemas/PersonalDashboardData'
+
+    # ── 팀 대시보드 ──
+    TeamDashboardData:
+      type: object
+      required:
+        - teamNotes
+        - recentNotes
+        - teamBookings
+        - generatedAt
+      properties:
+        teamNotes:
+          type: object
+          description: 팀 노트 상태별 집계
+          required:
+            - total
+            - draft
+            - inProgress
+            - signed
+            - locked
+          properties:
+            total:
+              type: integer
+              example: 50
+            draft:
+              type: integer
+              example: 10
+            inProgress:
+              type: integer
+              example: 20
+            signed:
+              type: integer
+              example: 15
+            locked:
+              type: integer
+              example: 5
+        recentNotes:
+          type: array
+          description: 팀의 최근 노트 목록 (최대 10건)
+          items:
+            type: object
+            additionalProperties: true
+        teamBookings:
+          type: array
+          description: 팀의 최근 예약 목록 (최대 5건)
+          items:
+            type: object
+            additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+          example: "2026-03-25T09:00:00.000Z"
+
+    TeamDashboardResponse:
+      allOf:
+        - $ref: '#/components/schemas/OkTrue'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              $ref: '#/components/schemas/TeamDashboardData'
+
+    # ── 조직 대시보드 ──
+    OrgDashboardData:
+      type: object
+      required:
+        - notes
+        - compliance
+        - inventory
+        - scheduler
+        - recentActivity
+        - recentNotes
+        - upcomingBookings
+        - lowStockItems
+        - expiringItems
+        - generatedAt
+      properties:
+        notes:
+          type: object
+          description: 조직 전체 노트 상태별 집계
+          properties:
+            total:
+              type: integer
+              nullable: true
+              example: 200
+            draft:
+              type: integer
+              nullable: true
+              example: 40
+            in_progress:
+              type: integer
+              nullable: true
+              example: 80
+            signed:
+              type: integer
+              nullable: true
+              example: 60
+            locked:
+              type: integer
+              nullable: true
+              example: 20
+        compliance:
+          type: object
+          nullable: true
+          description: 서명 컴플라이언스 통계 (signature-audit-service 응답 그대로)
+          additionalProperties: true
+        inventory:
+          type: object
+          description: 인벤토리 요약
+          required:
+            - total
+            - lowStock
+          properties:
+            total:
+              type: integer
+              nullable: true
+              description: 전체 인벤토리 항목 수
+              example: 500
+            lowStock:
+              type: integer
+              nullable: true
+              description: 재고 부족 항목 수
+              example: 12
+        scheduler:
+          type: object
+          description: 스케줄러 요약
+          required:
+            - pendingBookings
+          properties:
+            pendingBookings:
+              type: integer
+              nullable: true
+              description: 승인 대기 중인 예약 수
+              example: 7
+        recentActivity:
+          type: array
+          description: 조직의 최근 감사 로그 (최대 10건)
+          items:
+            type: object
+            additionalProperties: true
+        recentNotes:
+          type: array
+          description: 최근 생성된 노트 목록 (최대 4건)
+          items:
+            type: object
+            additionalProperties: true
+        upcomingBookings:
+          type: array
+          description: 오늘 이후 예정된 예약 목록 (최대 4건)
+          items:
+            type: object
+            additionalProperties: true
+        lowStockItems:
+          type: array
+          description: 재고 부족 항목 목록 (최대 5건)
+          items:
+            type: object
+            additionalProperties: true
+        expiringItems:
+          type: array
+          description: 30일 내 유효기간 만료 예정 항목 목록 (최대 5건)
+          items:
+            type: object
+            additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+          example: "2026-03-25T09:00:00.000Z"
+
+    OrgDashboardResponse:
+      allOf:
+        - $ref: '#/components/schemas/OkTrue'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              $ref: '#/components/schemas/OrgDashboardData'
+
+    # ── 공통(레거시) 대시보드 ──
+    LegacyDashboardData:
+      type: object
+      description: |
+        기존 호환용 통합 대시보드 데이터. 역할에 상관없이 현재 사용자의 권한 범위 내에서
+        노트, 인벤토리, 스케줄러 데이터를 집계합니다.
+      required:
+        - notes
+        - compliance
+        - inventory
+        - scheduler
+        - recentActivity
+        - recentNotes
+        - upcomingBookings
+        - lowStockItems
+        - expiringItems
+        - generatedAt
+      properties:
+        notes:
+          type: object
+          properties:
+            total:
+              type: integer
+              nullable: true
+            draft:
+              type: integer
+              nullable: true
+            in_progress:
+              type: integer
+              nullable: true
+            signed:
+              type: integer
+              nullable: true
+            locked:
+              type: integer
+              nullable: true
+        compliance:
+          type: object
+          nullable: true
+          additionalProperties: true
+        inventory:
+          type: object
+          properties:
+            total:
+              type: integer
+              nullable: true
+            lowStock:
+              type: integer
+              nullable: true
+        scheduler:
+          type: object
+          properties:
+            pendingBookings:
+              type: integer
+              nullable: true
+        recentActivity:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recentNotes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        upcomingBookings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        lowStockItems:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        expiringItems:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+
+    LegacyDashboardResponse:
+      allOf:
+        - $ref: '#/components/schemas/OkTrue'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              $ref: '#/components/schemas/LegacyDashboardData'
+
+  # ── 공통 응답 객체 ──
+  responses:
+    Unauthorized:
+      description: 인증 실패 — Bearer 토큰이 없거나 유효하지 않음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "인증이 필요합니다."
+
+    Forbidden:
+      description: 권한 부족 — 해당 리소스에 접근할 역할/권한이 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "접근 권한이 없습니다."
+
+    BadRequest:
+      description: 잘못된 요청 — 필수 파라미터 누락 또는 형식 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "refreshToken is required"
+
+    TooManyRequests:
+      description: Rate Limit 초과
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "/api/auth 요청 횟수 제한 초과 (20회/60초). 잠시 후 다시 시도해주세요."
+
+    BadGateway:
+      description: 내부 서비스 연결 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "Auth service unreachable"
+
+    InternalServerError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OkFalse'
+          example:
+            ok: false
+            error: "서버 내부 오류가 발생했습니다."
+
+# ─────────────────────────────────────────────
+# 전역 보안: 모든 엔드포인트에 BearerAuth 기본 적용
+# (세션 엔드포인트는 각 operation에서 override)
+# ─────────────────────────────────────────────
+security:
+  - BearerAuth: []
+
+# ─────────────────────────────────────────────
+# 엔드포인트 정의
+# ─────────────────────────────────────────────
+paths:
+
+  # ══════════════════════════════════════════
+  # 세션 관리
+  # ══════════════════════════════════════════
+
+  /api/auth/session:
+    post:
+      tags:
+        - 세션
+      summary: 리프레시 토큰을 HttpOnly 쿠키로 저장
+      description: |
+        클라이언트가 `POST /api/auth/login`으로 받은 리프레시 토큰을 요청 바디로 전달하면,
+        Gateway가 이를 HttpOnly 쿠키(`labnote_rt`)로 변환하여 저장합니다.
+
+        쿠키 속성:
+        - `HttpOnly` — JavaScript에서 접근 불가
+        - `SameSite=Strict` — CSRF 방지
+        - `Secure` — 프로덕션 환경에서만 활성화
+        - `Path=/api/auth/session` — 세션 엔드포인트에서만 전송
+        - `Max-Age=28800` — 8시간 유효
+
+        이 엔드포인트는 인증 없이 호출할 수 있습니다.
+      operationId: setSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSetRequest'
+            example:
+              refreshToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.abc"
+      responses:
+        '200':
+          description: 쿠키 저장 성공
+          headers:
+            Set-Cookie:
+              description: HttpOnly 리프레시 토큰 쿠키 (`labnote_rt`)
+              schema:
+                type: string
+                example: "labnote_rt=eyJ...; HttpOnly; SameSite=Strict; Path=/api/auth/session; Max-Age=28800"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkTrue'
+              example:
+                ok: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - 세션
+      summary: 세션 종료 (로그아웃)
+      description: |
+        `labnote_rt` 쿠키를 `Max-Age=0`으로 덮어써서 즉시 만료시킵니다.
+        클라이언트는 별도로 로컬 스토리지의 액세스 토큰도 삭제해야 합니다.
+
+        이 엔드포인트는 인증 없이 호출할 수 있습니다.
+      operationId: deleteSession
+      security: []
+      responses:
+        '200':
+          description: 쿠키 삭제 성공
+          headers:
+            Set-Cookie:
+              description: 만료된 쿠키 (Max-Age=0)
+              schema:
+                type: string
+                example: "labnote_rt=; HttpOnly; SameSite=Strict; Path=/api/auth/session; Max-Age=0"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkTrue'
+              example:
+                ok: true
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/session/refresh:
+    post:
+      tags:
+        - 세션
+      summary: 액세스 토큰 갱신
+      description: |
+        HttpOnly 쿠키(`labnote_rt`)에 저장된 리프레시 토큰을 사용하여
+        auth-service에서 새 액세스 토큰을 발급받습니다.
+
+        - 성공 시: 새 액세스 토큰을 응답 바디로 반환하고, 새 리프레시 토큰이 있으면 쿠키를 갱신합니다.
+        - 실패 시: 쿠키를 즉시 만료시키고 401을 반환합니다.
+
+        이 엔드포인트는 쿠키 인증만 사용하며, Bearer 토큰이 없어도 호출할 수 있습니다.
+      operationId: refreshSession
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: 토큰 갱신 성공
+          headers:
+            Set-Cookie:
+              description: 새 리프레시 토큰 쿠키 (리프레시 토큰이 갱신된 경우에만 전송)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRefreshResponse'
+              example:
+                ok: true
+                data:
+                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.newAccessToken.sig"
+        '401':
+          description: 리프레시 토큰 없음 또는 만료
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkFalse'
+              examples:
+                noCookie:
+                  summary: 쿠키 없음
+                  value:
+                    ok: false
+                    error: "No refresh token"
+                expired:
+                  summary: 만료된 리프레시 토큰
+                  value:
+                    ok: false
+                    error: "Refresh token expired"
+                failed:
+                  summary: 갱신 실패
+                  value:
+                    ok: false
+                    error: "Refresh failed"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ══════════════════════════════════════════
+  # 대시보드
+  # ══════════════════════════════════════════
+
+  /api/dashboard/personal:
+    get:
+      tags:
+        - 대시보드
+      summary: 개인 대시보드 조회
+      description: |
+        현재 로그인한 사용자의 개인 대시보드 데이터를 반환합니다.
+        다음 서비스에서 데이터를 병렬로 집계합니다:
+        - **eln-service**: 내 노트 상태 통계, 최근 노트 5건
+        - **scheduler-service**: 오늘 이후 내 예약 5건
+        - **signature-audit-service**: 읽지 않은 알림 수, 내 최근 감사 로그 10건
+
+        개별 서비스 호출이 실패해도 다른 데이터는 정상 반환됩니다 (graceful degradation).
+
+        응답은 **2분간 Redis에 캐시**됩니다 (`cache:dashboard:personal:{orgId}:{userId}`).
+      operationId: getPersonalDashboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 개인 대시보드 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalDashboardResponse'
+              example:
+                ok: true
+                data:
+                  myNotes:
+                    total: 20
+                    draft: 5
+                    inProgress: 8
+                    signed: 5
+                    locked: 2
+                  pendingActions:
+                    unreadNotifications: 3
+                  recentNotes:
+                    - id: "note_abc"
+                      title: "실험 노트 2026-03-25"
+                      status: "in_progress"
+                  myBookings:
+                    - id: "book_xyz"
+                      resourceName: "HPLC 장비 A"
+                      startAt: "2026-03-25T10:00:00.000Z"
+                  myActivity:
+                    - action: "NOTE_STATUS_CHANGED"
+                      createdAt: "2026-03-25T08:30:00.000Z"
+                  generatedAt: "2026-03-25T09:00:00.000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/dashboard/team/{teamId}:
+    get:
+      tags:
+        - 대시보드
+      summary: 팀 대시보드 조회
+      description: |
+        특정 팀의 대시보드 데이터를 반환합니다.
+
+        **접근 제한**: `admin` 역할 또는 해당 팀의 `leader` 역할만 접근 가능합니다.
+        팀 역할은 Gateway가 주입하는 `x-user-team-roles` 헤더에서 확인합니다.
+
+        다음 서비스에서 데이터를 병렬로 집계합니다 (admin 권한으로 호출):
+        - **eln-service**: 팀 노트 상태 통계, 최근 노트 10건
+        - **scheduler-service**: 최근 예약 5건
+
+        응답은 **3분간 Redis에 캐시**됩니다 (`cache:dashboard:team:{orgId}:{teamId}`).
+      operationId: getTeamDashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: 팀 ID
+          schema:
+            type: string
+          example: "team_r01"
+      responses:
+        '200':
+          description: 팀 대시보드 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamDashboardResponse'
+              example:
+                ok: true
+                data:
+                  teamNotes:
+                    total: 50
+                    draft: 10
+                    inProgress: 20
+                    signed: 15
+                    locked: 5
+                  recentNotes:
+                    - id: "note_t01"
+                      title: "팀 프로토콜 검토"
+                      status: "in_progress"
+                  teamBookings:
+                    - id: "book_t01"
+                      resourceName: "회의실 B"
+                      startAt: "2026-03-25T14:00:00.000Z"
+                  generatedAt: "2026-03-25T09:00:00.000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 팀 리더 또는 관리자만 접근 가능
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkFalse'
+              example:
+                ok: false
+                error: "팀 대시보드는 팀 리더 또는 관리자만 접근할 수 있습니다."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/dashboard/org:
+    get:
+      tags:
+        - 대시보드
+      summary: 조직 대시보드 조회 (관리자 전용)
+      description: |
+        조직 전체 현황을 집계한 대시보드 데이터를 반환합니다.
+
+        **접근 제한**: `admin` 역할만 접근 가능합니다.
+
+        다음 서비스에서 데이터를 병렬로 집계합니다 (admin 권한으로 호출):
+        - **eln-service**: 전체 노트 상태 통계, 최근 노트 4건
+        - **signature-audit-service**: 컴플라이언스 통계, 최근 감사 로그 10건
+        - **inventory-service**: 전체 항목 수, 재고 부족 항목, 30일 내 만료 예정 항목
+        - **scheduler-service**: 승인 대기 예약 수, 오늘 이후 예약 4건
+
+        응답은 **5분간 Redis에 캐시**됩니다 (`cache:dashboard:org:{orgId}`).
+      operationId: getOrgDashboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 조직 대시보드 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgDashboardResponse'
+              example:
+                ok: true
+                data:
+                  notes:
+                    total: 200
+                    draft: 40
+                    in_progress: 80
+                    signed: 60
+                    locked: 20
+                  compliance:
+                    totalSigned: 60
+                    pendingReview: 5
+                  inventory:
+                    total: 500
+                    lowStock: 12
+                  scheduler:
+                    pendingBookings: 7
+                  recentActivity:
+                    - action: "SIGNATURE_CREATED"
+                      actorId: "user_admin"
+                      createdAt: "2026-03-25T08:00:00.000Z"
+                  recentNotes:
+                    - id: "note_org01"
+                      title: "Q1 실험 결과"
+                      status: "signed"
+                  upcomingBookings:
+                    - id: "book_org01"
+                      resourceName: "원심분리기 C"
+                      startAt: "2026-03-25T13:00:00.000Z"
+                  lowStockItems:
+                    - id: "inv_01"
+                      name: "에탄올 99.5%"
+                      quantity: 2
+                  expiringItems:
+                    - id: "inv_02"
+                      name: "시약 A"
+                      expiresAt: "2026-04-10"
+                  generatedAt: "2026-03-25T09:00:00.000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 관리자만 접근 가능
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkFalse'
+              example:
+                ok: false
+                error: "조직 대시보드는 관리자만 접근할 수 있습니다."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/dashboard:
+    get:
+      tags:
+        - 대시보드
+      summary: 통합 대시보드 조회 (기존 호환)
+      description: |
+        개인과 조직 데이터를 현재 사용자의 권한 범위 내에서 통합 집계합니다.
+
+        이 엔드포인트는 **하위 호환성**을 위해 유지됩니다.
+        신규 개발에는 역할에 맞는 세분화된 엔드포인트(`/personal`, `/team/:teamId`, `/org`)를 사용하십시오.
+
+        다음 서비스에서 데이터를 병렬로 집계합니다 (현재 사용자 권한으로 호출):
+        - **eln-service**: 노트 상태 통계, 최근 노트 4건
+        - **signature-audit-service**: 컴플라이언스 통계, 최근 감사 로그 5건
+        - **inventory-service**: 전체 항목 수, 재고 부족 항목, 30일 내 만료 예정 항목
+        - **scheduler-service**: 승인 대기 예약 수, 오늘 이후 예약 4건
+
+        응답은 **5분간 Redis에 캐시**됩니다 (`cache:dashboard:{orgId}:{role}`).
+      operationId: getLegacyDashboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 통합 대시보드 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyDashboardResponse'
+              example:
+                ok: true
+                data:
+                  notes:
+                    total: 42
+                    draft: 10
+                    in_progress: 15
+                    signed: 12
+                    locked: 5
+                  compliance: null
+                  inventory:
+                    total: 300
+                    lowStock: 8
+                  scheduler:
+                    pendingBookings: 3
+                  recentActivity:
+                    - action: "NOTE_STATUS_CHANGED"
+                      createdAt: "2026-03-25T08:00:00.000Z"
+                  recentNotes:
+                    - id: "note_01"
+                      title: "실험 노트 A"
+                  upcomingBookings:
+                    - id: "book_01"
+                      resourceName: "HPLC 장비 A"
+                  lowStockItems: []
+                  expiringItems: []
+                  generatedAt: "2026-03-25T09:00:00.000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ══════════════════════════════════════════
+  # 실시간 이벤트 (SSE)
+  # ══════════════════════════════════════════
+
+  /api/events/exports:
+    get:
+      tags:
+        - 실시간이벤트
+      summary: 내보내기 작업 상태 SSE 스트림
+      description: |
+        현재 사용자의 PDF/ZIP 내보내기 작업 상태를 실시간으로 수신합니다.
+
+        **프로토콜**: Server-Sent Events (SSE)
+        **Content-Type**: `text/event-stream`
+
+        연결 후 수신되는 이벤트 형식:
+        ```
+        :ok
+
+        event: export-status
+        data: {"jobId":"job_abc","status":"completed","requestedBy":"user_123","url":"..."}
+
+        :heartbeat
+        ```
+
+        이벤트 필드:
+        - `event`: 항상 `export-status`
+        - `data`: JSON 문자열 (signature-audit-service의 `export-status` Redis 채널 메시지)
+
+        heartbeat는 30초마다 전송되며 연결 유지 확인에 사용됩니다.
+        Redis `export-status` 채널에서 `requestedBy === 현재 사용자 ID`인 메시지만 필터링하여 전달합니다.
+
+        클라이언트가 연결을 끊으면 Redis subscriber와 heartbeat interval이 자동 정리됩니다.
+      operationId: streamExportStatus
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: SSE 스트림 연결 성공
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE 이벤트 스트림.
+                  각 이벤트는 `event:` + `data:` 쌍으로 구성되며 `\n\n`으로 구분됩니다.
+              example: |
+                :ok
+
+                event: export-status
+                data: {"jobId":"job_abc","status":"completed","requestedBy":"user_123","downloadUrl":"/api/exports/job_abc"}
+
+                :heartbeat
+        '401':
+          description: 인증 실패 — SSE 연결 전에 반환됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkFalse'
+              example:
+                ok: false
+                error: "인증이 필요합니다."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/events/notifications:
+    get:
+      tags:
+        - 실시간이벤트
+      summary: 알림 실시간 SSE 스트림
+      description: |
+        현재 사용자에게 발송된 알림을 실시간으로 수신합니다.
+
+        **프로토콜**: Server-Sent Events (SSE)
+        **Content-Type**: `text/event-stream`
+
+        연결 후 수신되는 이벤트 형식:
+        ```
+        :ok
+
+        event: notification
+        data: {"id":"notif_abc","type":"NOTE_SIGNED","message":"노트가 서명되었습니다.","createdAt":"2026-03-25T09:00:00.000Z"}
+
+        :heartbeat
+        ```
+
+        이벤트 필드:
+        - `event`: 항상 `notification`
+        - `data`: JSON 문자열 (signature-audit-service가 `notifications:{userId}` Redis 채널로 발행한 메시지)
+
+        사용자별 전용 Redis 채널(`notifications:{userId}`)을 구독하므로
+        해당 사용자의 알림만 수신됩니다.
+
+        heartbeat는 30초마다 전송됩니다.
+        클라이언트가 연결을 끊으면 Redis subscriber와 heartbeat interval이 자동 정리됩니다.
+      operationId: streamNotifications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: SSE 스트림 연결 성공
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 이벤트 스트림
+              example: |
+                :ok
+
+                event: notification
+                data: {"id":"notif_abc","type":"NOTE_SIGNED","message":"노트 '실험 노트 A'가 서명되었습니다.","createdAt":"2026-03-25T09:00:00.000Z","read":false}
+
+                :heartbeat
+        '401':
+          description: 인증 실패 — SSE 연결 전에 반환됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkFalse'
+              example:
+                ok: false
+                error: "인증이 필요합니다."
+        '500':
+          $ref: '#/components/responses/InternalServerError'

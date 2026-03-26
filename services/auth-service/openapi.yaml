@@ -1,0 +1,2101 @@
+openapi: 3.0.3
+
+info:
+  title: auth-service API
+  description: |
+    LabNote ELN 인증/조직/사용자/역할 서비스.
+    JWT 발급·갱신·무효화, 조직/팀/사용자/역할 CRUD, 내부 서비스용 비밀번호 검증 및 권한 조회를 제공합니다.
+  version: 2.0.0
+  contact:
+    name: LabNote 개발팀
+
+servers:
+  - url: http://localhost:8001
+    description: 로컬 개발 서버
+
+tags:
+  - name: 인증
+    description: 로그인, 로그아웃, 회원가입, 토큰 갱신, 내 정보 조회
+  - name: 조직
+    description: 조직(Organization) CRUD — Admin 전용
+  - name: 팀
+    description: 팀(Team) CRUD 및 팀 멤버 관리 — Admin 전용 (조회는 인증 사용자 전체)
+  - name: 사용자
+    description: 사용자(User) CRUD — Admin 전용
+  - name: 역할
+    description: 역할(Role) 및 권한(Permission) 관리 — Admin 전용
+  - name: 내부
+    description: 서비스 간 내부 통신 전용 엔드포인트 (x-internal-secret 인증)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 보안 스키마
+# ──────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: api-gateway가 검증한 JWT Access Token. Authorization 헤더에 `Bearer <token>` 형식으로 전달합니다.
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: x-internal-secret
+      description: 서비스 간 내부 통신 전용 시크릿. 외부에서 직접 호출 불가.
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 공통 스키마
+  # ────────────────────────────────────────────────────────────────────────────
+  schemas:
+
+    # ── 공통 응답 래퍼 ───────────────────────────────────────────────────────
+    SuccessResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: 처리 결과 메시지 (선택)
+
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
+        - code
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 사람이 읽을 수 있는 오류 메시지
+          example: 이메일 또는 비밀번호가 올바르지 않습니다.
+        code:
+          type: string
+          description: 오류 코드 상수 (ErrorCode)
+          example: AUTH_INVALID_CREDENTIALS
+
+    # ── 도메인 객체 ──────────────────────────────────────────────────────────
+    Organization:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 조직 식별자
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: 조직 이름
+          example: LabNote 연구소
+        slug:
+          type: string
+          description: URL에 사용되는 고유 슬러그
+          example: labnote-lab
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 일시 (ISO 8601)
+          example: "2026-01-15T09:00:00.000Z"
+
+    OrganizationUpdated:
+      allOf:
+        - $ref: '#/components/schemas/Organization'
+        - type: object
+          properties:
+            updatedAt:
+              type: string
+              format: date-time
+              description: 마지막 수정 일시
+              example: "2026-03-25T12:00:00.000Z"
+
+    Role:
+      type: object
+      required:
+        - id
+        - orgId
+        - name
+        - permissions
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 역할 식별자
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+        orgId:
+          type: string
+          format: uuid
+          description: 소속 조직 ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          enum:
+            - admin
+            - researcher
+            - reviewer
+            - viewer
+          description: 역할 이름
+          example: researcher
+        permissions:
+          type: array
+          items:
+            type: string
+          description: 이 역할에 부여된 권한 목록
+          example:
+            - note:read
+            - note:write
+        userCount:
+          type: integer
+          description: 이 역할을 가진 사용자 수 (목록 조회 시 포함)
+          example: 5
+
+    User:
+      type: object
+      required:
+        - id
+        - orgId
+        - email
+        - name
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 사용자 식별자
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        orgId:
+          type: string
+          format: uuid
+          description: 소속 조직 ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          description: 이메일 (고유)
+          example: researcher@labnote.io
+        name:
+          type: string
+          description: 사용자 이름
+          example: 김연구
+        roleId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 할당된 역할 ID
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+        role:
+          type: string
+          enum:
+            - admin
+            - researcher
+            - reviewer
+            - viewer
+          nullable: true
+          description: 역할 이름
+          example: researcher
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - suspended
+          description: 계정 상태
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          description: 계정 생성 일시
+          example: "2026-01-20T08:30:00.000Z"
+
+    UserDetail:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            permissions:
+              type: array
+              items:
+                type: string
+              description: 보유 권한 목록 (me 조회 시 포함)
+              example:
+                - note:read
+                - note:write
+
+    UserListItem:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            team:
+              type: string
+              nullable: true
+              description: 소속 팀 이름 (첫 번째 팀)
+              example: 분석팀
+            teamId:
+              type: string
+              format: uuid
+              nullable: true
+              description: 소속 팀 ID
+              example: 9c1e2f34-5678-90ab-cdef-123456789abc
+
+    Team:
+      type: object
+      required:
+        - id
+        - orgId
+        - name
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 팀 식별자
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+        orgId:
+          type: string
+          format: uuid
+          description: 소속 조직 ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: 팀 이름
+          example: 분석팀
+        memberCount:
+          type: integer
+          description: 팀 멤버 수 (목록 조회 시 포함)
+          example: 4
+        createdAt:
+          type: string
+          format: date-time
+          description: 팀 생성 일시
+          example: "2026-02-01T10:00:00.000Z"
+
+    TeamUpdated:
+      allOf:
+        - $ref: '#/components/schemas/Team'
+        - type: object
+          properties:
+            updatedAt:
+              type: string
+              format: date-time
+              description: 마지막 수정 일시
+              example: "2026-03-25T12:00:00.000Z"
+
+    TeamMember:
+      type: object
+      required:
+        - userId
+        - email
+        - name
+        - status
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: 사용자 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        email:
+          type: string
+          format: email
+          description: 사용자 이메일
+          example: researcher@labnote.io
+        name:
+          type: string
+          description: 사용자 이름
+          example: 김연구
+        role:
+          type: string
+          enum:
+            - admin
+            - researcher
+            - reviewer
+            - viewer
+          nullable: true
+          description: 사용자의 시스템 역할
+          example: researcher
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - suspended
+          description: 계정 상태
+          example: active
+
+    TokenPair:
+      type: object
+      required:
+        - token
+        - refreshToken
+      properties:
+        token:
+          type: string
+          description: 액세스 토큰 (JWT, 기본 15분 만료)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          description: 리프레시 토큰 (JWT, 8시간 만료)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    # ── 요청 본문 스키마 (Zod 기반) ─────────────────────────────────────────
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          description: 로그인 이메일
+          example: admin@labnote.io
+        password:
+          type: string
+          format: password
+          description: 비밀번호
+          example: "secret1234"
+
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 사용자 이름
+          example: 김연구
+        email:
+          type: string
+          format: email
+          description: 이메일 (고유)
+          example: newuser@labnote.io
+        password:
+          type: string
+          format: password
+          minLength: 1
+          description: 비밀번호
+          example: "password1234"
+        orgId:
+          type: string
+          format: uuid
+          description: 소속 조직 ID (생략 시 첫 번째 조직에 자동 배정)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        teamId:
+          type: string
+          format: uuid
+          description: 소속 팀 ID (선택)
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+
+    RefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: 기존 발급된 리프레시 토큰
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    CreateUserRequest:
+      type: object
+      required:
+        - email
+        - name
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: 이메일 (고유)
+          example: newstaff@labnote.io
+        name:
+          type: string
+          minLength: 1
+          description: 사용자 이름
+          example: 박직원
+        password:
+          type: string
+          format: password
+          minLength: 1
+          description: 초기 비밀번호
+          example: "init1234"
+        orgId:
+          type: string
+          format: uuid
+          description: 소속 조직 ID (생략 시 첫 번째 조직에 자동 배정)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        roleId:
+          type: string
+          format: uuid
+          description: 할당할 역할 ID (선택)
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 변경할 사용자 이름
+          example: 박직원(수정)
+        roleId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 변경할 역할 ID (null 전달 시 역할 제거)
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+          description: 변경할 계정 상태
+          example: inactive
+
+    CreateOrgRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 조직 이름
+          example: LabNote 연구소
+        slug:
+          type: string
+          minLength: 1
+          description: URL 슬러그 (고유, 소문자 권장)
+          example: labnote-lab
+
+    UpdateOrgRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 변경할 조직 이름
+          example: LabNote 연구소(변경)
+        slug:
+          type: string
+          minLength: 1
+          description: 변경할 슬러그
+          example: labnote-lab-v2
+
+    CreateTeamRequest:
+      type: object
+      required:
+        - orgId
+        - name
+      properties:
+        orgId:
+          type: string
+          format: uuid
+          description: 팀이 속할 조직 ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          minLength: 1
+          description: 팀 이름
+          example: 분석팀
+
+    UpdateTeamRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 변경할 팀 이름
+          example: 분석팀(수정)
+
+    AddTeamMemberRequest:
+      type: object
+      required:
+        - userId
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: 팀에 추가할 사용자 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - orgId
+        - name
+      properties:
+        orgId:
+          type: string
+          format: uuid
+          description: 역할이 속할 조직 ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          enum:
+            - admin
+            - researcher
+            - reviewer
+            - viewer
+          description: 역할 이름 (허용 값만 사용 가능)
+          example: researcher
+        permissions:
+          type: array
+          items:
+            type: string
+          description: 부여할 권한 목록 (생략 시 빈 배열)
+          example:
+            - note:read
+            - note:write
+
+    UpdatePermissionsRequest:
+      type: object
+      required:
+        - permissions
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+          description: 새로 설정할 권한 목록 (기존 목록 전체 교체)
+          example:
+            - note:read
+            - note:write
+            - note:sign
+
+    VerifyPasswordRequest:
+      type: object
+      required:
+        - userId
+        - password
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: 검증할 사용자 ID
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        password:
+          type: string
+          format: password
+          description: 검증할 비밀번호 (평문)
+          example: "user_password"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 공통 응답 정의
+  # ────────────────────────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: 인증 실패 — JWT 누락, 만료, 또는 유효하지 않은 토큰
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증 토큰이 필요합니다.
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: 권한 없음 — 해당 작업을 수행할 권한이 없습니다 (역할 부족)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 접근 권한이 없습니다.
+            code: FORBIDDEN
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 요청한 리소스를 찾을 수 없습니다.
+            code: NOT_FOUND
+
+    BadRequest:
+      description: 요청 유효성 검사 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 요청 데이터가 올바르지 않습니다.
+            code: VALIDATION_ERROR
+
+    Conflict:
+      description: 중복 리소스 — 이미 존재하는 값
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 이미 사용 중인 이메일입니다.
+            code: AUTH_EMAIL_EXISTS
+
+    InternalServerError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 서버 내부 오류가 발생했습니다.
+            code: INTERNAL_SERVER_ERROR
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 엔드포인트 정의
+# ──────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── 인증 ──────────────────────────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags:
+        - 인증
+      summary: 로그인
+      description: |
+        이메일과 비밀번호로 인증하여 JWT 액세스 토큰과 리프레시 토큰을 발급합니다.
+        계정이 비활성화(inactive/suspended) 상태인 경우 403을 반환합니다.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 로그인 성공 — 토큰 및 사용자 정보 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: 액세스 토큰 (JWT)
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      refreshToken:
+                        type: string
+                        description: 리프레시 토큰 (JWT, 8시간)
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: 이메일 또는 비밀번호 불일치
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이메일 또는 비밀번호가 올바르지 않습니다.
+                code: AUTH_INVALID_CREDENTIALS
+        '403':
+          description: 비활성화된 계정
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 비활성화된 계정입니다.
+                code: AUTH_INACTIVE_ACCOUNT
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/register:
+    post:
+      tags:
+        - 인증
+      summary: 회원가입
+      description: |
+        새 사용자를 등록합니다. 이메일은 시스템 전체에서 고유해야 합니다.
+        orgId를 생략하면 가장 먼저 생성된 조직에 자동 배정됩니다.
+        기본 역할은 viewer로 설정됩니다.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 회원가입 성공 — 생성된 사용자 정보 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: 유효성 검사 실패 또는 등록 가능한 조직 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: 필수 필드 누락
+                  value:
+                    ok: false
+                    error: email, name, password는 필수입니다.
+                    code: VALIDATION_ERROR
+                noOrg:
+                  summary: 조직 없음
+                  value:
+                    ok: false
+                    error: 등록 가능한 조직이 없습니다.
+                    code: AUTH_NO_ORGANIZATION
+        '409':
+          description: 이미 사용 중인 이메일
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 이메일입니다.
+                code: AUTH_EMAIL_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - 인증
+      summary: 액세스 토큰 갱신
+      description: |
+        유효한 리프레시 토큰을 사용하여 새 액세스 토큰과 리프레시 토큰을 발급합니다.
+        토큰 블랙리스트(Redis) 검사를 수행합니다. 리프레시 토큰도 함께 교체(rotation)됩니다.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 토큰 갱신 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: 리프레시 토큰이 유효하지 않거나 만료됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                expired:
+                  summary: 만료된 토큰
+                  value:
+                    ok: false
+                    error: Refresh token이 만료되었습니다.
+                    code: AUTH_TOKEN_EXPIRED
+                invalid:
+                  summary: 유효하지 않은 토큰
+                  value:
+                    ok: false
+                    error: 유효하지 않은 refresh token입니다.
+                    code: AUTH_TOKEN_INVALID
+                permChanged:
+                  summary: 권한 변경으로 무효화된 토큰
+                  value:
+                    ok: false
+                    error: 권한이 변경되었습니다. 다시 로그인해주세요.
+                    code: AUTH_TOKEN_INVALID
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - 인증
+      summary: 로그아웃
+      description: |
+        현재 액세스 토큰을 Redis 블랙리스트에 등록하여 즉시 무효화합니다.
+        토큰의 남은 유효 시간(exp)만큼 블랙리스트에 유지됩니다.
+        Redis 오류가 발생해도 로그아웃은 항상 성공으로 응답합니다.
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 로그아웃 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 로그아웃 완료
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/me:
+    get:
+      tags:
+        - 인증
+      summary: 내 정보 조회
+      description: |
+        현재 인증된 사용자의 상세 정보를 반환합니다.
+        역할과 보유 권한 목록을 포함합니다.
+        api-gateway가 주입한 `x-user-id` 헤더로 사용자를 식별합니다.
+      operationId: getMe
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 내 정보 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 사용자를 찾을 수 없음 (토큰은 유효하나 DB에 존재하지 않는 경우)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 사용자를 찾을 수 없습니다.
+                code: AUTH_USER_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── 조직 ──────────────────────────────────────────────────────────────────
+  /api/auth/orgs:
+    get:
+      tags:
+        - 조직
+      summary: 조직 목록 조회
+      description: |
+        조직 목록을 반환합니다.
+        Admin은 모든 조직을 조회할 수 있으며, 일반 사용자는 자신이 소속된 조직만 조회합니다.
+        생성 일시 오름차순으로 정렬됩니다.
+      operationId: getOrgs
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 조직 목록 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 조직
+      summary: 조직 생성
+      description: |
+        새 조직을 생성합니다. Admin 역할이 필요합니다.
+        slug는 시스템 전체에서 고유해야 합니다.
+      operationId: createOrg
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgRequest'
+      responses:
+        '201':
+          description: 조직 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 이미 사용 중인 slug
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 slug입니다.
+                code: AUTH_SLUG_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/orgs/{id}:
+    put:
+      tags:
+        - 조직
+      summary: 조직 수정
+      description: |
+        조직의 이름 또는 slug를 수정합니다. Admin 역할이 필요합니다.
+        수정하지 않을 필드는 생략할 수 있습니다.
+      operationId: updateOrg
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 수정할 조직의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrgRequest'
+      responses:
+        '200':
+          description: 조직 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/OrganizationUpdated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 조직을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 조직을 찾을 수 없습니다.
+                code: AUTH_ORG_NOT_FOUND
+        '409':
+          description: 이미 사용 중인 slug
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 slug입니다.
+                code: AUTH_SLUG_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - 조직
+      summary: 조직 삭제
+      description: |
+        조직을 삭제합니다. Admin 역할이 필요합니다.
+        소속 사용자가 1명이라도 있는 경우 삭제가 거부됩니다.
+      operationId: deleteOrg
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 삭제할 조직의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: 조직 삭제 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 조직이 삭제되었습니다.
+        '400':
+          description: 소속 사용자가 존재하여 삭제 불가
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 소속 사용자가 3명 있어 삭제할 수 없습니다.
+                code: AUTH_ORG_HAS_USERS
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 조직을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 조직을 찾을 수 없습니다.
+                code: AUTH_ORG_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── 팀 ────────────────────────────────────────────────────────────────────
+  /api/auth/teams:
+    get:
+      tags:
+        - 팀
+      summary: 팀 목록 조회
+      description: |
+        팀 목록을 반환합니다.
+        Admin은 orgId 쿼리 파라미터로 특정 조직의 팀만 필터링하거나, 생략 시 전체 팀을 조회합니다.
+        일반 사용자는 자신의 소속 조직 팀만 조회합니다.
+        각 팀의 멤버 수(memberCount)가 포함됩니다.
+      operationId: getTeams
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: query
+          required: false
+          description: 필터링할 조직 ID (Admin 전용, 생략 시 전체 조회)
+          schema:
+            type: string
+            format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: 팀 목록 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Team'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 팀
+      summary: 팀 생성
+      description: |
+        새 팀을 생성합니다. Admin 역할이 필요합니다.
+        생성 시 orgId를 명시해야 합니다.
+      operationId: createTeam
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTeamRequest'
+      responses:
+        '201':
+          description: 팀 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/teams/{id}:
+    put:
+      tags:
+        - 팀
+      summary: 팀 수정
+      description: 팀 이름을 수정합니다. Admin 역할이 필요합니다.
+      operationId: updateTeam
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 수정할 팀의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTeamRequest'
+      responses:
+        '200':
+          description: 팀 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/TeamUpdated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 팀을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 팀을 찾을 수 없습니다.
+                code: AUTH_TEAM_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - 팀
+      summary: 팀 삭제
+      description: |
+        팀을 삭제합니다. Admin 역할이 필요합니다.
+        팀 멤버 레코드가 먼저 모두 삭제된 후 팀이 삭제됩니다.
+      operationId: deleteTeam
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 삭제할 팀의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+      responses:
+        '200':
+          description: 팀 삭제 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 팀이 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 팀을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 팀을 찾을 수 없습니다.
+                code: AUTH_TEAM_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/teams/{id}/members:
+    get:
+      tags:
+        - 팀
+      summary: 팀 멤버 목록 조회
+      description: |
+        특정 팀에 소속된 멤버 목록을 반환합니다.
+        각 멤버의 사용자 정보(이메일, 이름, 역할, 상태)가 포함됩니다.
+        인증된 사용자라면 누구나 조회할 수 있습니다.
+      operationId: getTeamMembers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 팀 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+      responses:
+        '200':
+          description: 팀 멤버 목록 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TeamMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 팀
+      summary: 팀 멤버 추가
+      description: |
+        팀에 사용자를 추가합니다. Admin 역할이 필요합니다.
+        이미 팀에 소속된 사용자를 추가하려 하면 409를 반환합니다.
+        teamRole은 member로 고정됩니다 (현재 DTO에 미포함).
+      operationId: addTeamMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 멤버를 추가할 팀의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddTeamMemberRequest'
+      responses:
+        '201':
+          description: 팀 멤버 추가 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 팀에 멤버가 추가되었습니다.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 이미 팀에 소속된 사용자
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 팀에 소속된 사용자입니다.
+                code: AUTH_TEAM_MEMBER_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/teams/{id}/members/{userId}:
+    delete:
+      tags:
+        - 팀
+      summary: 팀 멤버 제거
+      description: 팀에서 특정 사용자를 제거합니다. Admin 역할이 필요합니다.
+      operationId: removeTeamMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 팀 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 9c1e2f34-5678-90ab-cdef-123456789abc
+        - name: userId
+          in: path
+          required: true
+          description: 제거할 사용자의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      responses:
+        '200':
+          description: 팀 멤버 제거 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 팀에서 멤버가 제거되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 해당 팀 멤버를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 해당 팀 멤버를 찾을 수 없습니다.
+                code: AUTH_TEAM_MEMBER_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── 사용자 ────────────────────────────────────────────────────────────────
+  /api/auth/users:
+    get:
+      tags:
+        - 사용자
+      summary: 사용자 목록 조회
+      description: |
+        현재 조직(`x-user-org-id`)에 소속된 사용자 목록을 페이지네이션으로 반환합니다.
+        Admin 역할이 필요합니다. 생성 일시 오름차순으로 정렬됩니다.
+        각 사용자의 첫 번째 소속 팀 정보가 함께 포함됩니다.
+      operationId: getUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 페이지 번호 (1부터 시작, 기본값 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          required: false
+          description: 페이지당 항목 수 (최소 1, 최대 200, 기본값 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          example: 50
+      responses:
+        '200':
+          description: 사용자 목록 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserListItem'
+                  total:
+                    type: integer
+                    description: 전체 사용자 수
+                    example: 42
+                  page:
+                    type: integer
+                    description: 현재 페이지 번호
+                    example: 1
+                  limit:
+                    type: integer
+                    description: 페이지당 항목 수
+                    example: 50
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 사용자
+      summary: 사용자 생성 (Admin)
+      description: |
+        새 사용자를 직접 생성합니다. Admin 역할이 필요합니다.
+        회원가입(/register)과 달리 roleId를 즉시 지정할 수 있습니다.
+        생성 이벤트가 감사 로그(AuditLog)에 기록됩니다.
+      operationId: createUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: 사용자 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 이미 사용 중인 이메일
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 이미 사용 중인 이메일입니다.
+                code: AUTH_EMAIL_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/users/{id}:
+    put:
+      tags:
+        - 사용자
+      summary: 사용자 수정 (Admin)
+      description: |
+        사용자의 이름, 역할, 계정 상태를 수정합니다. Admin 역할이 필요합니다.
+        역할(roleId) 또는 상태(status)가 변경된 경우 해당 사용자의 기존 JWT 토큰이 즉시 무효화됩니다.
+        변경 이력은 감사 로그(AuditLog)에 기록됩니다.
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 수정할 사용자의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: 사용자 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      orgId:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                      name:
+                        type: string
+                      roleId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - active
+                          - inactive
+                          - suspended
+                      updatedAt:
+                        type: string
+                        format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 사용자를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 사용자를 찾을 수 없습니다.
+                code: AUTH_USER_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - 사용자
+      summary: 사용자 삭제 (Admin)
+      description: |
+        사용자를 삭제합니다. Admin 역할이 필요합니다.
+        자기 자신은 삭제할 수 없습니다 (400).
+        삭제 전 팀 멤버 레코드가 모두 제거되며, 해당 사용자의 JWT 토큰도 즉시 무효화됩니다.
+        삭제 이벤트는 감사 로그(AuditLog)에 기록됩니다.
+      operationId: deleteUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 삭제할 사용자의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      responses:
+        '200':
+          description: 사용자 삭제 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 사용자가 삭제되었습니다.
+        '400':
+          description: 자기 자신 삭제 시도
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 자기 자신은 삭제할 수 없습니다.
+                code: AUTH_SELF_DELETE
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 사용자를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 사용자를 찾을 수 없습니다.
+                code: AUTH_USER_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── 역할 ──────────────────────────────────────────────────────────────────
+  /api/auth/roles:
+    get:
+      tags:
+        - 역할
+      summary: 역할 목록 조회
+      description: |
+        현재 조직(`x-user-org-id`)의 역할 목록을 반환합니다. Admin 역할이 필요합니다.
+        각 역할에 할당된 사용자 수(userCount)와 권한 목록(permissions)이 포함됩니다.
+      operationId: getRoles
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 역할 목록 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - 역할
+      summary: 역할 생성
+      description: |
+        새 역할을 생성합니다. Admin 역할이 필요합니다.
+        역할 이름은 admin, researcher, reviewer, viewer 중 하나만 허용됩니다.
+        생성 이벤트는 감사 로그(AuditLog)에 기록됩니다.
+      operationId: createRole
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: 역할 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Role'
+        '400':
+          description: 유효성 검사 실패 또는 허용되지 않는 역할명
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: 필수 필드 누락
+                  value:
+                    ok: false
+                    error: orgId와 name은 필수입니다.
+                    code: VALIDATION_ERROR
+                invalidRoleName:
+                  summary: 허용되지 않는 역할명
+                  value:
+                    ok: false
+                    error: "허용되지 않는 역할명입니다. 사용 가능: admin, researcher, reviewer, viewer"
+                    code: AUTH_INVALID_ROLE_NAME
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/roles/{id}/permissions:
+    put:
+      tags:
+        - 역할
+      summary: 역할 권한 수정
+      description: |
+        역할에 할당된 권한 목록을 전체 교체합니다. Admin 역할이 필요합니다.
+        변경 후 해당 역할을 가진 모든 사용자의 JWT 토큰이 즉시 무효화됩니다.
+        역할 권한 캐시(Redis `role-perms:*`)도 즉시 삭제됩니다.
+        변경 이력은 감사 로그(AuditLog)에 기록됩니다.
+      operationId: updatePermissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 수정할 역할의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+      responses:
+        '200':
+          description: 권한 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: 역할 ID
+                        example: 7f3a9e12-1234-5678-abcd-ef0123456789
+                      permissions:
+                        type: array
+                        items:
+                          type: string
+                        description: 수정된 권한 목록
+                        example:
+                          - note:read
+                          - note:write
+                          - note:sign
+                  message:
+                    type: string
+                    example: 권한 수정 완료
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 역할을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 역할을 찾을 수 없습니다.
+                code: AUTH_ROLE_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/roles/{id}:
+    delete:
+      tags:
+        - 역할
+      summary: 역할 삭제
+      description: |
+        역할을 삭제합니다. Admin 역할이 필요합니다.
+        해당 역할을 보유한 사용자가 1명이라도 있으면 삭제가 거부됩니다.
+        삭제 이벤트는 감사 로그(AuditLog)에 기록됩니다.
+      operationId: deleteRole
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 삭제할 역할의 UUID
+          schema:
+            type: string
+            format: uuid
+          example: 7f3a9e12-1234-5678-abcd-ef0123456789
+      responses:
+        '200':
+          description: 역할 삭제 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 역할이 삭제되었습니다.
+        '400':
+          description: 해당 역할을 가진 사용자가 존재하여 삭제 불가
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 해당 역할을 가진 사용자가 5명 있어 삭제할 수 없습니다.
+                code: AUTH_ROLE_HAS_USERS
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 역할을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 역할을 찾을 수 없습니다.
+                code: AUTH_ROLE_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── 내부 서비스 전용 ──────────────────────────────────────────────────────
+  /api/auth/internal/verify-password:
+    post:
+      tags:
+        - 내부
+      summary: 비밀번호 검증 (내부 전용)
+      description: |
+        내부 서비스(signature-audit-service 등)에서 사용자 비밀번호를 검증할 때 사용합니다.
+        `x-internal-secret` 헤더 인증이 필요하며, 외부에서 직접 호출 불가합니다.
+        사용자가 존재하지 않거나 passwordHash가 없는 경우 `verified: false`를 반환합니다 (404가 아님).
+      operationId: verifyPassword
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPasswordRequest'
+      responses:
+        '200':
+          description: 검증 결과 반환 (성공/실패 모두 200)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                  - verified
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  verified:
+                    type: boolean
+                    description: 비밀번호 일치 여부
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: x-internal-secret 헤더가 없거나 유효하지 않음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 내부 서비스 시크릿이 유효하지 않습니다.
+                code: UNAUTHORIZED
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/internal/role-permissions:
+    get:
+      tags:
+        - 내부
+      summary: 역할 권한 조회 (내부 전용)
+      description: |
+        내부 서비스에서 특정 역할의 권한 목록을 조회할 때 사용합니다.
+        `x-internal-secret` 헤더 인증이 필요합니다.
+        역할이 존재하지 않으면 빈 배열을 반환합니다 (404가 아님).
+        Redis 캐시(`role-perms:<roleName>`, `role-perms:<roleName>:<orgId>`)를 우선 조회합니다.
+      operationId: getRolePermissions
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: role
+          in: query
+          required: true
+          description: 조회할 역할 이름
+          schema:
+            type: string
+            enum:
+              - admin
+              - researcher
+              - reviewer
+              - viewer
+          example: researcher
+        - name: orgId
+          in: query
+          required: false
+          description: 조직 ID (같은 역할명이 여러 조직에 있을 때 특정 조직의 역할을 조회)
+          schema:
+            type: string
+            format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: 역할 권한 목록 반환 (역할이 없으면 빈 배열)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                  - permissions
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  permissions:
+                    type: array
+                    items:
+                      type: string
+                    description: 해당 역할에 부여된 권한 목록
+                    example:
+                      - note:read
+                      - note:write
+        '400':
+          description: role 파라미터 누락
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: role 파라미터가 필요합니다.
+                code: VALIDATION_ERROR
+        '401':
+          description: x-internal-secret 헤더가 없거나 유효하지 않음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 내부 서비스 시크릿이 유효하지 않습니다.
+                code: UNAUTHORIZED
+        '500':
+          $ref: '#/components/responses/InternalServerError'

@@ -1,0 +1,1602 @@
+openapi: 3.0.3
+info:
+  title: 파일 서비스 API
+  description: |
+    LabNote ELN 파일 업로드/다운로드 서비스 (MinIO 인터페이스).
+
+    파일 업로드(multipart 직접 업로드 및 presigned PUT URL), 다운로드(리디렉트/URL 반환/스트리밍),
+    파일 메타데이터 조회, 삭제 및 내보내기(PDF/ZIP) 작업 관리를 제공합니다.
+
+    ## 인증
+    - 사용자 API: api-gateway가 JWT를 검증한 후 내부 헤더(`x-user-id`, `x-user-role`,
+      `x-user-permissions`, `x-user-org-id`)를 주입합니다. 클라이언트는 `Authorization: Bearer <token>`을 전송합니다.
+    - 내부 API: `x-internal-secret` 헤더로 서비스 간 인증합니다.
+
+    ## 응답 형식
+    모든 응답은 `{ ok: boolean, data: T }` (성공) 또는 `{ ok: false, error: string, code: string }` (실패) 형식입니다.
+  version: 1.0.0
+  contact:
+    name: LabNote 개발팀
+
+servers:
+  - url: http://localhost:8008
+    description: 로컬 개발 서버
+
+tags:
+  - name: 파일
+    description: 파일 업로드, 다운로드, 메타데이터 조회 및 삭제
+  - name: 내보내기
+    description: PDF/ZIP 내보내기 작업 생성, 조회, 다운로드 및 취소
+  - name: 내부API
+    description: 서비스 간 내부 전용 API (x-internal-secret 인증 필요)
+  - name: 시스템
+    description: 헬스체크 및 시스템 정보
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ═══════════════════════════════════════════════════════════════
+  # 시스템
+  # ═══════════════════════════════════════════════════════════════
+
+  /health:
+    get:
+      tags:
+        - 시스템
+      summary: 헬스체크
+      description: 서비스, DB(PostgreSQL), 스토리지(MinIO) 상태를 확인합니다.
+      security: []
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 서비스 정상
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                service: file-service
+                timestamp: '2026-03-25T00:00:00.000Z'
+                db: ok
+                storage: ok
+        '503':
+          description: 서비스 일부 저하 (DB 또는 스토리지 장애)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: degraded
+                service: file-service
+                timestamp: '2026-03-25T00:00:00.000Z'
+                db: error
+                storage: ok
+
+  /api/files/storage/info:
+    get:
+      tags:
+        - 시스템
+      summary: 스토리지 정보 조회
+      description: 현재 스토리지 제공자 유형 및 버킷 이름을 반환합니다.
+      security: []
+      operationId: getStorageInfo
+      responses:
+        '200':
+          description: 스토리지 정보 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StorageInfo'
+              example:
+                ok: true
+                data:
+                  type: minio
+                  bucket: labnote-files
+                  exportsBucket: labnote-exports
+
+  # ═══════════════════════════════════════════════════════════════
+  # 파일
+  # ═══════════════════════════════════════════════════════════════
+
+  /api/files:
+    post:
+      tags:
+        - 파일
+      summary: 파일 직접 업로드 (multipart)
+      description: |
+        `multipart/form-data` 형식으로 파일을 직접 업로드합니다.
+        최대 파일 크기: 50MB.
+        차단된 MIME 타입: `application/x-msdownload`, `application/x-executable`,
+        `application/x-sh`, `text/x-sh`, `application/x-bat`.
+
+        업로드된 파일은 MinIO에 저장되고 DB에 메타데이터가 기록됩니다.
+        파일 ID(UUID)는 `{uuid}.{ext}` 형태의 오브젝트 키로 저장됩니다.
+      operationId: uploadFile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFileRequest'
+      responses:
+        '201':
+          description: 업로드 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FileUploadResult'
+              example:
+                ok: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  key: 550e8400-e29b-41d4-a716-446655440000.pdf
+                  originalName: 실험보고서.pdf
+                  mimeType: application/pdf
+                  sizeBytes: 204800
+                  storagePath: labnote-files/550e8400-e29b-41d4-a716-446655440000.pdf
+                  uploadedBy: user-uuid-123
+                  refType: note
+                  refId: note-uuid-456
+                  createdAt: '2026-03-25T00:00:00.000Z'
+        '400':
+          description: 파일 없음 또는 차단된 MIME 타입
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_file:
+                  summary: 파일 없음
+                  value:
+                    ok: false
+                    error: 업로드된 파일이 없습니다.
+                    code: FILE_NO_FILE
+                blocked_mime:
+                  summary: 차단된 MIME
+                  value:
+                    ok: false
+                    error: '허용되지 않는 파일 형식입니다: application/x-sh'
+                    code: FILE_BLOCKED_MIME
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: MinIO 업로드 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: MinIO 파일 업로드에 실패했습니다.
+                code: FILE_UPLOAD_FAILED
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/files/presigned-upload:
+    get:
+      tags:
+        - 파일
+      summary: Presigned PUT URL 발급 (클라이언트 직접 업로드)
+      description: |
+        클라이언트가 MinIO에 직접 업로드할 수 있는 presigned PUT URL을 발급합니다.
+        URL 유효시간은 900초(15분)입니다.
+        클라이언트는 발급된 URL로 HTTP PUT 요청을 보내 파일을 직접 MinIO에 업로드합니다.
+      operationId: getPresignedUpload
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          description: 업로드할 파일의 원본 파일명 (확장자 포함)
+          schema:
+            type: string
+            minLength: 1
+          example: 실험데이터.xlsx
+        - name: contentType
+          in: query
+          required: true
+          description: 업로드할 파일의 MIME 타입
+          schema:
+            type: string
+            minLength: 1
+          example: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        - name: linkedEntityType
+          in: query
+          required: false
+          description: 연결할 엔티티 유형
+          schema:
+            $ref: '#/components/schemas/LinkedEntityType'
+        - name: linkedEntityId
+          in: query
+          required: false
+          description: 연결할 엔티티 ID
+          schema:
+            type: string
+          example: note-uuid-456
+      responses:
+        '200':
+          description: Presigned URL 발급 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PresignedUploadResponse'
+              example:
+                ok: true
+                data:
+                  fileId: 550e8400-e29b-41d4-a716-446655440000
+                  key: 550e8400-e29b-41d4-a716-446655440000.xlsx
+                  uploadUrl: 'https://minio.example.com/labnote-files/550e8400...?X-Amz-Signature=...'
+                  expiresAt: '2026-03-25T00:15:00.000Z'
+        '400':
+          description: 차단된 MIME 타입 또는 유효성 검사 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: '허용되지 않는 파일 형식입니다: application/x-sh'
+                code: FILE_BLOCKED_MIME
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Presigned URL 생성 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: presigned URL 생성에 실패했습니다.
+                code: FILE_STORAGE_ERROR
+
+  /api/files/{id}:
+    get:
+      tags:
+        - 파일
+      summary: 파일 다운로드 (Presigned URL 리디렉트)
+      description: |
+        파일 ID로 MinIO presigned 다운로드 URL을 생성하고 302 리디렉트합니다.
+        브라우저에서 직접 파일을 다운로드할 때 사용합니다.
+        조직(orgId) 범위 내 파일만 접근 가능합니다.
+      operationId: downloadFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: key
+          in: query
+          required: false
+          description: MinIO 오브젝트 키 (레거시 파일 직접 접근 시 사용)
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Presigned 다운로드 URL로 리디렉트
+          headers:
+            Location:
+              description: MinIO presigned 다운로드 URL
+              schema:
+                type: string
+                format: uri
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - 파일
+      summary: 파일 삭제
+      description: |
+        파일을 soft delete 처리합니다. DB에 `isDeleted: true`로 표시하고 MinIO 오브젝트는 비동기로 삭제합니다.
+        파일 소유자(uploaderId) 또는 Admin만 삭제할 수 있습니다.
+        레거시 파일(DB 미등록)은 MinIO에서 직접 삭제합니다.
+      operationId: deleteFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: key
+          in: query
+          required: false
+          description: MinIO 오브젝트 키 (레거시 파일 삭제 시 사용)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteFileResponse'
+              example:
+                ok: true
+                id: 550e8400-e29b-41d4-a716-446655440000
+                message: 파일이 삭제되었습니다.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/files/{id}/url:
+    get:
+      tags:
+        - 파일
+      summary: 파일 Presigned 다운로드 URL 반환
+      description: |
+        리디렉트 없이 presigned 다운로드 URL을 JSON 응답으로 반환합니다.
+        API에서 URL을 받아 별도 처리할 때 사용합니다.
+        `expiresIn` 쿼리로 URL 유효시간(초)을 지정할 수 있으며 최대 86400초(24시간)입니다.
+      operationId: getDownloadUrl
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: key
+          in: query
+          required: false
+          description: MinIO 오브젝트 키 (레거시 파일 직접 접근 시 사용)
+          schema:
+            type: string
+        - name: expiresIn
+          in: query
+          required: false
+          description: URL 유효시간(초). 기본값 3600, 최대 86400
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 86400
+            default: 3600
+          example: 3600
+      responses:
+        '200':
+          description: Presigned URL 반환 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DownloadUrlResponse'
+              example:
+                ok: true
+                data:
+                  key: 550e8400-e29b-41d4-a716-446655440000.pdf
+                  url: 'https://minio.example.com/labnote-files/550e8400...?X-Amz-Signature=...'
+                  expiresAt: '2026-03-25T01:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: Presigned URL 생성 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: presigned URL 생성에 실패했습니다.
+                code: FILE_STORAGE_ERROR
+
+  /api/files/{id}/stream:
+    get:
+      tags:
+        - 파일
+      summary: 파일 스트리밍 다운로드
+      description: |
+        파일 내용을 HTTP 스트림으로 직접 응답합니다.
+        `Content-Type`, `Content-Length`, `Content-Disposition` 헤더가 포함됩니다.
+        원본 파일명은 MinIO 메타데이터에서 복원되며 UTF-8 인코딩으로 처리됩니다.
+      operationId: streamFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: key
+          in: query
+          required: false
+          description: MinIO 오브젝트 키 (레거시 파일 직접 접근 시 사용)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 파일 스트림 응답
+          headers:
+            Content-Type:
+              description: 파일 MIME 타입
+              schema:
+                type: string
+              example: application/pdf
+            Content-Length:
+              description: 파일 크기(바이트)
+              schema:
+                type: integer
+            Content-Disposition:
+              description: 파일 다운로드 헤더 (UTF-8 파일명 포함)
+              schema:
+                type: string
+              example: "attachment; filename*=UTF-8''%EC%8B%A4%ED%97%98%EB%B3%B4%EA%B3%A0%EC%84%9C.pdf"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/files/{id}/meta:
+    get:
+      tags:
+        - 파일
+      summary: 파일 메타데이터 조회
+      description: |
+        파일 ID로 메타데이터를 조회합니다.
+        DB에 등록된 파일은 DB에서 조회하고, 레거시 파일(DB 미등록)은 MinIO HeadObject로 fallback합니다.
+        조직(orgId) 범위 내 파일만 접근 가능합니다.
+      operationId: getFileMeta
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: key
+          in: query
+          required: false
+          description: MinIO 오브젝트 키 (레거시 파일 조회 시 사용)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 메타데이터 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FileMeta'
+              example:
+                ok: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  key: 550e8400-e29b-41d4-a716-446655440000.pdf
+                  originalName: 실험보고서.pdf
+                  mimeType: application/pdf
+                  sizeBytes: 204800
+                  storagePath: labnote-files/550e8400-e29b-41d4-a716-446655440000.pdf
+                  uploadedBy: user-uuid-123
+                  refType: note
+                  refId: note-uuid-456
+                  createdAt: '2026-03-25T00:00:00.000Z'
+                  lastModified: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: 스토리지 조회 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 스토리지 조회에 실패했습니다.
+                code: FILE_STORAGE_ERROR
+
+  # ═══════════════════════════════════════════════════════════════
+  # 내보내기
+  # ═══════════════════════════════════════════════════════════════
+
+  /api/exports:
+    post:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 생성 (PDF 또는 ZIP)
+      description: |
+        `type` 필드에 따라 PDF 또는 ZIP 내보내기 작업을 생성합니다.
+
+        **PDF 내보내기** (`type: "pdf"`): 특정 노트를 PDF로 변환합니다. `noteId`가 필수입니다.
+
+        **ZIP 내보내기** (`type: "zip"`): 범위(scope)에 따라 여러 노트를 ZIP으로 패키징합니다.
+        - `scope: "all"`: 조직 내 모든 노트
+        - `scope: "project"`: 특정 프로젝트의 노트 (`projectId` 필수)
+        - `scope: "selected"`: 선택한 노트 목록 (`noteIds` 필수)
+
+        작업은 백그라운드 큐에 등록되며 202 Accepted로 응답합니다.
+        작업 완료 후 `GET /api/exports/{jobId}/download`로 다운로드합니다.
+      operationId: createExport
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+            examples:
+              pdf:
+                summary: PDF 내보내기
+                value:
+                  type: pdf
+                  noteId: note-uuid-456
+              zip_all:
+                summary: ZIP 전체 내보내기
+                value:
+                  type: zip
+                  scope: all
+              zip_project:
+                summary: ZIP 프로젝트별 내보내기
+                value:
+                  type: zip
+                  scope: project
+                  projectId: project-uuid-789
+              zip_selected:
+                summary: ZIP 선택 내보내기
+                value:
+                  type: zip
+                  scope: selected
+                  noteIds:
+                    - note-uuid-001
+                    - note-uuid-002
+      responses:
+        '202':
+          description: 내보내기 작업 생성 완료 (백그라운드 처리 중)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportJob'
+              example:
+                ok: true
+                data:
+                  id: job-uuid-123
+                  type: pdf
+                  status: PENDING
+                  params:
+                    noteId: note-uuid-456
+                  resultFileId: null
+                  errorMessage: null
+                  retryCount: 0
+                  startedAt: null
+                  completedAt: null
+                  expiresAt: '2026-03-26T00:00:00.000Z'
+                  createdAt: '2026-03-25T00:00:00.000Z'
+                  updatedAt: '2026-03-25T00:00:00.000Z'
+        '400':
+          description: 잘못된 type 또는 필수 파라미터 누락
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: type은 pdf 또는 zip 이어야 합니다.
+                code: EXPORT_INVALID_TYPE
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 목록 조회
+      description: |
+        현재 사용자(x-user-id)의 내보내기 작업 목록을 조회합니다.
+        조직(orgId) 범위 내 데이터만 반환합니다.
+        상태별 필터링과 페이지네이션을 지원합니다.
+      operationId: listExports
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 작업 상태 필터
+          schema:
+            $ref: '#/components/schemas/ExportStatus'
+        - name: page
+          in: query
+          required: false
+          description: 페이지 번호 (1부터 시작)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          required: false
+          description: 페이지당 항목 수 (최대 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+      responses:
+        '200':
+          description: 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExportJob'
+                      total:
+                        type: integer
+                        description: 전체 작업 수
+                      page:
+                        type: integer
+                        description: 현재 페이지 번호
+              example:
+                ok: true
+                data:
+                  - id: job-uuid-123
+                    type: pdf
+                    status: COMPLETED
+                    params:
+                      noteId: note-uuid-456
+                    resultFileId: file-uuid-789
+                    errorMessage: null
+                    retryCount: 0
+                    startedAt: '2026-03-25T00:01:00.000Z'
+                    completedAt: '2026-03-25T00:02:00.000Z'
+                    expiresAt: '2026-03-26T00:00:00.000Z'
+                    createdAt: '2026-03-25T00:00:00.000Z'
+                    updatedAt: '2026-03-25T00:02:00.000Z'
+                total: 1
+                page: 1
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/exports/{jobId}:
+    get:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 상세 조회
+      description: |
+        특정 내보내기 작업의 상세 정보를 조회합니다.
+        작업 소유자(requestedBy)만 조회할 수 있습니다.
+      operationId: getExport
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 작업 조회 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportJob'
+              example:
+                ok: true
+                data:
+                  id: job-uuid-123
+                  type: pdf
+                  status: COMPLETED
+                  params:
+                    noteId: note-uuid-456
+                  resultFileId: file-uuid-789
+                  errorMessage: null
+                  retryCount: 0
+                  startedAt: '2026-03-25T00:01:00.000Z'
+                  completedAt: '2026-03-25T00:02:00.000Z'
+                  expiresAt: '2026-03-26T00:00:00.000Z'
+                  createdAt: '2026-03-25T00:00:00.000Z'
+                  updatedAt: '2026-03-25T00:02:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 작업을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: Export job을 찾을 수 없습니다.
+                code: EXPORT_NOT_FOUND
+
+    delete:
+      tags:
+        - 내보내기
+      summary: 내보내기 작업 취소
+      description: |
+        `PENDING` 또는 `FAILED` 상태의 내보내기 작업을 취소(삭제)합니다.
+        `PROCESSING` 또는 `COMPLETED` 상태의 작업은 취소할 수 없습니다.
+        작업 소유자(requestedBy)만 취소할 수 있습니다.
+      operationId: cancelExport
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 취소 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Export job이 취소되었습니다.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 작업을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: Export job을 찾을 수 없습니다.
+                code: EXPORT_NOT_FOUND
+        '409':
+          description: 취소 불가능한 상태
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: PROCESSING 상태의 job은 취소할 수 없습니다.
+                code: EXPORT_NOT_CANCELLABLE
+
+  /api/exports/{jobId}/download:
+    get:
+      tags:
+        - 내보내기
+      summary: 내보내기 결과 파일 다운로드
+      description: |
+        완료된 내보내기 작업의 결과 파일을 presigned URL로 리디렉트합니다.
+        작업 상태가 `COMPLETED`이고 결과 파일이 존재해야 합니다.
+        작업 소유자(requestedBy)만 다운로드할 수 있습니다.
+      operationId: downloadExport
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '302':
+          description: 내보내기 결과 파일 presigned URL로 리디렉트
+          headers:
+            Location:
+              description: MinIO presigned 다운로드 URL
+              schema:
+                type: string
+                format: uri
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 작업을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: Export job을 찾을 수 없습니다.
+                code: EXPORT_NOT_FOUND
+        '409':
+          description: 작업이 아직 완료되지 않음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 'Export가 완료되지 않았습니다. 현재 상태: PROCESSING'
+                code: EXPORT_NOT_COMPLETED
+
+  # ═══════════════════════════════════════════════════════════════
+  # 내부 API (x-internal-secret 인증)
+  # ═══════════════════════════════════════════════════════════════
+
+  /api/exports/internal/upload:
+    post:
+      tags:
+        - 내부API
+      summary: 내부 서비스용 내보내기 파일 업로드
+      description: |
+        signature-audit 등 내부 서비스가 생성한 PDF/ZIP 파일을 저장하는 내부 전용 API입니다.
+        `x-internal-secret` 헤더로 인증합니다.
+        최대 파일 크기: 200MB.
+        업로드된 파일은 `exports` 버킷에 저장되며 presigned 다운로드 URL이 반환됩니다.
+      operationId: internalUploadExport
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InternalUploadRequest'
+      responses:
+        '201':
+          description: 업로드 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InternalUploadResult'
+              example:
+                ok: true
+                data:
+                  fileId: file-uuid-789
+                  objectKey: pdf/job-uuid-123/export-2026-03-25.pdf
+                  bucket: labnote-exports
+                  downloadUrl: 'https://minio.example.com/labnote-exports/pdf/...'
+        '400':
+          description: 파일 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 파일이 필요합니다.
+                code: FILE_NO_FILE
+        '401':
+          description: x-internal-secret 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 내부 인증에 실패했습니다.
+                code: UNAUTHORIZED
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/exports/internal/presigned/{fileId}:
+    get:
+      tags:
+        - 내부API
+      summary: 내부 서비스용 Presigned URL 재발급
+      description: |
+        내부 서비스가 저장된 내보내기 파일의 presigned 다운로드 URL을 재발급합니다.
+        `x-internal-secret` 헤더로 인증합니다.
+        삭제된 파일은 URL을 발급받을 수 없습니다.
+      operationId: internalPresignedUrl
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          description: 파일 UUID
+          schema:
+            type: string
+            format: uuid
+          example: file-uuid-789
+      responses:
+        '200':
+          description: Presigned URL 발급 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkWrapper'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InternalPresignedResponse'
+              example:
+                ok: true
+                data:
+                  url: 'https://minio.example.com/labnote-exports/pdf/...'
+                  expiresAt: '2026-03-26T00:00:00.000Z'
+        '401':
+          description: x-internal-secret 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 내부 인증에 실패했습니다.
+                code: UNAUTHORIZED
+        '404':
+          description: 파일을 찾을 수 없거나 삭제된 파일
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error: 파일을 찾을 수 없습니다.
+                code: FILE_NOT_FOUND
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        api-gateway가 JWT를 검증한 후 내부 헤더를 주입합니다.
+        클라이언트는 `Authorization: Bearer <JWT 토큰>`을 전송합니다.
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: x-internal-secret
+      description: 서비스 간 내부 통신 인증 헤더. 환경변수 `INTERNAL_SECRET` 값과 일치해야 합니다.
+
+  parameters:
+    FileId:
+      name: id
+      in: path
+      required: true
+      description: 파일 UUID
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      description: 내보내기 작업 UUID
+      schema:
+        type: string
+        format: uuid
+      example: job-uuid-123
+
+  responses:
+    Unauthorized:
+      description: 인증 실패 (JWT 없거나 만료됨)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 인증이 필요합니다.
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: 권한 없음 (필요한 권한 미보유)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 접근 권한이 없습니다.
+            code: FORBIDDEN
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 파일을 찾을 수 없습니다.
+            code: FILE_NOT_FOUND
+
+    ValidationError:
+      description: 요청 유효성 검사 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 유효성 검사에 실패했습니다.
+            code: VALIDATION_ERROR
+
+    InternalError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error: 서버 내부 오류가 발생했습니다.
+            code: INTERNAL_ERROR
+
+  schemas:
+
+    # ── 공통 ─────────────────────────────────────────────────────
+
+    OkWrapper:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
+        - code
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 사람이 읽을 수 있는 오류 메시지
+          example: 파일을 찾을 수 없습니다.
+        code:
+          type: string
+          description: 기계 처리용 오류 코드
+          example: FILE_NOT_FOUND
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+        - db
+        - storage
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+          description: 서비스 전체 상태
+        service:
+          type: string
+          example: file-service
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-03-25T00:00:00.000Z'
+        db:
+          type: string
+          enum:
+            - ok
+            - error
+          description: PostgreSQL 연결 상태
+        storage:
+          type: string
+          enum:
+            - ok
+            - error
+          description: MinIO 연결 상태
+
+    StorageInfo:
+      type: object
+      required:
+        - type
+        - bucket
+        - exportsBucket
+      properties:
+        type:
+          type: string
+          description: 스토리지 제공자 유형
+          example: minio
+        bucket:
+          type: string
+          description: 기본 파일 버킷 이름
+          example: labnote-files
+        exportsBucket:
+          type: string
+          description: 내보내기 파일 버킷 이름
+          example: labnote-exports
+
+    # ── 파일 ─────────────────────────────────────────────────────
+
+    LinkedEntityType:
+      type: string
+      enum:
+        - note
+        - template
+        - inventory
+      description: 파일이 연결된 엔티티 유형
+
+    UploadFileRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: 업로드할 파일 (최대 50MB)
+        linkedEntityType:
+          $ref: '#/components/schemas/LinkedEntityType'
+        linkedEntityId:
+          type: string
+          description: 파일이 연결될 엔티티 ID (노트 UUID, 인벤토리 UUID 등)
+          example: note-uuid-456
+
+    FileUploadResult:
+      type: object
+      required:
+        - id
+        - key
+        - originalName
+        - mimeType
+        - sizeBytes
+        - storagePath
+        - uploadedBy
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 파일 UUID (DB 기본키)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        key:
+          type: string
+          description: MinIO 오브젝트 키 (`{uuid}.{ext}` 형식)
+          example: 550e8400-e29b-41d4-a716-446655440000.pdf
+        originalName:
+          type: string
+          description: 원본 파일명
+          example: 실험보고서.pdf
+        mimeType:
+          type: string
+          description: 파일 MIME 타입
+          example: application/pdf
+        sizeBytes:
+          type: integer
+          description: 파일 크기(바이트)
+          example: 204800
+        storagePath:
+          type: string
+          description: 버킷/오브젝트키 형식의 스토리지 경로
+          example: labnote-files/550e8400-e29b-41d4-a716-446655440000.pdf
+        uploadedBy:
+          type: string
+          description: 업로더 사용자 ID
+          example: user-uuid-123
+        refType:
+          $ref: '#/components/schemas/LinkedEntityType'
+          nullable: true
+        refId:
+          type: string
+          nullable: true
+          description: 연결된 엔티티 ID
+          example: note-uuid-456
+        createdAt:
+          type: string
+          format: date-time
+          description: 업로드 시각 (ISO 8601)
+          example: '2026-03-25T00:00:00.000Z'
+
+    FileMeta:
+      type: object
+      required:
+        - id
+        - key
+        - originalName
+        - storagePath
+        - uploadedBy
+      properties:
+        id:
+          type: string
+          description: 파일 UUID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        key:
+          type: string
+          description: MinIO 오브젝트 키
+          example: 550e8400-e29b-41d4-a716-446655440000.pdf
+        originalName:
+          type: string
+          description: 원본 파일명
+          example: 실험보고서.pdf
+        mimeType:
+          type: string
+          nullable: true
+          description: 파일 MIME 타입
+          example: application/pdf
+        sizeBytes:
+          type: integer
+          nullable: true
+          description: 파일 크기(바이트)
+          example: 204800
+        storagePath:
+          type: string
+          description: 버킷/오브젝트키 형식의 스토리지 경로
+          example: labnote-files/550e8400-e29b-41d4-a716-446655440000.pdf
+        uploadedBy:
+          type: string
+          description: 업로더 사용자 ID
+          example: user-uuid-123
+        refType:
+          $ref: '#/components/schemas/LinkedEntityType'
+          nullable: true
+        refId:
+          type: string
+          nullable: true
+          description: 연결된 엔티티 ID
+          example: note-uuid-456
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: DB 등록 시각 (레거시 파일은 null)
+          example: '2026-03-25T00:00:00.000Z'
+        lastModified:
+          type: string
+          format: date-time
+          nullable: true
+          description: MinIO 최종 수정 시각 (레거시 파일만 제공, DB 파일은 null)
+          example: null
+
+    PresignedUploadResponse:
+      type: object
+      required:
+        - fileId
+        - key
+        - uploadUrl
+        - expiresAt
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: 업로드에 사용할 파일 UUID (이후 조회/삭제에 사용)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        key:
+          type: string
+          description: MinIO 오브젝트 키
+          example: 550e8400-e29b-41d4-a716-446655440000.xlsx
+        uploadUrl:
+          type: string
+          format: uri
+          description: 파일을 PUT 요청으로 업로드할 presigned URL (15분 유효)
+          example: 'https://minio.example.com/labnote-files/550e8400...?X-Amz-Signature=...'
+        expiresAt:
+          type: string
+          format: date-time
+          description: presigned URL 만료 시각 (ISO 8601)
+          example: '2026-03-25T00:15:00.000Z'
+
+    DownloadUrlResponse:
+      type: object
+      required:
+        - key
+        - url
+        - expiresAt
+      properties:
+        key:
+          type: string
+          description: MinIO 오브젝트 키
+          example: 550e8400-e29b-41d4-a716-446655440000.pdf
+        url:
+          type: string
+          format: uri
+          description: presigned 다운로드 URL
+          example: 'https://minio.example.com/labnote-files/550e8400...?X-Amz-Signature=...'
+        expiresAt:
+          type: string
+          format: date-time
+          description: URL 만료 시각 (ISO 8601)
+          example: '2026-03-25T01:00:00.000Z'
+
+    DeleteFileResponse:
+      type: object
+      required:
+        - ok
+        - id
+        - message
+      properties:
+        ok:
+          type: boolean
+          example: true
+        id:
+          type: string
+          description: 삭제된 파일 UUID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        key:
+          type: string
+          description: 삭제된 MinIO 오브젝트 키 (레거시 파일 삭제 시에만 포함)
+          example: 550e8400-e29b-41d4-a716-446655440000.pdf
+        message:
+          type: string
+          example: 파일이 삭제되었습니다.
+
+    # ── 내보내기 ─────────────────────────────────────────────────
+
+    ExportStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSING
+        - COMPLETED
+        - FAILED
+      description: |
+        내보내기 작업 상태:
+        - `PENDING`: 큐에 등록됨, 처리 대기 중
+        - `PROCESSING`: 처리 중
+        - `COMPLETED`: 완료, 결과 파일 다운로드 가능
+        - `FAILED`: 실패 (errorMessage 참조)
+
+    CreatePdfExportRequest:
+      type: object
+      required:
+        - type
+        - noteId
+      properties:
+        type:
+          type: string
+          enum:
+            - pdf
+          description: 내보내기 유형
+        noteId:
+          type: string
+          minLength: 1
+          description: PDF로 변환할 노트 UUID
+          example: note-uuid-456
+
+    CreateZipExportRequest:
+      type: object
+      required:
+        - type
+        - scope
+      properties:
+        type:
+          type: string
+          enum:
+            - zip
+          description: 내보내기 유형
+        scope:
+          type: string
+          enum:
+            - all
+            - project
+            - selected
+          description: |
+            ZIP 내보내기 범위:
+            - `all`: 조직 내 모든 노트
+            - `project`: 특정 프로젝트의 노트 (projectId 필수)
+            - `selected`: 선택한 노트 목록 (noteIds 필수)
+        projectId:
+          type: string
+          description: 프로젝트 UUID (scope가 "project"일 때 필수)
+          example: project-uuid-789
+        noteIds:
+          type: array
+          items:
+            type: string
+          description: 노트 UUID 목록 (scope가 "selected"일 때 필수)
+          example:
+            - note-uuid-001
+            - note-uuid-002
+
+    CreateExportRequest:
+      oneOf:
+        - $ref: '#/components/schemas/CreatePdfExportRequest'
+        - $ref: '#/components/schemas/CreateZipExportRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          pdf: '#/components/schemas/CreatePdfExportRequest'
+          zip: '#/components/schemas/CreateZipExportRequest'
+
+    ExportJob:
+      type: object
+      required:
+        - id
+        - type
+        - status
+        - params
+        - retryCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 작업 UUID
+          example: job-uuid-123
+        type:
+          type: string
+          enum:
+            - pdf
+            - zip
+          description: 내보내기 유형
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        params:
+          type: object
+          description: 작업 파라미터 (type에 따라 구조가 다름)
+          example:
+            noteId: note-uuid-456
+        resultFileId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 완료된 결과 파일 UUID (COMPLETED 상태에서만 존재)
+          example: file-uuid-789
+        errorMessage:
+          type: string
+          nullable: true
+          description: 오류 메시지 (FAILED 상태에서만 존재)
+          example: null
+        retryCount:
+          type: integer
+          description: 재시도 횟수
+          example: 0
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 작업 시작 시각 (ISO 8601)
+          example: '2026-03-25T00:01:00.000Z'
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 작업 완료 시각 (ISO 8601)
+          example: '2026-03-25T00:02:00.000Z'
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 결과 파일 만료 시각 (ISO 8601). PDF는 24시간, ZIP은 48시간.
+          example: '2026-03-26T00:00:00.000Z'
+        createdAt:
+          type: string
+          format: date-time
+          description: 작업 생성 시각 (ISO 8601)
+          example: '2026-03-25T00:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: 작업 최종 수정 시각 (ISO 8601)
+          example: '2026-03-25T00:02:00.000Z'
+
+    # ── 내부 API ─────────────────────────────────────────────────
+
+    InternalUploadRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: 업로드할 파일 (최대 200MB)
+        jobId:
+          type: string
+          description: 연결된 내보내기 작업 UUID
+          example: job-uuid-123
+        format:
+          type: string
+          enum:
+            - pdf
+            - zip
+          description: 파일 형식 (오브젝트 키 경로에 사용)
+          example: pdf
+        source:
+          type: string
+          description: 파일 출처 서비스 식별자
+          default: internal
+          example: signature-audit
+
+    InternalUploadResult:
+      type: object
+      required:
+        - fileId
+        - objectKey
+        - bucket
+        - downloadUrl
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: DB에 저장된 파일 UUID
+          example: file-uuid-789
+        objectKey:
+          type: string
+          description: MinIO 오브젝트 키 (`{format}/{jobId}/export-{date}.{ext}` 형식)
+          example: pdf/job-uuid-123/export-2026-03-25.pdf
+        bucket:
+          type: string
+          description: 저장된 버킷 이름
+          example: labnote-exports
+        downloadUrl:
+          type: string
+          format: uri
+          description: presigned 다운로드 URL (유효시간 24시간)
+          example: 'https://minio.example.com/labnote-exports/pdf/...'
+
+    InternalPresignedResponse:
+      type: object
+      required:
+        - url
+        - expiresAt
+      properties:
+        url:
+          type: string
+          format: uri
+          description: presigned 다운로드 URL
+          example: 'https://minio.example.com/labnote-exports/pdf/job-uuid-123/export-2026-03-25.pdf?X-Amz-Signature=...'
+        expiresAt:
+          type: string
+          format: date-time
+          description: URL 만료 시각 (ISO 8601)
+          example: '2026-03-26T00:00:00.000Z'

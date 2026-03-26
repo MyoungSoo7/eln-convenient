@@ -1,56 +1,25 @@
-import express from 'express';
-import cors from 'cors';
-import swaggerUi from 'swagger-ui-express';
-import signatureRoutes from './routes/signature.routes';
-import auditRoutes from './routes/audit.routes';
-import exportRoutes from './routes/export.routes';
-import notificationRoutes from './routes/notification.routes';
-import { swaggerDocument } from './swagger';
+import '@lab/shared/dist/tracing';
+import { buildApp } from './app';
+import { setupProcessHandlers, createLogger } from '@lab/shared';
 import './workers/export.worker'; // BullMQ 워커 자동 시작
-import prisma from './lib/prisma';
-import { redisConnection } from './lib/queue';
-import { globalErrorHandler, setupProcessHandlers, createHttpLogger } from '@lab/shared';
 
-const { logger, httpLogger } = createHttpLogger('signature-audit-service');
+const logger = createLogger('signature-audit-service');
 
-setupProcessHandlers('signature-audit-service', logger, {
-  onShutdown: async () => {
-    await redisConnection.quit().catch(() => {});
-    await prisma.$disconnect();
-  },
-});
+setupProcessHandlers('signature-audit-service', logger);
 
-const app = express();
-const PORT = process.env.PORT || 8003;
+const PORT = Number(process.env.PORT) || 8003;
+const HOST = '0.0.0.0';
 
-app.use(cors());
-app.use(express.json());
-app.use(httpLogger);
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+async function main(): Promise<void> {
+  const app = buildApp();
+  try {
+    await app.listen({ port: PORT, host: HOST });
+    logger.info({ port: PORT }, '서버 시작');
+    logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
+  } catch (err) {
+    logger.error(err);
+    process.exit(1);
+  }
+}
 
-app.get('/health', async (_req, res) => {
-  let dbOk = false;
-  try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch {}
-  res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
-    service: 'signature-audit-service',
-    timestamp: new Date().toISOString(),
-    db: dbOk ? 'ok' : 'error',
-  });
-});
-
-// audit/export를 먼저 등록 — /api/audit/internal 등 인증 없는 내부 라우트가
-// signatureRoutes의 requireAuth에 의해 차단되지 않도록 순서 보장
-app.use('/api/audit', auditRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api', signatureRoutes);
-
-app.use(globalErrorHandler('signature-audit-service', logger));
-
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, '서버 시작');
-  logger.info({ url: `http://localhost:${PORT}/docs` }, 'Swagger UI');
-});
-
-export default app;
+main();

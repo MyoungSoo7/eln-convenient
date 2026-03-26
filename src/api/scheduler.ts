@@ -3,7 +3,6 @@
  * 경로: /api/scheduler/*
  */
 import apiClient, { type ApiResponse } from './client';
-import { mockBookings } from '@/lib/mockData';
 
 export interface Resource {
   id: string;
@@ -35,18 +34,8 @@ export interface BackendBooking {
   };
 }
 
-const mockResources: Resource[] = [
-  { id: 'res-default-equipment', name: '기본장비', type: 'equipment', location: 'A동 101호' },
-  { id: 'res-default-room', name: '기본 회의실', type: 'room', location: 'B동 201호', capacity: 10 },
-];
-
 export async function listResources(): Promise<ApiResponse<Resource[]>> {
-  try {
-    const res = await apiClient.get<Resource[]>('/scheduler/resources');
-    return res;
-  } catch {
-    return { ok: true, data: mockResources };
-  }
+  return apiClient.get<Resource[]>('/scheduler/resources');
 }
 
 export interface ListBookingsParams {
@@ -77,22 +66,7 @@ export async function listBookings(params?: ListBookingsParams): Promise<ApiResp
     const res = await apiClient.get<BackendBooking[]>('/scheduler/bookings', Object.keys(query).length ? query : undefined);
     return res as ApiResponse<BackendBooking[]> & { total?: number; page?: number; limit?: number };
   } catch {
-    // mock fallback: 백엔드 형식으로 변환
-    const today = new Date().toISOString().slice(0, 10);
-    return {
-      ok: true,
-      data: mockBookings.map((b) => ({
-        id: b.id,
-        resourceId: b.id,
-        userId: b.user,
-        title: `${b.resourceName} 예약`,
-        startAt: `${b.date}T${b.startTime}:00`,
-        endAt: `${b.date}T${b.endTime}:00`,
-        status: b.status.toUpperCase() as BackendBooking['status'],
-        createdAt: `${today}T00:00:00.000Z`,
-        resource: { id: b.id, name: b.resourceName, type: b.resourceType },
-      })),
-    };
+    return { ok: false, data: [], error: '예약 목록을 불러올 수 없습니다.' };
   }
 }
 

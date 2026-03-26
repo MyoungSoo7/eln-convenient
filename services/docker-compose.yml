@@ -12,6 +12,17 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: labnote-postgres
+    command: >
+      postgres
+      -c max_connections=30
+      -c shared_buffers=256MB
+      -c effective_cache_size=512MB
+      -c work_mem=8MB
+      -c maintenance_work_mem=128MB
+      -c wal_buffers=4MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c log_min_duration_statement=1000
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER를 설정하세요}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 설정하세요}
@@ -32,6 +43,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: labnote-redis
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --save "300 1"
+      --tcp-keepalive 60
+      --timeout 300
+      --databases 4
     ports:
       - "6379:6379"
     volumes:
@@ -67,7 +86,7 @@ services:
     environment:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m"
     entrypoint:
       - /bin/bash
       - -c
@@ -85,33 +104,6 @@ services:
       retries: 5
       start_period: 60s
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
-    container_name: labnote-keycloak
-    environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN을 설정하세요}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD를 설정하세요}
-      - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://postgres:5432/labnote?characterEncoding=UTF-8
-      - KC_DB_USERNAME=${POSTGRES_USER:-labnote}
-      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 설정하세요}
-      - KC_DB_SCHEMA=keycloak
-      - KC_HOSTNAME_STRICT=false
-      - KC_HTTP_ENABLED=true
-    command: start-dev --import-realm
-    ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
-    volumes:
-      - ./keycloak/realm-labnote.json:/opt/keycloak/data/import/realm-labnote.json:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
 
   # ═══════════════════════════════════════════
   #  백엔드 서비스
@@ -126,17 +118,21 @@ services:
       - "8001"
     environment:
       - PORT=8001
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-Admin1234!}
       - RESEARCHER_INITIAL_PASSWORD=${RESEARCHER_INITIAL_PASSWORD:-Researcher1234!}
       - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:-Reviewer1234!}
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=auth-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
@@ -154,18 +150,22 @@ services:
       - "8002"
     environment:
       - PORT=8002
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=eln&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=eln&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
       - SEARCH_SERVICE_URL=http://search-service:8006
       - SEED_ON_START=true
+      - OTEL_SERVICE_NAME=eln-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       search-service:
         condition: service_started
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/health || exit 1"]
       interval: 10s
@@ -183,12 +183,14 @@ services:
       - "8003"
     environment:
       - PORT=8003
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - ELN_SERVICE_URL=http://eln-service:8002
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=signature-audit-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +201,8 @@ services:
       auth-service:
         condition: service_healthy
       file-service:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8003/health || exit 1"]
@@ -216,10 +220,12 @@ services:
       - "8004"
     environment:
       - PORT=8004
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=inventory-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
@@ -227,6 +233,8 @@ services:
         condition: service_healthy
       search-service:
         condition: service_started
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8004/health || exit 1"]
       interval: 10s
@@ -243,10 +251,14 @@ services:
       - "8005"
     environment:
       - PORT=8005
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=scheduler-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8005/health || exit 1"]
@@ -265,15 +277,19 @@ services:
     environment:
       - PORT=8006
       - OPENSEARCH_URL=http://opensearch:9200
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=search-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8006/health || exit 1"]
@@ -291,6 +307,7 @@ services:
       - "8008"
     environment:
       - PORT=8008
+      - STORAGE_TYPE=${STORAGE_TYPE:-minio}
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?}
@@ -298,13 +315,17 @@ services:
       - MINIO_BUCKET=labnote-files
       - MINIO_EXPORTS_BUCKET=labnote-exports
       - MINIO_PUBLIC_URL=http://localhost:9000
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=5&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=file-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       minio:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8008/health || exit 1"]
@@ -322,8 +343,12 @@ services:
       - PORT=8009
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - REDIS_URL=redis://redis:6379
+      - OTEL_SERVICE_NAME=collab-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       redis:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8009/health || exit 1"]
@@ -364,9 +389,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - REDIS_URL=redis://redis:6379
-      - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
-      - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/labnote/protocol/openid-connect/certs
-      - KEYCLOAK_ISSUER=http://keycloak:8080/realms/labnote
+      - OTEL_SERVICE_NAME=api-gateway
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
       redis:
         condition: service_healthy
@@ -386,6 +410,8 @@ services:
         condition: service_healthy
       collab-service:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
       interval: 10s
@@ -393,9 +419,35 @@ services:
       retries: 5
       start_period: 20s
 
+  # ═══════════════════════════════════════════
+  #  개발 도구
+  # ═══════════════════════════════════════════
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: labnote-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: labnote-dozzle
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   opensearch_data:
-  keycloak_data:

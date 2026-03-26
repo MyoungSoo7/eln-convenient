@@ -6,6 +6,9 @@ import prismaPlugin from './plugins/prisma';
 import healthRoute from './routes/health';
 import resourcesRoute from './routes/resources';
 import bookingsRoute from './routes/bookings';
+import { buildFastifyErrorHandler, createLogger } from '@lab/shared';
+
+const serviceLogger = createLogger('scheduler-service');
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -13,7 +16,7 @@ export function buildApp(): FastifyInstance {
   });
 
   // ── 플러그인 ─────────────────────────────────────────────
-  app.register(cors, { origin: true });
+  app.register(cors, { origin: false });
 
   app.register(swagger, {
     openapi: {
@@ -42,28 +45,8 @@ export function buildApp(): FastifyInstance {
   app.register(resourcesRoute, { prefix: '/api/scheduler' });
   app.register(bookingsRoute, { prefix: '/api/scheduler' });
 
-  // ── 전역 에러 핸들러 (통일된 ErrorResponse 포맷) ─────────
-  app.setErrorHandler((error, _request, reply) => {
-    const statusCode = error.statusCode ?? 500;
-
-    // Fastify 스키마 검증 실패 (400)
-    if (error.validation) {
-      const details = error.validation.map((v) => v.message ?? String(v));
-      return reply.code(400).send({
-        ok: false,
-        error: '요청 데이터가 올바르지 않습니다.',
-        code: 'ERR_VALIDATION',
-        details,
-      });
-    }
-
-    app.log.error(error);
-    return reply.code(statusCode).send({
-      ok: false,
-      error: statusCode === 500 ? '서버 내부 오류가 발생했습니다.' : error.message,
-      code: `ERR_${statusCode}`,
-    });
-  });
+  // ── 전역 에러 핸들러 ─────────────────────────────────────
+  app.setErrorHandler(buildFastifyErrorHandler(serviceLogger));
 
   return app;
 }

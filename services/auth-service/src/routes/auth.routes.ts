@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { FastifyPluginAsync } from 'fastify';
 import * as ctrl from '../controllers/auth.controller';
 import { requireAuth, requireRole, requireInternalSecret } from '../middlewares/auth.middleware';
 import { validate, RoleName } from '@lab/shared';
@@ -7,57 +7,57 @@ import {
   CreateOrgSchema, UpdateOrgSchema,
   CreateTeamSchema, UpdateTeamSchema, AddTeamMemberSchema,
   CreateRoleSchema, UpdatePermissionsSchema,
-  VerifyPasswordSchema, SsoHookSchema, UuidParamsSchema,
+  VerifyPasswordSchema, UuidParamsSchema,
 } from '../dtos/auth.dto';
 
-const router = Router();
+const authRoutes: FastifyPluginAsync = async (app) => {
+  // ─── 공개 (인증 불필요) ───────────────────────────
+  app.post('/login', { preHandler: [validate({ body: LoginSchema })] }, ctrl.login);
+  app.post('/register', { preHandler: [validate({ body: RegisterSchema })] }, ctrl.register);
 
-// ─── 공개 (인증 불필요) ───────────────────────────
-router.post('/login', validate({ body: LoginSchema }), ctrl.login);
-router.post('/register', validate({ body: RegisterSchema }), ctrl.register);
+  // ─── 내부 서비스 전용 (x-internal-secret 필수) ───
+  app.post('/internal/verify-password', { preHandler: [requireInternalSecret, validate({ body: VerifyPasswordSchema })] }, ctrl.verifyPassword);
+  app.get('/internal/role-permissions', { preHandler: [requireInternalSecret] }, ctrl.getRolePermissions);
 
-// ─── 내부 서비스 전용 (x-internal-secret 필수) ───
-router.post('/internal/verify-password', requireInternalSecret, validate({ body: VerifyPasswordSchema }), ctrl.verifyPassword);
-router.get('/internal/role-permissions', requireInternalSecret, ctrl.getRolePermissions);
+  // ─── 토큰 갱신 ──
+  app.post('/refresh', ctrl.refreshToken);
 
-// ─── SSO 훅 (Keycloak → auth-service, 시크릿으로 보호) ───
-router.post('/sso-hook', validate({ body: SsoHookSchema }), ctrl.ssoHook);
+  // ─── 이하 모든 라우트: 로그인 필요 ──────────────────
+  // Fastify에서는 register로 스코프를 분리하여 addHook 적용
+  app.register(async (authed) => {
+    authed.addHook('onRequest', requireAuth);
 
-// ─── 토큰 갱신 (만료된 access token으로도 접근 가능 — API Gateway PUBLIC_PATHS) ──
-router.post('/refresh', ctrl.refreshToken);
+    // 내 정보
+    authed.post('/logout', ctrl.logout);
+    authed.get('/me', ctrl.getMe);
 
-// ─── 이하 모든 라우트: 로그인 필요 ──────────────────
-router.use(requireAuth);
+    // 조직
+    authed.get('/orgs', ctrl.getOrgs);
+    authed.post('/orgs', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateOrgSchema })] }, ctrl.createOrg);
+    authed.put('/orgs/:id', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateOrgSchema })] }, ctrl.updateOrg);
+    authed.delete('/orgs/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteOrg);
 
-// 내 정보
-router.post('/logout', ctrl.logout);
-router.get('/me', ctrl.getMe);
+    // 팀
+    authed.get('/teams', ctrl.getTeams);
+    authed.post('/teams', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateTeamSchema })] }, ctrl.createTeam);
+    authed.put('/teams/:id', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateTeamSchema })] }, ctrl.updateTeam);
+    authed.delete('/teams/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteTeam);
+    authed.get('/teams/:id/members', ctrl.getTeamMembers);
+    authed.post('/teams/:id/members', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: AddTeamMemberSchema })] }, ctrl.addTeamMember);
+    authed.delete('/teams/:id/members/:userId', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.removeTeamMember);
 
-// 조직 (읽기: 인증만, 쓰기/삭제: admin)
-router.get('/orgs', ctrl.getOrgs);
-router.post('/orgs', requireRole(RoleName.ADMIN), validate({ body: CreateOrgSchema }), ctrl.createOrg);
-router.put('/orgs/:id', requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateOrgSchema }), ctrl.updateOrg);
-router.delete('/orgs/:id', requireRole(RoleName.ADMIN), ctrl.deleteOrg);
+    // 사용자
+    authed.get('/users', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.getUsers);
+    authed.post('/users', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateUserSchema })] }, ctrl.createUser);
+    authed.put('/users/:id', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateUserSchema })] }, ctrl.updateUser);
+    authed.delete('/users/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteUser);
 
-// 팀 (읽기: 인증만, 쓰기/삭제: admin)
-router.get('/teams', ctrl.getTeams);
-router.post('/teams', requireRole(RoleName.ADMIN), validate({ body: CreateTeamSchema }), ctrl.createTeam);
-router.put('/teams/:id', requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateTeamSchema }), ctrl.updateTeam);
-router.delete('/teams/:id', requireRole(RoleName.ADMIN), ctrl.deleteTeam);
-router.get('/teams/:id/members', ctrl.getTeamMembers);
-router.post('/teams/:id/members', requireRole(RoleName.ADMIN), validate({ body: AddTeamMemberSchema }), ctrl.addTeamMember);
-router.delete('/teams/:id/members/:userId', requireRole(RoleName.ADMIN), ctrl.removeTeamMember);
+    // 역할
+    authed.get('/roles', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.getRoles);
+    authed.post('/roles', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateRoleSchema })] }, ctrl.createRole);
+    authed.put('/roles/:id/permissions', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdatePermissionsSchema })] }, ctrl.updatePermissions);
+    authed.delete('/roles/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteRole);
+  });
+};
 
-// 사용자 (읽기: admin, 쓰기/삭제: admin)
-router.get('/users', requireRole(RoleName.ADMIN), ctrl.getUsers);
-router.post('/users', requireRole(RoleName.ADMIN), validate({ body: CreateUserSchema }), ctrl.createUser);
-router.put('/users/:id', requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateUserSchema }), ctrl.updateUser);
-router.delete('/users/:id', requireRole(RoleName.ADMIN), ctrl.deleteUser);
-
-// 역할 (읽기: admin, 쓰기/삭제: admin)
-router.get('/roles', requireRole(RoleName.ADMIN), ctrl.getRoles);
-router.post('/roles', requireRole(RoleName.ADMIN), validate({ body: CreateRoleSchema }), ctrl.createRole);
-router.put('/roles/:id/permissions', requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdatePermissionsSchema }), ctrl.updatePermissions);
-router.delete('/roles/:id', requireRole(RoleName.ADMIN), ctrl.deleteRole);
-
-export default router;
+export default authRoutes;

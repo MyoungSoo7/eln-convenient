@@ -1,3 +1,4 @@
+import './tracing';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -21,6 +22,16 @@ process.on('uncaughtException', (err) => {
 const app = Fastify({ logger: true });
 
 async function bootstrap() {
+  // 글로벌 에러 핸들러 — { ok, error } 통일 포맷
+  app.setErrorHandler((error, _request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    app.log.error(error);
+    reply.code(statusCode).send({
+      ok: false,
+      error: statusCode === 500 ? '서버 내부 오류가 발생했습니다.' : error.message,
+    });
+  });
+
   // 미들웨어
   await app.register(helmet);
   // CORS — credentials: true 시 origin '*' 불가, 명시적 origin 필요

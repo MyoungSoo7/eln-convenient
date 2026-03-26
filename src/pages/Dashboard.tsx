@@ -1,12 +1,13 @@
-import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2, User, Users, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardData } from "@/api/dashboard";
-import { mockNotes, mockBookings, mockAuditLog, mockInventory } from "@/lib/mockData";
+import { getDashboardData, getPersonalDashboard, getOrgDashboard } from "@/api/dashboard";
+import { getToken } from "@/lib/authToken";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -15,10 +16,45 @@ const statusColors: Record<string, string> = {
   locked: "bg-destructive/10 text-destructive",
 };
 
+type DashboardTab = 'personal' | 'org';
+
+/** JWT에서 role을 추출하는 헬퍼 */
+function getUserRole(): string {
+  try {
+    const token = getToken();
+    if (!token) return 'viewer';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.role || 'viewer';
+  } catch { return 'viewer'; }
+}
+
 export default function Dashboard() {
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
+  const userRole = getUserRole();
+  const isAdmin = userRole === 'admin';
 
+  const [activeTab, setActiveTab] = useState<DashboardTab>('personal');
+
+  // 개인 대시보드
+  const { data: personalRes, isLoading: personalLoading } = useQuery({
+    queryKey: ['dashboard', 'personal'],
+    queryFn: getPersonalDashboard,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: activeTab === 'personal',
+  });
+
+  // 조직 대시보드 (admin만)
+  const { data: orgRes, isLoading: orgLoading } = useQuery({
+    queryKey: ['dashboard', 'org'],
+    queryFn: getOrgDashboard,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: activeTab === 'org' && isAdmin,
+  });
+
+  // 기존 호환 대시보드 (개인 탭에서 폴백)
   const { data: dashboardRes, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: getDashboardData,
@@ -26,13 +62,25 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-  const apiData = dashboardRes?.ok ? dashboardRes.data : null;
+  const apiData = activeTab === 'org' && orgRes?.ok
+    ? orgRes.data
+    : dashboardRes?.ok ? dashboardRes.data : null;
 
-  // stats 카드: API 데이터 우선, fallback mock
-  const noteTotal = apiData?.notes?.total ?? mockNotes.length;
-  const noteInProgress = apiData?.notes?.in_progress ?? mockNotes.filter(n => n.status === 'in_progress').length;
-  const invTotal = apiData?.inventory?.total ?? mockInventory.length;
-  const pendingBookings = apiData?.scheduler?.pendingBookings ?? mockBookings.filter(b => b.status === 'pending').length;
+  const personalData = personalRes?.ok ? personalRes.data : null;
+
+  // stats 카드: 탭에 따라 다른 데이터
+  const noteTotal = activeTab === 'personal'
+    ? (personalData?.myNotes?.total ?? apiData?.notes?.total ?? 0)
+    : (apiData?.notes?.total ?? 0);
+  const noteInProgress = activeTab === 'personal'
+    ? (personalData?.myNotes?.inProgress ?? apiData?.notes?.in_progress ?? 0)
+    : (apiData?.notes?.in_progress ?? 0);
+  const invTotal = apiData?.inventory?.total ?? 0;
+  const pendingBookings = activeTab === 'personal'
+    ? (personalData?.pendingActions?.unreadNotifications ?? 0)
+    : (apiData?.scheduler?.pendingBookings ?? 0);
+
+  const currentLoading = activeTab === 'personal' ? personalLoading : (activeTab === 'org' ? orgLoading : isLoading);
 
   const stats = [
     { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip') },
@@ -41,32 +89,20 @@ export default function Dashboard() {
     { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip') },
   ];
 
-  // 최근 노트: API → mock fallback
-  const recentNotes = apiData?.recentNotes?.length
-    ? apiData.recentNotes.slice(0, 4)
-    : mockNotes.slice(0, 4);
+  // 최근 노트
+  const recentNotes = apiData?.recentNotes?.slice(0, 4) ?? [];
 
-  // 예약 일정: API → mock fallback
-  const upcomingBookings = apiData?.upcomingBookings?.length
-    ? apiData.upcomingBookings.slice(0, 4)
-    : null;
-  const bookingsFromMock = !upcomingBookings ? mockBookings.slice(0, 4) : null;
+  // 예약 일정
+  const upcomingBookings = apiData?.upcomingBookings?.slice(0, 4) ?? [];
 
-  // 감사로그: API → mock fallback
-  const auditLogs = apiData?.recentActivity?.length
-    ? apiData.recentActivity.slice(0, 4)
-    : null;
-  const auditFromMock = !auditLogs ? mockAuditLog.slice(0, 4) : null;
+  // 감사로그
+  const auditLogs = apiData?.recentActivity?.slice(0, 4) ?? [];
 
-  // 만료/주의 항목: API → mock fallback
+  // 만료/주의 항목
   const alertItems = [
     ...(apiData?.lowStockItems ?? []),
     ...(apiData?.expiringItems ?? []),
   ];
-  const hasAlertItems = alertItems.length > 0;
-  const alertFromMock = !hasAlertItems
-    ? mockInventory.filter(i => i.status === 'expired' || i.status === 'depleted')
-    : null;
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -74,12 +110,40 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           {t('title')}
           <HelpTooltip text={t('titleTooltip')} />
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {currentLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         {isError && (
           <p className="text-xs text-destructive mt-1">{tc('error.serverFallback')}</p>
         )}
+
+        {/* 대시보드 탭 */}
+        <div className="flex gap-1 mt-4 border-b">
+          <button
+            onClick={() => setActiveTab('personal')}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'personal'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <User className="h-4 w-4" />
+            {t('tabs.personal', '내 대시보드')}
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('org')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'org'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              {t('tabs.org', '조직 대시보드')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -118,7 +182,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentNotes.map((note) => (
+            {recentNotes.length > 0 ? recentNotes.map((note) => (
               <Link key={note.id} to={`/notes/${note.id}`} className="flex items-start justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors group">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{note.title}</p>
@@ -132,7 +196,9 @@ export default function Dashboard() {
                   {tc(`status.${note.status}`)}
                 </Badge>
               </Link>
-            ))}
+            )) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('emptyNotes')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -148,7 +214,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {upcomingBookings ? upcomingBookings.map((b) => {
+            {upcomingBookings.length > 0 ? upcomingBookings.map((b) => {
               const startDate = new Date(b.startAt);
               const endDate = new Date(b.endAt);
               const dateStr = startDate.toLocaleDateString('ko-KR');
@@ -169,20 +235,9 @@ export default function Dashboard() {
                   </Badge>
                 </div>
               );
-            }) : bookingsFromMock?.map((b) => (
-              <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                <div className={`p-2 rounded-lg ${b.status === 'approved' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                  <CalendarDays className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{b.resourceName}</p>
-                  <p className="text-xs text-muted-foreground">{b.date} {b.startTime}–{b.endTime} · {b.user}</p>
-                </div>
-                <Badge variant="secondary" className={`text-[10px] ${b.status === 'approved' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-                  {b.status === 'approved' ? t('approved') : t('pending')}
-                </Badge>
-              </div>
-            ))}
+            }) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('emptyBookings')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -195,7 +250,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {auditLogs ? auditLogs.map((a) => (
+            {auditLogs.length > 0 ? auditLogs.map((a) => (
               <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                 <div className="p-2 rounded-lg bg-muted">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -206,18 +261,9 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">{a.userId ?? a.actorId} · {new Date(a.createdAt).toLocaleString('ko-KR')}</p>
                 </div>
               </div>
-            )) : auditFromMock?.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                <div className="p-2 rounded-lg bg-muted">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{a.action}</p>
-                  <p className="text-xs text-muted-foreground truncate">{a.details}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{a.user} · {a.timestamp}</p>
-                </div>
-              </div>
-            ))}
+            )) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('noActivity')}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -230,7 +276,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {hasAlertItems ? alertItems.slice(0, 5).map((item) => (
+            {alertItems.length > 0 ? alertItems.slice(0, 5).map((item) => (
               <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -240,14 +286,6 @@ export default function Dashboard() {
                     {item.location && ` · ${item.location}`}
                     {'daysLeft' in item && ` · ${(item as any).isExpired ? t('isExpired') : t('daysLeft', { count: (item as any).daysLeft })}`}
                   </p>
-                </div>
-              </div>
-            )) : alertFromMock && alertFromMock.length > 0 ? alertFromMock.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
-                <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.quantity} {item.unit} · {item.location}</p>
                 </div>
               </div>
             )) : (
