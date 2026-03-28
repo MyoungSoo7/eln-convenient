@@ -19,6 +19,30 @@ const BLOCKED_MIME = new Set([
   'application/x-bat',
 ]);
 
+// 위험한 파일 확장자 차단 (클라이언트 MIME 위조 방지)
+const BLOCKED_EXTENSIONS = new Set([
+  'exe', 'bat', 'cmd', 'sh', 'bash', 'com', 'scr', 'pif',
+  'msi', 'dll', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh',
+  'ps1', 'psm1', 'psd1', 'reg', 'inf', 'hta', 'cpl',
+]);
+
+// 매직 바이트 기반 실행 파일 탐지
+const EXECUTABLE_MAGIC_BYTES: Array<{ bytes: number[]; desc: string }> = [
+  { bytes: [0x4D, 0x5A], desc: 'PE/EXE (MZ header)' },
+  { bytes: [0x7F, 0x45, 0x4C, 0x46], desc: 'ELF executable' },
+  { bytes: [0xCA, 0xFE, 0xBA, 0xBE], desc: 'Mach-O (macOS)' },
+  { bytes: [0xCF, 0xFA, 0xED, 0xFE], desc: 'Mach-O 64-bit' },
+];
+
+function isExecutableByMagicBytes(buffer: Buffer): string | null {
+  for (const { bytes, desc } of EXECUTABLE_MAGIC_BYTES) {
+    if (buffer.length >= bytes.length && bytes.every((b, i) => buffer[i] === b)) {
+      return desc;
+    }
+  }
+  return null;
+}
+
 /**
  * UUID로 MinIO key 조회 (upload 시 key = {uuid}.{ext})
  * ?key= 파라미터가 있으면 바로 사용, 없으면 prefix 탐색
@@ -47,6 +71,19 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
   // MIME 타입 차단
   if (BLOCKED_MIME.has(mimetype)) {
     throw new AppError(400, `허용되지 않는 파일 형식입니다: ${mimetype}`, ErrorCode.FILE_BLOCKED_MIME);
+  }
+
+  // 확장자 기반 차단 (클라이언트 MIME 위조 방지)
+  const fileExt = originalName.includes('.') ? originalName.split('.').pop()?.toLowerCase() : '';
+  if (fileExt && BLOCKED_EXTENSIONS.has(fileExt)) {
+    throw new AppError(400, `허용되지 않는 파일 확장자입니다: .${fileExt}`, ErrorCode.FILE_BLOCKED_MIME);
+  }
+
+  // 매직 바이트 기반 실행 파일 탐지 (확장자 변경 우회 방지)
+  const executableType = isExecutableByMagicBytes(buffer);
+  if (executableType) {
+    logger.warn({ originalName, executableType }, '매직 바이트 기반 실행 파일 차단');
+    throw new AppError(400, `실행 파일 업로드가 차단되었습니다: ${executableType}`, ErrorCode.FILE_BLOCKED_MIME);
   }
 
   const fileId = uuidv4();

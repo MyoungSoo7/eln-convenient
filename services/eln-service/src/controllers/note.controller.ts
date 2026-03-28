@@ -116,16 +116,21 @@ export async function getNotes(request: FastifyRequest, reply: FastifyReply) {
     ];
   }
 
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
   const [notes, total] = await Promise.all([
     prisma.note.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
-      skip: (parseInt(page) - 1) * parseInt(limit),
-      take: parseInt(limit),
+      skip: (pageNum - 1) * limitNum,
+      take: limitNum,
+      include: {
+        _count: { select: { attachments: true, links: true } },
+      },
     }),
     prisma.note.count({ where }),
   ]);
-  return { ok: true, data: notes, total, page: parseInt(page) };
+  return { ok: true, data: notes, total, page: pageNum };
 }
 
 /** GET /api/notes/:id */
@@ -711,6 +716,9 @@ export async function getNoteStats(request: FastifyRequest, reply: FastifyReply)
 /** POST /api/notes/batch */
 export async function getNotesBatch(request: FastifyRequest, reply: FastifyReply) {
   const { ids } = request.body as any;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) {
+    throw new AppError(400, 'ids는 1~100개의 배열이어야 합니다.', ErrorCode.VALIDATION_ERROR);
+  }
   const orgId = getOrgId(request.headers);
   const notes = await prisma.note.findMany({
     where: { id: { in: ids }, deletedAt: null, orgId },
