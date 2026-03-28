@@ -1,0 +1,160 @@
+<mxfile host="app.diagrams.net" modified="2026-03-28T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram id="search-flow" name="검색 인덱싱 &amp; 조회">
+    <mxGraphModel dx="1300" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="검색 인덱싱 &amp; 조회 흐름" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=20;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="400" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Indexing Flow ========== -->
+        <mxCell id="idx-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#A5D6A7;dashed=1;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="70" width="1100" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="idx-title" value="1. 인덱싱 흐름 (노트 생성/수정 시 — Fire-and-Forget)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=13;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="50" y="75" width="450" height="20" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="i-eln" value="📝 ELN Service&#xa;노트 생성/수정 완료" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="110" width="150" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="i-search" value="🔍 Search Service&#xa;POST /api/search/index&#xa;x-internal-secret" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="310" y="110" width="160" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="i-os" value="🔎 OpenSearch&#xa;PUT /_doc/{id}&#xa;인덱싱" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="570" y="110" width="130" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="i-redis" value="⚡ Redis&#xa;DEL cache:search:*&#xa;캐시 무효화" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="110" width="130" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ia1" value="fire-and-forget&#xa;.catch(() => {})" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF9800;fontSize=9;fontColor=#FF9800;fontStyle=2;" edge="1" parent="1" source="i-eln" target="i-search">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ia2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="i-search" target="i-os"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ia3" style="endArrow=classic;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="i-os" target="i-redis"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="i-note" value="⚠️ 인덱싱 실패해도 노트 저장은 성공&#xa;(eventual consistency)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=9;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="60" y="180" width="300" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="i-payload" value="인덱싱 데이터:&#xa;{id, title, content, type, docStatus,&#xa; authorId, orgId, tags, visibility, ...}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BDBDBD;fontSize=9;fontFamily=Courier New;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="570" y="175" width="280" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Search Flow ========== -->
+        <mxCell id="srch-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;dashed=1;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="250" width="1300" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="srch-title" value="2. 사용자 검색 흐름 (캐시 + 권한 필터)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=13;fontStyle=1;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="255" width="400" height="20" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-user" value="👤 사용자&#xa;검색어 입력&#xa;+ 필터 설정" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="290" width="120" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-gw" value="🔀 Gateway&#xa;Rate Limit:&#xa;60 req/60s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="230" y="290" width="110" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-svc" value="🔍 Search Service&#xa;requireAuth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="390" y="290" width="130" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sa1" value="GET /api/search?q=실험결과&#xa;&amp;domainTypes=NOTE&amp;page=1" style="endArrow=classic;html=1;strokeWidth=2;fontSize=8;fontColor=#333;" edge="1" parent="1" source="s-user" target="s-gw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s-gw" target="s-svc"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Cache check -->
+        <mxCell id="s-cache-check" value="Redis 캐시 확인&#xa;cache:search:{hash}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="280" width="130" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s-svc" target="s-cache-check"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Cache HIT -->
+        <mxCell id="s-hit" value="✅ 캐시 히트&#xa;즉시 응답" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#4CAF50;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="390" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa-hit" value="HIT" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;fontColor=#4CAF50;" edge="1" parent="1" source="s-cache-check" target="s-hit"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Cache MISS -->
+        <mxCell id="s-filter" value="권한 필터 빌드&#xa;orgId + (authorId OR&#xa;public OR teamId)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#9C27B0;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="280" width="140" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa-miss" value="MISS" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#F44336;fontColor=#F44336;" edge="1" parent="1" source="s-cache-check" target="s-filter"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="s-os-query" value="🔎 OpenSearch&#xa;multi_match + 필터&#xa;+ highlight" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="280" width="140" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa4" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s-filter" target="s-os-query"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="s-result" value="결과 가공&#xa;(하이라이트 포함)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="280" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa5" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s-os-query" target="s-result"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="s-cache-set" value="Redis 캐시 저장&#xa;TTL: 180초 (3분)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="340" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa6" style="endArrow=classic;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="s-result" target="s-cache-set"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="s-response" value="📊 검색 결과&#xa;{results, total, page}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="400" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="sa7" style="endArrow=classic;html=1;strokeWidth=1;dashed=1;strokeColor=#4CAF50;" edge="1" parent="1" source="s-cache-set" target="s-response"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- OpenSearch query detail -->
+        <mxCell id="os-query" value="OpenSearch 쿼리 구조:&#xa;must: {multi_match: '실험결과'}&#xa;filter: [&#xa;  {term: {orgId: '...'}},&#xa;  {terms: {domainTypes: ['NOTE']}},&#xa;  {bool: {should: [&#xa;    {term: {authorId: userId}},&#xa;    {term: {visibility: 'public'}},&#xa;    {terms: {teamId: [...]}}&#xa;  ]}}&#xa;]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BDBDBD;fontSize=9;fontFamily=Courier New;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="930" y="355" width="160" height="140" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Autocomplete ========== -->
+        <mxCell id="auto-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FFB74D;dashed=1;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="530" width="700" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="auto-title" value="3. 자동완성 (Autocomplete)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=13;fontStyle=1;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="50" y="535" width="300" height="20" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-user" value="👤 사용자&#xa;타이핑 '실험'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="570" width="100" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-debounce" value="디바운스&#xa;300ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="200" y="570" width="80" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-api" value="GET /autocomplete&#xa;?q=실험" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="320" y="570" width="110" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-db" value="SearchHistory&#xa;빈도순 정렬&#xa;+ Favorites 우선" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="470" y="570" width="120" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-result" value="📋 자동완성&#xa;드롭다운" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="570" width="90" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aa1" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="a-user" target="a-debounce"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="aa2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="a-debounce" target="a-api"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="aa3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="a-api" target="a-db"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="aa4" style="endArrow=classic;html=1;strokeWidth=1;dashed=1;strokeColor=#4CAF50;" edge="1" parent="1" source="a-db" target="a-result"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ========== Key Points ========== -->
+        <mxCell id="kp" value="🔑 핵심 포인트&#xa;&#xa;• 인덱싱: Fire-and-forget (실패 무시)&#xa;• 검색 엔진: OpenSearch 2 (Korean nori 분석기)&#xa;• 캐시: Redis, 3분 TTL, 인덱싱 시 무효화&#xa;• 권한 필터: orgId + (authorId OR public OR teamId)&#xa;• Rate Limit: 60 req/60s&#xa;• 자동완성: SearchHistory 빈도 + 즐겨찾기 우선" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="540" width="300" height="140" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
