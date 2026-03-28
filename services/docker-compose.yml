@@ -14,7 +14,7 @@ services:
     container_name: labnote-postgres
     command: >
       postgres
-      -c max_connections=30
+      -c max_connections=100
       -c shared_buffers=256MB
       -c effective_cache_size=512MB
       -c work_mem=8MB
@@ -23,6 +23,8 @@ services:
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
       -c log_min_duration_statement=1000
+      -c idle_in_transaction_session_timeout=30000
+      -c statement_timeout=60000
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER를 설정하세요}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 설정하세요}
@@ -118,13 +120,13 @@ services:
       - "8001"
     environment:
       - PORT=8001
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=auth&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
-      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-Admin1234!}
-      - RESEARCHER_INITIAL_PASSWORD=${RESEARCHER_INITIAL_PASSWORD:-Researcher1234!}
-      - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:-Reviewer1234!}
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:?ADMIN_INITIAL_PASSWORD를 설정하세요}
+      - RESEARCHER_INITIAL_PASSWORD=${RESEARCHER_INITIAL_PASSWORD:?RESEARCHER_INITIAL_PASSWORD를 설정하세요}
+      - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:?REVIEWER_INITIAL_PASSWORD를 설정하세요}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=auth-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -150,11 +152,11 @@ services:
       - "8002"
     environment:
       - PORT=8002
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=eln&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=eln&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - SEARCH_SERVICE_URL=http://search-service:8006
       - SEED_ON_START=true
       - OTEL_SERVICE_NAME=eln-service
@@ -183,12 +185,12 @@ services:
       - "8003"
     environment:
       - PORT=8003
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=signature&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - ELN_SERVICE_URL=http://eln-service:8002
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=signature-audit-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -220,10 +222,10 @@ services:
       - "8004"
     environment:
       - PORT=8004
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=inventory&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=inventory-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -251,8 +253,8 @@ services:
       - "8005"
     environment:
       - PORT=8005
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=3&pool_timeout=10
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=10&pool_timeout=10
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=scheduler-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -277,9 +279,9 @@ services:
     environment:
       - PORT=8006
       - OPENSEARCH_URL=http://opensearch:9200
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=search-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -315,9 +317,9 @@ services:
       - MINIO_BUCKET=labnote-files
       - MINIO_EXPORTS_BUCKET=labnote-exports
       - MINIO_PUBLIC_URL=http://localhost:9000
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
       - OTEL_SERVICE_NAME=file-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
