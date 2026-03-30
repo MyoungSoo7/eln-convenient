@@ -15,6 +15,7 @@ model SearchHistory {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([userId, orgId])
 }
 
 model Favorite {
@@ -27,7 +28,7 @@ model Favorite {
   createdAt DateTime @default(now())
 
   @@unique([userId, docType, docId])
-  @@index([userId])
+  @@index([userId, orgId])
 }
 
 model SearchKeywordFavorite {
@@ -38,5 +39,5 @@ model SearchKeywordFavorite {
   createdAt DateTime @default(now())
 
   @@unique([userId, keyword])
-  @@index([userId])
+  @@index([userId, orgId])
 }

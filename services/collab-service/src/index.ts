@@ -118,6 +118,14 @@ server.on('upgrade', (req: IncomingMessage, socket, head) => {
     socket.destroy();
     return;
   }
+
+  // Fail-fast: 빈 토큰은 verify 시도 없이 즉시 거부
+  if (!token) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
   const noteId = noteIdMatch[1];
 
   let jwtPayload: Record<string, unknown>;
