@@ -1,0 +1,38 @@
+{
+  "auth": {
+    "invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다.",
+    "inactiveAccount": "비활성화된 계정입니다. 관리자에게 문의하세요.",
+    "emailExists": "이미 등록된 이메일입니다.",
+    "permissionDenied": "이 작업을 수행할 권한이 없습니다."
+  },
+  "note": {
+    "notFound": "노트를 찾을 수 없습니다.",
+    "locked": "잠긴 노트는 수정할 수 없습니다.",
+    "signed": "서명된 노트는 수정할 수 없습니다.",
+    "statusTransition": "허용되지 않는 상태 전환입니다.",
+    "permissionDenied": "이 노트에 대한 접근 권한이 없습니다.",
+    "lockRoleRequired": "노트 잠금은 리뷰어 또는 관리자만 수행할 수 있습니다.",
+    "adminPasswordInvalid": "관리자 비밀번호가 올바르지 않습니다."
+  },
+  "inventory": {
+    "notFound": "인벤토리 항목을 찾을 수 없습니다.",
+    "barcodeExists": "이미 등록된 바코드입니다.",
+    "stockInsufficient": "재고가 부족합니다."
+  },
+  "file": {
+    "notFound": "파일을 찾을 수 없습니다.",
+    "blockedMime": "허용되지 않는 파일 형식입니다.",
+    "uploadFailed": "파일 업로드에 실패했습니다."
+  },
+  "signature": {
+    "passwordInvalid": "서명 비밀번호가 올바르지 않습니다."
+  },
+  "export": {
+    "notFound": "내보내기 작업을 찾을 수 없습니다."
+  },
+  "common": {
+    "validation": "입력값이 올바르지 않습니다. 다시 확인해주세요.",
+    "internal": "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+    "serviceUnavailable": "서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "auth": {
+    "invalidCredentials": "Invalid email or password.",
+    "inactiveAccount": "This account is inactive. Please contact your administrator.",
+    "emailExists": "This email is already registered.",
+    "permissionDenied": "You do not have permission to perform this action."
+  },
+  "note": {
+    "notFound": "Note not found.",
+    "locked": "Locked notes cannot be modified.",
+    "signed": "Signed notes cannot be modified.",
+    "statusTransition": "This status transition is not allowed.",
+    "permissionDenied": "You do not have access to this note.",
+    "lockRoleRequired": "Only reviewers or admins can lock notes.",
+    "adminPasswordInvalid": "Invalid admin password."
+  },
+  "inventory": {
+    "notFound": "Inventory item not found.",
+    "barcodeExists": "This barcode is already registered.",
+    "stockInsufficient": "Insufficient stock."
+  },
+  "file": {
+    "notFound": "File not found.",
+    "blockedMime": "This file type is not allowed.",
+    "uploadFailed": "File upload failed."
+  },
+  "signature": {
+    "passwordInvalid": "Invalid signature password."
+  },
+  "export": {
+    "notFound": "Export job not found."
+  },
+  "common": {
+    "validation": "Invalid input. Please check and try again.",
+    "internal": "An internal server error occurred. Please try again later.",
+    "serviceUnavailable": "Service is temporarily unavailable. Please try again later."
+  }
+}

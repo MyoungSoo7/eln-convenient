@@ -18,6 +18,7 @@ import {
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { EmptyState } from "@/components/EmptyState";
 import { search as searchFn, type SearchResult } from "@/api/search";
 const searchApi = { search: searchFn };
 import { useSearchHistory } from "@/hooks/useSearchHistory";
@@ -38,6 +39,23 @@ function Snippet({ result }: { result: SearchResult }) {
     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
       {isHighlight ? <span dangerouslySetInnerHTML={{ __html: text }} /> : text}
     </p>
+  );
+}
+
+/** 검색 결과 없음 + 검색 팁 */
+function NoResultsWithTips({ t }: { t: (key: string) => string }) {
+  return (
+    <div>
+      <EmptyState icon={SearchIcon} title={t('noResults')} />
+      <div className="mt-4 text-center">
+        <p className="text-sm font-medium text-muted-foreground">{t('searchTips.title')}</p>
+        <ul className="mt-2 space-y-1 text-sm text-muted-foreground/70">
+          <li>{t('searchTips.tip1')}</li>
+          <li>{t('searchTips.tip2')}</li>
+          <li>{t('searchTips.tip3')}</li>
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -246,7 +264,7 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {notes.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
+                  <NoResultsWithTips t={t} />
                 )}
               </TabsContent>
 
@@ -262,7 +280,7 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {protocols.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
+                  <NoResultsWithTips t={t} />
                 )}
               </TabsContent>
 
@@ -278,7 +296,7 @@ export default function SearchPage() {
                   </Link>
                 ))}
                 {inventory.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">{t('noResults')}</p>
+                  <NoResultsWithTips t={t} />
                 )}
               </TabsContent>
             </Tabs>

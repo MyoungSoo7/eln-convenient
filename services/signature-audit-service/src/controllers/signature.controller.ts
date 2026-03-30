@@ -12,19 +12,28 @@ const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002'
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
+type VerifyResult = { verified: true } | { verified: false; reason: 'wrong_password' | 'service_error' };
+
 /** auth-service에 비밀번호 검증 요청 */
-async function verifyUserPassword(userId: string, password: string): Promise<boolean> {
-  const res = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'x-internal-secret': INTERNAL_SECRET,
-    },
-    body: JSON.stringify({ userId, password }),
-  });
-  if (!res.ok) return false;
-  const body = await res.json() as any;
-  return body.verified === true;
+async function verifyUserPassword(userId: string, password: string): Promise<VerifyResult> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'x-internal-secret': INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ userId, password }),
+    });
+    if (!res.ok) return { verified: false, reason: 'service_error' };
+    const body = await res.json() as any;
+    if (body.verified === true) {
+      return { verified: true };
+    }
+    return { verified: false, reason: 'wrong_password' };
+  } catch {
+    return { verified: false, reason: 'service_error' };
+  }
 }
 
 /** SHA-256 해시 계산 */
@@ -91,8 +100,11 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   const { comment, password } = request.body as any;
 
   // 비밀번호 검증 (필수)
-  const verified = await verifyUserPassword(signerId, password);
-  if (!verified) {
+  const verifyResult = await verifyUserPassword(signerId, password);
+  if (!verifyResult.verified) {
+    if (verifyResult.reason === 'service_error') {
+      throw new AppError(503, '인증 서비스에 연결할 수 없습니다.', ErrorCode.SERVICE_UNAVAILABLE);
+    }
     throw new AppError(400, '비밀번호가 올바르지 않습니다. 서명이 거부되었습니다.', ErrorCode.SIGNATURE_PASSWORD_INVALID);
   }
 
@@ -101,13 +113,13 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   // 노트 정보 조회 (자기 노트 서명 차단 + 팀 리더 서명 확인용)
   const note = await fetchNote(noteId, orgId);
   if (!note) {
-    throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+    throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
   }
 
   // 자기 노트 서명 차단 (부인방지 원칙) — admin은 예외
   const signerRole = request.headers['x-user-role'] as string;
   if (note.authorId === signerId && signerRole !== 'admin') {
-    throw new AppError(403, '자신이 작성한 노트에는 서명할 수 없습니다.', ErrorCode.FORBIDDEN);
+    throw new AppError(403, '자신이 작성한 노트에는 서명할 수 없습니다.', ErrorCode.NOTE_PERMISSION_DENIED);
   }
 
   // 서명 권한 확인: reviewer/admin 또는 해당 팀 리더

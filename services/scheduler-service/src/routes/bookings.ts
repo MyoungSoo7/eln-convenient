@@ -8,11 +8,10 @@ import { callNotification } from '../lib/notification';
 
 // ─── 유틸 ─────────────────────────────────────────────────────
 
-function parseDate(value: string, reply: any): Date | null {
+function parseDate(value: string): Date {
   const d = new Date(value);
   if (isNaN(d.getTime())) {
-    reply.code(400).send({ ok: false, error: `유효하지 않은 날짜 형식: ${value}` });
-    return null;
+    throw new AppError(400, `유효하지 않은 날짜 형식: ${value}`, ErrorCode.BOOKING_INVALID_DATE);
   }
   return d;
 }
@@ -89,7 +88,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       include: { resource: true },
     });
     if (!booking) {
-      return reply.code(404).send({ ok: false, error: '예약을 찾을 수 없습니다.' });
+      throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
     }
     return { ok: true, data: booking };
   });
@@ -114,12 +113,11 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     const orgId = getOrgId(request.headers);
     const { from, to, type } = request.query as { from: string; to: string; type?: string };
 
-    const fromDate = parseDate(from, reply);
-    const toDate   = parseDate(to, reply);
-    if (!fromDate || !toDate) return;
+    const fromDate = parseDate(from);
+    const toDate   = parseDate(to);
 
     if (toDate <= fromDate) {
-      return reply.code(400).send({ ok: false, error: 'to는 from보다 이후여야 합니다.' });
+      throw new AppError(400, 'to는 from보다 이후여야 합니다.', ErrorCode.BOOKING_INVALID_DATE);
     }
 
     const data = await fastify.prisma.booking.findMany({
@@ -162,31 +160,26 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     };
     const userId = request.headers['x-user-id'] as string;
 
-    const startAt = parseDate(body.startAt, reply);
-    const endAt   = parseDate(body.endAt,   reply);
-    if (!startAt || !endAt) return;
+    const startAt = parseDate(body.startAt);
+    const endAt   = parseDate(body.endAt);
 
     if (endAt <= startAt) {
-      return reply.code(400).send({ ok: false, error: 'endAt은 startAt보다 이후여야 합니다.' });
+      throw new AppError(400, 'endAt은 startAt보다 이후여야 합니다.', ErrorCode.BOOKING_INVALID_DATE);
     }
 
     // 자원 유효성 확인 (같은 조직의 자원만)
     const resource = await fastify.prisma.resource.findFirst({ where: { id: body.resourceId, orgId } });
     if (!resource) {
-      return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
+      throw new AppError(404, '자원을 찾을 수 없습니다.', ErrorCode.RESOURCE_NOT_FOUND);
     }
     if (!resource.isActive) {
-      return reply.code(400).send({ ok: false, error: '비활성화된 자원입니다.' });
+      throw new AppError(400, '비활성화된 자원입니다.', ErrorCode.RESOURCE_INACTIVE);
     }
 
     // 1차 충돌 체크 (PENDING + APPROVED 상태 모두 검사)
     const conflict = await checkConflict(fastify.prisma, body.resourceId, startAt, endAt);
     if (conflict) {
-      return reply.code(409).send({
-        ok: false,
-        error: '해당 시간대에 이미 예약이 존재합니다.',
-        conflict: { bookingId: conflict.id, startAt: conflict.startAt, endAt: conflict.endAt },
-      });
+      throw new AppError(409, '해당 시간대에 이미 예약이 존재합니다.', ErrorCode.BOOKING_CONFLICT);
     }
 
     const booking = await fastify.prisma.booking.create({
@@ -221,13 +214,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
     const existing = await fastify.prisma.booking.findFirst({ where: { id, orgId } });
     if (!existing) {
-      return reply.code(404).send({ ok: false, error: '예약을 찾을 수 없습니다.' });
+      throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
     }
     if (existing.userId !== userId && role !== RoleName.ADMIN) {
-      return reply.code(403).send({ ok: false, error: '본인의 예약만 수정할 수 있습니다.' });
+      throw new AppError(403, '본인의 예약만 수정할 수 있습니다.', ErrorCode.BOOKING_PERMISSION_DENIED);
     }
     if (existing.status !== 'PENDING') {
-      return reply.code(400).send({ ok: false, error: 'PENDING 상태의 예약만 수정할 수 있습니다.' });
+      throw new AppError(400, 'PENDING 상태의 예약만 수정할 수 있습니다.', ErrorCode.BOOKING_PENDING_ONLY);
     }
 
     const update: Record<string, unknown> = {};
@@ -240,15 +233,11 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
     if (body.startAt || body.endAt) {
       if (newEnd <= newStart) {
-        return reply.code(400).send({ ok: false, error: 'endAt은 startAt보다 이후여야 합니다.' });
+        throw new AppError(400, 'endAt은 startAt보다 이후여야 합니다.', ErrorCode.BOOKING_INVALID_DATE);
       }
       const conflict = await checkConflict(fastify.prisma, existing.resourceId, newStart, newEnd, id);
       if (conflict) {
-        return reply.code(409).send({
-          ok: false,
-          error: '해당 시간대에 이미 예약이 존재합니다.',
-          conflict: { bookingId: conflict.id, startAt: conflict.startAt, endAt: conflict.endAt },
-        });
+        throw new AppError(409, '해당 시간대에 이미 예약이 존재합니다.', ErrorCode.BOOKING_CONFLICT);
       }
       update.startAt = newStart;
       update.endAt   = newEnd;
@@ -283,15 +272,15 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
 
         // 2. 권한 검증: admin 또는 자원 ownerId
         if (!canManageBooking(role, approvedBy, current.resource.ownerId)) {
-          throw new AppError(403, '승인 권한이 없습니다.', ErrorCode.FORBIDDEN);
+          throw new AppError(403, '승인 권한이 없습니다.', ErrorCode.BOOKING_PERMISSION_DENIED);
         }
 
         // 3. 상태 머신 검증: PENDING → APPROVED만 허용
@@ -308,7 +297,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           ['APPROVED'],  // 이미 승인된 것과만 충돌 체크
         );
         if (conflict) {
-          throw new AppError(409, '승인 시점에 시간 충돌이 발생했습니다. 다른 예약이 먼저 승인되었습니다.', ErrorCode.CONFLICT, [`충돌 예약: ${conflict.id}`]);
+          throw new AppError(409, '승인 시점에 시간 충돌이 발생했습니다. 다른 예약이 먼저 승인되었습니다.', ErrorCode.BOOKING_CONFLICT, [`충돌 예약: ${conflict.id}`]);
         }
 
         // 5. 승인 처리
@@ -336,17 +325,9 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
       return { ok: true, data: booking };
     } catch (err: any) {
-      if (err.statusCode === 404) return reply.code(404).send({ ok: false, error: err.message });
-      if (err.statusCode === 403) return reply.code(403).send({ ok: false, error: err.message });
-      if (err.statusCode === 409) {
-        return reply.code(409).send({
-          ok: false,
-          error: err.message,
-          conflict: err.conflict,
-        });
-      }
+      if (err instanceof AppError) throw err;
       if (err instanceof InvalidTransitionError) {
-        return reply.code(400).send({ ok: false, error: err.message });
+        throw new AppError(400, err.message, ErrorCode.BOOKING_STATUS_TRANSITION);
       }
       throw err;
     }
@@ -378,13 +359,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (!canManageBooking(role, userId, current.resource.ownerId)) {
-          throw new AppError(403, '반려 권한이 없습니다.', ErrorCode.FORBIDDEN);
+          throw new AppError(403, '반려 권한이 없습니다.', ErrorCode.BOOKING_PERMISSION_DENIED);
         }
 
         assertTransition(current.status, 'REJECTED');
@@ -400,9 +381,10 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
       return { ok: true, data: booking };
     } catch (err: any) {
-      if (err.statusCode === 404) return reply.code(404).send({ ok: false, error: err.message });
-      if (err.statusCode === 403) return reply.code(403).send({ ok: false, error: err.message });
-      if (err instanceof InvalidTransitionError) return reply.code(400).send({ ok: false, error: err.message });
+      if (err instanceof AppError) throw err;
+      if (err instanceof InvalidTransitionError) {
+        throw new AppError(400, err.message, ErrorCode.BOOKING_STATUS_TRANSITION);
+      }
       throw err;
     }
   });
@@ -426,13 +408,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           include: { resource: true },
         });
         if (!current) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {
-          throw new AppError(403, '본인의 예약만 취소할 수 있습니다.', ErrorCode.FORBIDDEN);
+          throw new AppError(403, '본인의 예약만 취소할 수 있습니다.', ErrorCode.BOOKING_PERMISSION_DENIED);
         }
 
         assertTransition(current.status, 'CANCELLED');
@@ -448,9 +430,10 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
       return { ok: true, data: booking };
     } catch (err: any) {
-      if (err.statusCode === 404) return reply.code(404).send({ ok: false, error: err.message });
-      if (err.statusCode === 403) return reply.code(403).send({ ok: false, error: err.message });
-      if (err instanceof InvalidTransitionError) return reply.code(400).send({ ok: false, error: err.message });
+      if (err instanceof AppError) throw err;
+      if (err instanceof InvalidTransitionError) {
+        throw new AppError(400, err.message, ErrorCode.BOOKING_STATUS_TRANSITION);
+      }
       throw err;
     }
   });
@@ -471,13 +454,13 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
         const current = await tx.booking.findUnique({ where: { id } });
         if (!current) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.orgId !== orgId) {
-          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+          throw new AppError(404, '예약을 찾을 수 없습니다.', ErrorCode.BOOKING_NOT_FOUND);
         }
         if (current.userId !== userId && role !== RoleName.ADMIN) {
-          throw new AppError(403, '본인의 예약만 완료 처리할 수 있습니다.', ErrorCode.FORBIDDEN);
+          throw new AppError(403, '본인의 예약만 완료 처리할 수 있습니다.', ErrorCode.BOOKING_PERMISSION_DENIED);
         }
 
         assertTransition(current.status, 'COMPLETED');
@@ -491,9 +474,10 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
       return { ok: true, data: booking };
     } catch (err: any) {
-      if (err.statusCode === 404) return reply.code(404).send({ ok: false, error: err.message });
-      if (err.statusCode === 403) return reply.code(403).send({ ok: false, error: err.message });
-      if (err instanceof InvalidTransitionError) return reply.code(400).send({ ok: false, error: err.message });
+      if (err instanceof AppError) throw err;
+      if (err instanceof InvalidTransitionError) {
+        throw new AppError(400, err.message, ErrorCode.BOOKING_STATUS_TRANSITION);
+      }
       throw err;
     }
   });

@@ -964,6 +964,70 @@ export async function getRolePermissions(request: FastifyRequest, reply: Fastify
 }
 
 // ─────────────────────────────────────────────
+// 비밀번호 변경 / 초기화
+// ─────────────────────────────────────────────
+
+/** PATCH /api/auth/me/password — 본인 비밀번호 변경 */
+export async function changeMyPassword(request: FastifyRequest, reply: FastifyReply) {
+  const userId = request.headers['x-user-id'] as string;
+  const { currentPassword, newPassword } = request.body as any;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new AppError(404, '사용자를 찾을 수 없습니다.', ErrorCode.AUTH_USER_NOT_FOUND);
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new AppError(401, '현재 비밀번호가 올바르지 않습니다.', ErrorCode.AUTH_INVALID_CREDENTIALS);
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+  await writeAuditLog({
+    entityType: 'user',
+    entityId: userId,
+    action: 'password_changed',
+    actorId: userId,
+    orgId: user.orgId,
+    ipAddress: request.ip,
+    details: { method: 'self' },
+  });
+
+  logger.info({ userId }, '비밀번호 변경 완료 (본인)');
+  return { ok: true, data: { message: '비밀번호가 변경되었습니다.' } };
+}
+
+/** POST /api/auth/users/:id/reset-password — 관리자가 사용자 비밀번호 초기화 */
+export async function adminResetPassword(request: FastifyRequest, reply: FastifyReply) {
+  const { id: targetUserId } = request.params as { id: string };
+  const adminId = request.headers['x-user-id'] as string;
+
+  const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+  if (!user) {
+    throw new AppError(404, '사용자를 찾을 수 없습니다.', ErrorCode.AUTH_USER_NOT_FOUND);
+  }
+
+  const defaultPassword = process.env.DEFAULT_RESET_PASSWORD || 'eln0330';
+  const passwordHash = await bcrypt.hash(defaultPassword, 10);
+  await prisma.user.update({ where: { id: targetUserId }, data: { passwordHash } });
+
+  await writeAuditLog({
+    entityType: 'user',
+    entityId: targetUserId,
+    action: 'password_reset_by_admin',
+    actorId: adminId,
+    orgId: user.orgId,
+    ipAddress: request.ip,
+    details: { targetEmail: user.email, targetName: user.name },
+  });
+
+  logger.info({ adminId, targetUserId }, '비밀번호 초기화 완료 (관리자)');
+  return { ok: true, data: { message: '비밀번호가 초기화되었습니다.' } };
+}
+
+// ─────────────────────────────────────────────
 // 내부 서비스용 비밀번호 검증
 // ─────────────────────────────────────────────
 

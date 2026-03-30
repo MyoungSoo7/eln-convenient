@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Edit2, MapPin, Plus, RefreshCw, Settings, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, CalendarX, Check, ChevronLeft, ChevronRight, Edit2, MapPin, Plus, RefreshCw, Settings, Trash2, Users, X } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,6 +114,20 @@ export default function SchedulerPage() {
 
   const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
+
+  // 예약 시간 충돌 감지
+  const conflictingBooking = useMemo(() => {
+    if (!formResourceId || !formDate || !formStartTime || !formEndTime || formStartTime >= formEndTime) return null;
+    const newStart = new Date(`${formDate}T${formStartTime}:00`).getTime();
+    const newEnd = new Date(`${formDate}T${formEndTime}:00`).getTime();
+    return bookings.find((b) => {
+      if (b.resourceId !== formResourceId) return false;
+      if (!["PENDING", "APPROVED"].includes(b.status)) return false;
+      const bStart = new Date(b.startAt).getTime();
+      const bEnd = new Date(b.endAt).getTime();
+      return newStart < bEnd && newEnd > bStart;
+    }) ?? null;
+  }, [bookings, formResourceId, formDate, formStartTime, formEndTime]);
 
   // 캘린더 그리드용 booking 인덱스 (O(n) 사전 구성 → O(1) 룩업)
   const bookingIndex = useMemo(() => {
@@ -376,12 +391,20 @@ export default function SchedulerPage() {
                     />
                   </div>
                 </div>
+                {conflictingBooking && (
+                  <div className="rounded-md border border-destructive bg-destructive/5 p-3 space-y-1">
+                    <p className="text-sm font-medium text-destructive">{t('booking.conflict')}</p>
+                    <p className="text-xs text-destructive/80">
+                      {t('booking.conflictWith', { name: conflictingBooking.resource?.name || conflictingBooking.title })}
+                    </p>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setNewBookingOpen(false); resetForm(); }}>{tc('cancel')}</Button>
                 <Button
                   onClick={handleCreate}
-                  disabled={submitting}
+                  disabled={submitting || !!conflictingBooking}
                   className="gradient-primary text-primary-foreground"
                 >
                   {submitting ? tc('processing') : t('form.submit')}
@@ -494,9 +517,10 @@ export default function SchedulerPage() {
           {loading ? (
             <p className="text-sm text-muted-foreground text-center py-6">{tc('loading')}</p>
           ) : bookings.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              {statusFilter === "all" ? t('emptyAll') : t('emptyFiltered', { status: statusLabels[statusFilter] })}
-            </p>
+            <EmptyState
+              icon={CalendarX}
+              title={statusFilter === "all" ? t('emptyAll') : t('emptyFiltered', { status: statusLabels[statusFilter] })}
+            />
           ) : (
             <div className="space-y-3">
               {bookings.map((b) => (
@@ -577,7 +601,10 @@ export default function SchedulerPage() {
             {loading ? (
               <p className="text-sm text-muted-foreground text-center py-6">{tc('loading')}</p>
             ) : filteredResources.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">{t('resource.empty')}</p>
+              <EmptyState
+                icon={Settings}
+                title={t('resource.empty')}
+              />
             ) : (
               <div className="space-y-3">
                 {filteredResources.map((r) => (

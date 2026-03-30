@@ -45,6 +45,10 @@
   "approve": "Approve",
   "emptyAll": "No bookings. Create a new booking to get started.",
   "emptyFiltered": "No '{{status}}' bookings found.",
+  "booking": {
+    "conflict": "This time slot is already booked",
+    "conflictWith": "Conflicts with \"{{name}}\" booking"
+  },
 
   "resource": {
     "manage": "Resources",

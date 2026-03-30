@@ -45,6 +45,10 @@
   "approve": "승인",
   "emptyAll": "예약이 없습니다. 새 예약을 생성해보세요.",
   "emptyFiltered": "'{{status}}' 상태 예약이 없습니다.",
+  "booking": {
+    "conflict": "해당 시간은 이미 예약되어 있습니다",
+    "conflictWith": "\"{{name}}\" 예약과 시간이 겹칩니다"
+  },
 
   "resource": {
     "manage": "자원 관리",

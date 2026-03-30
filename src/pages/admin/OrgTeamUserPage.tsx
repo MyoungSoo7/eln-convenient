@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "@/hooks/use-toast";
 import {
-  listUsers, createUser, updateUser, deleteUser,
+  listUsers, createUser, updateUser, deleteUser, adminResetPassword,
   listTeams, createTeam, updateTeam, deleteTeam,
   listTeamMembers, addTeamMember, removeTeamMember,
   listOrgs, createOrg, updateOrg, deleteOrg,
@@ -49,6 +49,7 @@ export default function OrgTeamUserPage() {
   const [userEditForm, setUserEditForm] = useState<UpdateUserPayload>({ name: '', roleId: '', status: '' });
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null);
+  const [resetPwTarget, setResetPwTarget] = useState<AdminUser | null>(null);
 
   // ─── 팀 상태 ─────────────────────────────────────
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
@@ -142,6 +143,18 @@ export default function OrgTeamUserPage() {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: (err: Error) => toast({ title: t('orgTeamUser.updateUserFailed'), description: err.message, variant: 'destructive' }),
+  });
+
+  const resetPwMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await adminResetPassword(id);
+      if (!res.ok) throw new Error(res.error ?? t('orgTeamUser.resetPasswordFailed'));
+    },
+    onSuccess: () => {
+      toast({ title: t('orgTeamUser.passwordReset') });
+      setResetPwTarget(null);
+    },
+    onError: (err: Error) => toast({ title: t('orgTeamUser.resetPasswordFailed'), description: err.message, variant: 'destructive' }),
   });
 
   const deleteUserMutation = useMutation({
@@ -329,6 +342,7 @@ export default function OrgTeamUserPage() {
                                 setUserEditForm({ name: u.name, roleId: u.roleId ?? '', status: u.status });
                                 setEditUserOpen(true);
                               }}>{tc('edit')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setResetPwTarget(u)}>{t('orgTeamUser.resetPassword')}</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive" onClick={() => setDeleteUserTarget(u)}>{tc('delete')}</DropdownMenuItem>
                             </DropdownMenuContent>
@@ -594,6 +608,24 @@ export default function OrgTeamUserPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteUserTarget && deleteUserMutation.mutate(deleteUserTarget.id)}
             >{tc('delete')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ════ 비밀번호 초기화 확인 ════ */}
+      <AlertDialog open={!!resetPwTarget} onOpenChange={(v) => !v && setResetPwTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('orgTeamUser.resetPasswordTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('orgTeamUser.resetPasswordDesc', { name: resetPwTarget?.name, email: resetPwTarget?.email })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => resetPwTarget && resetPwMutation.mutate(resetPwTarget.id)}
+            >{tc('confirm')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

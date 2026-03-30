@@ -161,6 +161,16 @@ export async function deleteUser(id: string): Promise<ApiResponse<void>> {
   }
 }
 
+// ─── 비밀번호 ────────────────────────────────────────
+
+export async function adminResetPassword(id: string): Promise<ApiResponse<{ message: string }>> {
+  try {
+    return await apiClient.post<{ message: string }>(`/auth/users/${id}/reset-password`);
+  } catch {
+    return { ok: false, data: null as unknown as { message: string }, error: '비밀번호 초기화에 실패했습니다.' };
+  }
+}
+
 // ─── 팀 멤버 ──────────────────────────────────────
 
 export async function listTeamMembers(teamId: string): Promise<ApiResponse<AdminTeamMember[]>> {

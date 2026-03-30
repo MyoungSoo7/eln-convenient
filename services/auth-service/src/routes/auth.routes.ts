@@ -7,7 +7,7 @@ import {
   CreateOrgSchema, UpdateOrgSchema,
   CreateTeamSchema, UpdateTeamSchema, AddTeamMemberSchema,
   CreateRoleSchema, UpdatePermissionsSchema,
-  VerifyPasswordSchema, UuidParamsSchema,
+  VerifyPasswordSchema, UuidParamsSchema, ChangeMyPasswordSchema,
 } from '../dtos/auth.dto';
 
 const authRoutes: FastifyPluginAsync = async (app) => {
@@ -30,6 +30,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     // 내 정보
     authed.post('/logout', ctrl.logout);
     authed.get('/me', ctrl.getMe);
+    authed.patch('/me/password', { preHandler: [validate({ body: ChangeMyPasswordSchema })] }, ctrl.changeMyPassword);
 
     // 조직
     authed.get('/orgs', ctrl.getOrgs);
@@ -51,6 +52,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     authed.post('/users', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateUserSchema })] }, ctrl.createUser);
     authed.put('/users/:id', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateUserSchema })] }, ctrl.updateUser);
     authed.delete('/users/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteUser);
+    authed.post('/users/:id/reset-password', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema })] }, ctrl.adminResetPassword);
 
     // 역할
     authed.get('/roles', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.getRoles);

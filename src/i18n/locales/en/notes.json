@@ -84,7 +84,10 @@
       "saveFirstHint": "Please save the note first.",
       "lockedNote": "Cannot add files to signed/locked notes.",
       "lockedMsg": "Cannot add files to signed/locked notes.",
-      "saveFirstMsg": "Please save the note first."
+      "saveFirstMsg": "Please save the note first.",
+      "uploadingProgress": "Uploading... {{progress}}%",
+      "fileTooLarge": "File size exceeds 50MB: {{name}}",
+      "blockedExtension": "This file type is not allowed for security reasons: {{ext}}"
     },
     "link": {
       "title": "Linked Items",
@@ -113,6 +116,12 @@
       "saveFirstHint": "Save to view version history.",
       "defaultSummary": "Edit"
     }
+  },
+  "collab": {
+    "disconnected": "Connection lost.",
+    "reconnecting": "Reconnecting...",
+    "reconnectFailed": "Failed to connect. Please refresh the page.",
+    "refreshPage": "Refresh"
   },
   "sectionTemplate": "## Last Week's Results\nDescribe the experiments performed last week.\n\n## This Week's Plan\nDescribe the experiments planned for this week.",
   "sectionTemplateFromProtocol": "## Last Week's Results\n[{{category}}] Describe the experiments performed last week.\n\n## This Week's Plan\nDescribe the experiments planned for this week.\n\n---\n> 📋 Created from protocol \"{{title}}\""

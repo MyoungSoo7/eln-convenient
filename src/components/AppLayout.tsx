@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
-import { LogOut } from "lucide-react";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
+import { SessionExpiryWarning } from "@/components/SessionExpiryWarning";
+import { LogOut, KeyRound } from "lucide-react";
 import { getStoredUser } from "@/lib/authToken";
 import { logout } from "@/api/auth";
 import { useNavigate } from "react-router-dom";
@@ -22,6 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const storedUser = getStoredUser();
   const userName = (storedUser?.name as string) || '사용자';
   const userRole = (storedUser?.role as string) || '';
+  const [pwModalOpen, setPwModalOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -64,12 +68,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     <p className="text-xs text-muted-foreground">{userRole}</p>
                   </div>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setPwModalOpen(true)} className="cursor-pointer">
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    {t('password.change')}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
                     {t('logout')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <ChangePasswordModal open={pwModalOpen} onClose={() => setPwModalOpen(false)} />
+              <SessionExpiryWarning />
             </div>
           </header>
           <main className="flex-1 overflow-auto">

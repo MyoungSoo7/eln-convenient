@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { getToken } from "@/lib/authToken";
 import {
@@ -90,8 +91,14 @@ export default function NoteEditor() {
   // 첨부파일
   const [attachments, setAttachments] = useState<AttachmentRecord[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 파일 업로드 검증 상수
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const BLOCKED_EXTENSIONS = ['exe', 'sh', 'bat'];
 
   // 시약/장비 연결
   const [links, setLinks] = useState<NoteLink[]>([]);
@@ -111,11 +118,15 @@ export default function NoteEditor() {
   const wsRef = useRef<WebSocket | null>(null);
   const lastLocalEditRef = useRef<number>(0);
   const sendTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectCountRef = useRef(0);
+  const isUnmountingRef = useRef(false);
   const COLLAB_COLORS = [
     'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-500',
     'bg-violet-500', 'bg-pink-500', 'bg-teal-500', 'bg-orange-500',
   ] as const;
   const [connectedUsers, setConnectedUsers] = useState<Array<{ id: string; name: string; colorIdx: number }>>([]);
+  const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'reconnecting' | 'failed'>('disconnected');
 
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
 
@@ -140,44 +151,77 @@ export default function NoteEditor() {
     ]);
   }, [id, isNew]);
 
-  // WebSocket 협업
+  // WebSocket 협업 (with exponential backoff reconnection)
   useEffect(() => {
     if (isNew) return;
     const token = getToken() ?? '';
     if (!token) return;
 
-    const base = (import.meta.env.VITE_COLLAB_URL as string | undefined) ?? 'ws://localhost:8009';
-    const ws = new WebSocket(`${base}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    isUnmountingRef.current = false;
+    reconnectCountRef.current = 0;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data as string);
-        if (msg.type === 'joined') {
-          setConnectedUsers(
-            (msg.users ?? []).map((u: { id: string; name: string; colorIdx?: number }) => ({
-              id: u.id, name: u.name, colorIdx: u.colorIdx ?? 0,
-            }))
-          );
-        } else if (msg.type === 'user-joined') {
-          setConnectedUsers((prev) => [
-            ...prev.filter((u) => u.id !== msg.userId),
-            { id: msg.userId, name: msg.userName, colorIdx: msg.colorIdx ?? 0 },
-          ]);
-        } else if (msg.type === 'user-left') {
-          setConnectedUsers((prev) => prev.filter((u) => u.id !== msg.userId));
-        } else if (msg.type === 'content-update') {
-          if (Date.now() - lastLocalEditRef.current > 1000) {
-            setContent(msg.content as string);
+    const MAX_RETRIES = 5;
+
+    function connectWs() {
+      const base = (import.meta.env.VITE_COLLAB_URL as string | undefined) ?? 'ws://localhost:8009';
+      const ws = new WebSocket(`${base}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectCountRef.current = 0;
+        setWsStatus('connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string);
+          if (msg.type === 'joined') {
+            setConnectedUsers(
+              (msg.users ?? []).map((u: { id: string; name: string; colorIdx?: number }) => ({
+                id: u.id, name: u.name, colorIdx: u.colorIdx ?? 0,
+              }))
+            );
+          } else if (msg.type === 'user-joined') {
+            setConnectedUsers((prev) => [
+              ...prev.filter((u) => u.id !== msg.userId),
+              { id: msg.userId, name: msg.userName, colorIdx: msg.colorIdx ?? 0 },
+            ]);
+          } else if (msg.type === 'user-left') {
+            setConnectedUsers((prev) => prev.filter((u) => u.id !== msg.userId));
+          } else if (msg.type === 'content-update') {
+            if (Date.now() - lastLocalEditRef.current > 1000) {
+              setContent(msg.content as string);
+            }
           }
+        } catch {}
+      };
+
+      ws.onerror = () => {};
+
+      ws.onclose = () => {
+        wsRef.current = null;
+        setConnectedUsers([]);
+
+        if (isUnmountingRef.current) return;
+
+        if (reconnectCountRef.current < MAX_RETRIES) {
+          setWsStatus('reconnecting');
+          const delay = Math.pow(2, reconnectCountRef.current) * 1000; // 1s, 2s, 4s, 8s, 16s
+          reconnectCountRef.current += 1;
+          reconnectTimerRef.current = setTimeout(connectWs, delay);
+        } else {
+          setWsStatus('failed');
         }
-      } catch {}
+      };
+    }
+
+    connectWs();
+
+    return () => {
+      isUnmountingRef.current = true;
+      clearTimeout(reconnectTimerRef.current);
+      wsRef.current?.close();
     };
-
-    ws.onerror = () => {};
-    ws.onclose = () => { wsRef.current = null; setConnectedUsers([]); };
-
-    return () => { ws.close(); };
   }, [id, isNew]);
 
   const handleContentChange = useCallback((newContent: string) => {
@@ -254,6 +298,21 @@ export default function NoteEditor() {
   };
 
   // ── 첨부파일 ──────────────────────────────────
+  const validateFile = (file: File): boolean => {
+    // 파일 크기 검증
+    if (file.size > MAX_FILE_SIZE) {
+      toast({ title: t('editor.attachment.fileTooLarge', { name: file.name }), variant: "destructive" });
+      return false;
+    }
+    // 차단 확장자 검증
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (BLOCKED_EXTENSIONS.includes(ext)) {
+      toast({ title: t('editor.attachment.blockedExtension', { ext: `.${ext}` }), variant: "destructive" });
+      return false;
+    }
+    return true;
+  };
+
   const handleFileUpload = async (file: File) => {
     if (isNew) {
       toast({ title: t('editor.attachment.saveFirst'), variant: "destructive" });
@@ -263,13 +322,21 @@ export default function NoteEditor() {
       toast({ title: t('editor.attachment.lockedNote'), variant: "destructive" });
       return;
     }
-    setUploading(true);
+    if (!validateFile(file)) return;
 
-    // 1. file-service에 업로드
-    const uploadRes = await uploadFile(file, { type: 'note', id: id! });
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadingFileName(file.name);
+
+    // 1. file-service에 업로드 (with progress)
+    const uploadRes = await uploadFile(file, { type: 'note', id: id! }, (percent) => {
+      setUploadProgress(percent);
+    });
     if (!uploadRes.ok) {
       toast({ title: t('editor.attachment.uploadFailed'), description: uploadRes.error || t('editor.attachment.uploadFailed'), variant: "destructive" });
       setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName("");
       return;
     }
 
@@ -288,6 +355,8 @@ export default function NoteEditor() {
       toast({ title: t('editor.attachment.registerFailed'), description: attRes.error, variant: "destructive" });
     }
     setUploading(false);
+    setUploadProgress(0);
+    setUploadingFileName("");
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -359,6 +428,21 @@ export default function NoteEditor() {
 
   return (
     <div className="p-6 space-y-4 animate-fade-in">
+      {/* WebSocket 재연결 배너 */}
+      {wsStatus === 'reconnecting' && (
+        <div className="flex items-center gap-2 rounded-md px-4 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-yellow-600 border-t-transparent" />
+          {t('collab.disconnected')} {t('collab.reconnecting')}
+        </div>
+      )}
+      {wsStatus === 'failed' && (
+        <div className="flex items-center justify-between rounded-md px-4 py-2 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+          <span>{t('collab.reconnectFailed')}</span>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.location.reload()}>
+            {t('collab.refreshPage')}
+          </Button>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <Link to="/notes">
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> {tc('back')}</Button>
@@ -543,9 +627,17 @@ export default function NoteEditor() {
                     >
                       <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
                       <p className="text-sm font-medium mt-3">
-                        {uploading ? t('editor.attachment.uploading') : t('editor.attachment.dropOrClick')}
+                        {uploading ? t('editor.attachment.uploadingProgress', { progress: uploadProgress }) : t('editor.attachment.dropOrClick')}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">{t('editor.attachment.hint')}</p>
+                      {uploading && uploadingFileName && (
+                        <div className="mt-3 max-w-xs mx-auto space-y-1.5">
+                          <p className="text-xs text-muted-foreground truncate">{uploadingFileName}</p>
+                          <Progress value={uploadProgress} className="h-2" />
+                        </div>
+                      )}
+                      {!uploading && (
+                        <p className="text-xs text-muted-foreground mt-1">{t('editor.attachment.hint')}</p>
+                      )}
                       <input
                         ref={fileInputRef}
                         type="file"

@@ -19,5 +19,11 @@
   "removeFavorite": "즐겨찾기 해제",
   "isFavoriteHint": "이 검색어는 즐겨찾기에 있습니다. 별 아이콘을 누르면 해제됩니다.",
   "notFavoriteHint": "별 아이콘을 누르면 즐겨찾기에 추가됩니다.",
-  "tab": { "notes": "노트", "protocols": "템플릿", "inventory": "인벤토리" }
+  "tab": { "notes": "노트", "protocols": "템플릿", "inventory": "인벤토리" },
+  "searchTips": {
+    "title": "검색 팁",
+    "tip1": "다른 검색어를 사용해보세요",
+    "tip2": "검색어의 철자를 확인해보세요",
+    "tip3": "더 짧은 검색어로 시도해보세요"
+  }
 }

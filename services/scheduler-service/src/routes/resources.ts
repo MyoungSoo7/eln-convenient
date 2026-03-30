@@ -66,7 +66,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
       include: { _count: { select: { bookings: true } } },
     });
     if (!resource) {
-      return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
+      throw new AppError(404, '자원을 찾을 수 없습니다.', ErrorCode.RESOURCE_NOT_FOUND);
     }
     return { ok: true, data: resource };
   });
@@ -118,7 +118,7 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
       where: { id: request.params.id, orgId },
     });
     if (!existing) {
-      return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
+      throw new AppError(404, '자원을 찾을 수 없습니다.', ErrorCode.RESOURCE_NOT_FOUND);
     }
 
     const resource = await fastify.prisma.resource.update({
@@ -138,17 +138,14 @@ const resourcesRoute: FastifyPluginAsync = async (fastify) => {
 
     const resource = await fastify.prisma.resource.findFirst({ where: { id, orgId } });
     if (!resource) {
-      return reply.code(404).send({ ok: false, error: '자원을 찾을 수 없습니다.' });
+      throw new AppError(404, '자원을 찾을 수 없습니다.', ErrorCode.RESOURCE_NOT_FOUND);
     }
 
     const activeCount = await fastify.prisma.booking.count({
       where: { resourceId: id, status: { in: ['PENDING', 'APPROVED'] } },
     });
     if (activeCount > 0) {
-      return reply.code(409).send({
-        ok: false,
-        error: `진행 중인 예약이 ${activeCount}건 있어 비활성화할 수 없습니다.`,
-      });
+      throw new AppError(409, `진행 중인 예약이 ${activeCount}건 있어 비활성화할 수 없습니다.`, ErrorCode.RESOURCE_HAS_BOOKINGS);
     }
 
     await fastify.prisma.resource.update({ where: { id }, data: { isActive: false } });
