@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import {
@@ -17,6 +18,10 @@ const BLOCKED_MIME = new Set([
   'application/x-sh',
   'text/x-sh',
   'application/x-bat',
+]);
+
+const BLOCKED_EXTENSIONS = new Set([
+  'exe', 'sh', 'bat', 'cmd', 'com', 'msi', 'scr', 'pif',
 ]);
 
 /**
@@ -48,6 +53,14 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
   if (BLOCKED_MIME.has(mimetype)) {
     throw new AppError(400, `허용되지 않는 파일 형식입니다: ${mimetype}`, ErrorCode.FILE_BLOCKED_MIME);
   }
+
+  // 확장자 차단
+  const uploadExt = originalName.includes('.') ? originalName.split('.').pop()!.toLowerCase() : '';
+  if (BLOCKED_EXTENSIONS.has(uploadExt)) {
+    throw new AppError(400, `허용되지 않는 파일 확장자입니다: .${uploadExt}`, ErrorCode.FILE_BLOCKED_MIME);
+  }
+
+  const checksum = createHash('sha256').update(buffer).digest('hex');
 
   const fileId = uuidv4();
   const ext = originalName.includes('.') ? originalName.split('.').pop() : '';
@@ -85,6 +98,7 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
         originalName,
         mimeType: mimetype,
         sizeBytes: BigInt(fileSize),
+        checksumSha256: checksum,
         uploaderId: uploadedBy,
         orgId: getOrgId(request.headers),
         refType: linkedEntityType,
@@ -109,6 +123,7 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
       originalName,
       mimeType: mimetype,
       sizeBytes: fileSize,
+      checksumSha256: checksum,
       storagePath: `${BUCKET}/${key}`,
       uploadedBy,
       refType: linkedEntityType,
@@ -125,6 +140,12 @@ export async function getPresignedUpload(request: FastifyRequest, reply: Fastify
   const mimeType = contentType as string;
   if (BLOCKED_MIME.has(mimeType)) {
     throw new AppError(400, `허용되지 않는 파일 형식입니다: ${mimeType}`, ErrorCode.FILE_BLOCKED_MIME);
+  }
+
+  const fn = filename as string;
+  const presignedExt = fn.includes('.') ? fn.split('.').pop()!.toLowerCase() : '';
+  if (BLOCKED_EXTENSIONS.has(presignedExt)) {
+    throw new AppError(400, `허용되지 않는 파일 확장자입니다: .${presignedExt}`, ErrorCode.FILE_BLOCKED_MIME);
   }
 
   const fileId = uuidv4();
@@ -247,6 +268,7 @@ export async function getFileMeta(request: FastifyRequest, reply: FastifyReply) 
           originalName: file.originalName,
           mimeType: file.mimeType,
           sizeBytes: file.sizeBytes ? Number(file.sizeBytes) : null,
+          checksumSha256: file.checksumSha256 ?? null,
           storagePath: `${file.bucket}/${file.objectKey}`,
           uploadedBy: file.uploaderId,
           refType: file.refType,

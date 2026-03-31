@@ -37,7 +37,13 @@
       "Bash(__NEW_LINE_44d604e163af55d1__ echo:*)",
       "Bash(1 __NEW_LINE_17198a796268e7f5__ echo \"\" echo \"===== 복구 확인 =====\" docker exec labnote-postgres psql -U labnote -d labnote -c \"SET search_path TO auth; SELECT COUNT\\(*\\) as orgs FROM \"\"Organization\"\"; SELECT COUNT\\(*\\) as users FROM \"\"User\"\"; SELECT COUNT\\(*\\) as roles FROM \"\"Role\"\";\" 2)",
       "Bash(1 __NEW_LINE_17198a796268e7f5__ echo \"\" echo \"===== 로그인 확인 =====\" printf '{\"\"\"\"email\"\"\"\":\"\"\"\"admin@labnote.local\"\"\"\",\"\"\"\"password\"\"\"\":\"\"\"\"Admin1234!\"\"\"\"}')",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git push:*)",
+      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra/docs -type f -name *.md)",
+      "Bash(git ls-tree:*)",
+      "Bash(find ../docs/ -type f -name *.md -o -name *.txt)",
+      "Bash(find /c/vscode/lab/lab-companion-feature-phase1-backend-infra/services/inventory-frontend -type f \\\\\\(-name *.lang -o -name *.yml -o -name *.yaml -o -name *locale* -o -name *i18n* \\\\\\))",
+      "Bash(python generate_ppt.py)"
     ]
   }
 }

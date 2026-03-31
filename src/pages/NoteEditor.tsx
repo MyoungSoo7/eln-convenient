@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { getToken } from "@/lib/authToken";
+import { getToken, getStoredUser } from "@/lib/authToken";
 import {
   createNote, updateNote, getNote, changeNoteStatus,
   listAttachments, addAttachment, deleteAttachmentRecord,
@@ -72,6 +72,8 @@ export default function NoteEditor() {
   } | null;
 
   const isNew = id === "new";
+  const storedUser = getStoredUser();
+  const userRole = (storedUser?.role as string) ?? "";
 
   const buildProtocolContent = () => {
     if (!protocolState?.fromProtocol) return sectionTemplate;
@@ -460,7 +462,7 @@ export default function NoteEditor() {
                 {t('editor.startProgress')}
               </Button>
             )}
-            {!isNew && noteStatus === "in_progress" && (
+            {!isNew && noteStatus === "in_progress" && userRole !== "researcher" && (
               <Dialog open={signDialogOpen} onOpenChange={(open) => { setSignDialogOpen(open); if (!open) setSignPassword(""); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">

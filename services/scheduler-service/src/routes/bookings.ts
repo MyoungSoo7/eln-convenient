@@ -163,6 +163,10 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     const startAt = parseDate(body.startAt);
     const endAt   = parseDate(body.endAt);
 
+    if (startAt <= new Date()) {
+      throw new AppError(400, '과거 시간에는 예약할 수 없습니다.', ErrorCode.BOOKING_PAST_DATE);
+    }
+
     if (endAt <= startAt) {
       throw new AppError(400, 'endAt은 startAt보다 이후여야 합니다.', ErrorCode.BOOKING_INVALID_DATE);
     }
@@ -340,7 +344,8 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       tags: ['bookings'],
       body: {
         type: 'object',
-        properties: { reason: { type: 'string', maxLength: 500 } },
+        required: ['reason'],
+        properties: { reason: { type: 'string', minLength: 1, maxLength: 500 } },
       },
     },
   }, async (request, reply) => {

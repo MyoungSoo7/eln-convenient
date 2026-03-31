@@ -573,6 +573,13 @@ export async function addAttachment(request: FastifyRequest, reply: FastifyReply
 export async function deleteAttachment(request: FastifyRequest, reply: FastifyReply) {
   // 소유권 검증은 라우트의 requireOwnerOrAdmin preHandler에서 수행됨
   // request.routeResource에 attachment가 담겨 있음
+  const { id } = request.params as { id: string };
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
+  if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 첨부파일을 삭제할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
+
   const attachment = (request as any).routeResource;
   await prisma.attachment.delete({ where: { id: attachment.id } });
   return { ok: true, message: '첨부파일이 삭제되었습니다.' };
@@ -599,7 +606,17 @@ export async function createNoteLink(request: FastifyRequest, reply: FastifyRepl
   const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 연결을 추가할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
+
   const { targetType, targetId, label } = body;
+
+  const existing = await prisma.noteLink.findFirst({ where: { noteId: id, targetType, targetId } });
+  if (existing) {
+    throw new AppError(409, '이미 연결된 항목입니다.', ErrorCode.LINK_DUPLICATE);
+  }
+
   const link = await prisma.noteLink.create({
     data: {
       id: uuidv4(),
@@ -619,6 +636,10 @@ export async function deleteNoteLink(request: FastifyRequest, reply: FastifyRepl
   const { id, linkId } = request.params as { id: string; linkId: string };
   const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
+
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 연결을 해제할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
 
   const link = await prisma.noteLink.findUnique({ where: { id: linkId } });
   if (!link) throw new AppError(404, '링크를 찾을 수 없습니다.', ErrorCode.LINK_NOT_FOUND);
