@@ -61,7 +61,14 @@ import {
 // 공통 헬퍼
 // ─────────────────────────────────────────────
 
-/** 노트 조회 + 404 처리 */
+/** 노트 조회 + orgId 스코프 + 404 처리 (보안 헬퍼) */
+async function findNoteInOrg(id: string, orgId: string) {
+  const note = await prisma.note.findFirst({ where: { id, orgId } });
+  if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
+  return note;
+}
+
+/** @deprecated findNoteInOrg 사용 권장 */
 async function findNote(id: string) {
   return prisma.note.findUnique({ where: { id } });
 }
