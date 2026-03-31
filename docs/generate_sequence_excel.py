@@ -1,318 +1,784 @@
-"""시퀀스 다이어그램을 엑셀 파일로 변환하는 스크립트"""
+"""시퀀스 다이어그램을 이미지로 그려서 엑셀 파일에 삽입하는 스크립트"""
+import os
+import tempfile
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 import openpyxl
+from openpyxl.drawing.image import Image as XlImage
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
-# 스타일 정의
-HEADER_FONT = Font(name='맑은 고딕', bold=True, size=11, color='FFFFFF')
-HEADER_FILL = PatternFill(start_color='2F5496', end_color='2F5496', fill_type='solid')
-SUB_HEADER_FILL = PatternFill(start_color='D6E4F0', end_color='D6E4F0', fill_type='solid')
-SUB_HEADER_FONT = Font(name='맑은 고딕', bold=True, size=10)
-NORMAL_FONT = Font(name='맑은 고딕', size=10)
-TITLE_FONT = Font(name='맑은 고딕', bold=True, size=14, color='2F5496')
-SECTION_FONT = Font(name='맑은 고딕', bold=True, size=11, color='2F5496')
-THIN_BORDER = Border(
-    left=Side(style='thin'), right=Side(style='thin'),
-    top=Side(style='thin'), bottom=Side(style='thin')
-)
-WRAP_ALIGN = Alignment(wrap_text=True, vertical='top')
-CENTER_ALIGN = Alignment(horizontal='center', vertical='center', wrap_text=True)
+# ── 한글 폰트 설정 ──
+plt.rcParams['font.family'] = 'Malgun Gothic'
+plt.rcParams['axes.unicode_minus'] = False
 
-# 색상
-COLORS = {
-    'async': PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid'),
-    'error': PatternFill(start_color='FCE4EC', end_color='FCE4EC', fill_type='solid'),
-    'success': PatternFill(start_color='E8F5E9', end_color='E8F5E9', fill_type='solid'),
-    'tx': PatternFill(start_color='E3F2FD', end_color='E3F2FD', fill_type='solid'),
-    'event': PatternFill(start_color='F3E5F5', end_color='F3E5F5', fill_type='solid'),
+# ── 색상 팔레트 ──
+ACTOR_COLOR = '#FFD54F'
+SERVICE_COLOR = '#42A5F5'
+DB_COLOR = '#66BB6A'
+INFRA_COLOR = '#EF5350'
+ARROW_COLOR = '#37474F'
+ERROR_COLOR = '#E53935'
+ASYNC_COLOR = '#FF9800'
+NOTE_BG = '#FFF9C4'
+ALT_BG = '#FFEBEE'
+TX_BG = '#E3F2FD'
+LOOP_BG = '#F3E5F5'
+LIFELINE_COLOR = '#B0BEC5'
+
+PARTICIPANT_COLORS = {
+    'actor': ACTOR_COLOR,
+    'frontend': '#81D4FA',
+    'gateway': '#7E57C2',
+    'auth': '#26A69A',
+    'eln': '#5C6BC0',
+    'signature': '#EC407A',
+    'inventory': '#8D6E63',
+    'scheduler': '#78909C',
+    'search': '#29B6F6',
+    'file': '#FFA726',
+    'collab': '#AB47BC',
+    'db': DB_COLOR,
+    'redis': INFRA_COLOR,
+    'opensearch': '#1565C0',
+    'minio': '#C62828',
+    'bullmq': '#F44336',
+    'puppeteer': '#4CAF50',
+    'worker': '#FF7043',
 }
 
 
-def style_header_row(ws, row, cols):
-    for c in range(1, cols + 1):
-        cell = ws.cell(row=row, column=c)
-        cell.font = HEADER_FONT
-        cell.fill = HEADER_FILL
-        cell.alignment = CENTER_ALIGN
-        cell.border = THIN_BORDER
+def get_color(name):
+    nl = name.lower()
+    for key, color in PARTICIPANT_COLORS.items():
+        if key in nl:
+            return color
+    return '#90A4AE'
 
 
-def style_data_row(ws, row, cols, fill=None):
-    for c in range(1, cols + 1):
-        cell = ws.cell(row=row, column=c)
-        cell.font = NORMAL_FONT
-        cell.alignment = WRAP_ALIGN
-        cell.border = THIN_BORDER
-        if fill:
-            cell.fill = fill
+def draw_sequence_diagram(title, participants, messages, fig_width=20, notes=None, regions=None):
+    """
+    시퀀스 다이어그램을 matplotlib로 그립니다.
+
+    participants: [(name, short_label)] - 참여자 목록
+    messages: [(from_idx, to_idx, label, style)] - 메시지 목록
+        style: 'normal', 'error', 'async', 'self', 'return'
+    notes: [(over_idx, text, bg_color)] - 노트
+    regions: [(start_msg_idx, end_msg_idx, label, bg_color)] - alt/loop/tx 영역
+    """
+    if notes is None:
+        notes = []
+    if regions is None:
+        regions = []
+
+    n_participants = len(participants)
+    n_messages = len(messages)
+
+    # 레이아웃 계산
+    col_spacing = fig_width / (n_participants + 1)
+    row_height = 0.7
+    header_y = n_messages * row_height + 3
+    fig_height = header_y + 2
+
+    fig, ax = plt.subplots(1, 1, figsize=(fig_width, fig_height))
+    ax.set_xlim(-0.5, fig_width + 0.5)
+    ax.set_ylim(-1, fig_height + 0.5)
+    ax.axis('off')
+
+    # 타이틀
+    ax.text(fig_width / 2, fig_height - 0.2, title,
+            ha='center', va='top', fontsize=16, fontweight='bold',
+            color='#1A237E')
+
+    # 참여자 위치 계산
+    px = [(i + 1) * col_spacing for i in range(n_participants)]
+    top_y = fig_height - 1.5
+    bottom_y = 0.5
+
+    # 참여자 박스 + 라이프라인
+    for i, (name, label) in enumerate(participants):
+        x = px[i]
+        color = get_color(name)
+
+        # 상단 박스
+        box_w = col_spacing * 0.85
+        box = FancyBboxPatch((x - box_w/2, top_y - 0.3), box_w, 0.7,
+                             boxstyle="round,pad=0.1",
+                             facecolor=color, edgecolor='#37474F',
+                             linewidth=1.5, alpha=0.9)
+        ax.add_patch(box)
+        # 텍스트 줄바꿈
+        display_label = label.replace('\\n', '\n')
+        ax.text(x, top_y + 0.05, display_label,
+                ha='center', va='center', fontsize=7.5, fontweight='bold',
+                color='white' if color not in [ACTOR_COLOR, '#81D4FA', NOTE_BG] else '#212121')
+
+        # 라이프라인
+        ax.plot([x, x], [top_y - 0.3, bottom_y], color=LIFELINE_COLOR,
+                linewidth=1, linestyle='--', alpha=0.6, zorder=0)
+
+        # 하단 박스
+        box2 = FancyBboxPatch((x - box_w/2, bottom_y - 0.5), box_w, 0.5,
+                              boxstyle="round,pad=0.05",
+                              facecolor=color, edgecolor='#37474F',
+                              linewidth=1, alpha=0.7)
+        ax.add_patch(box2)
+        ax.text(x, bottom_y - 0.25, label.split('\\n')[0],
+                ha='center', va='center', fontsize=6.5, color='white' if color not in [ACTOR_COLOR, '#81D4FA'] else '#212121')
+
+    # 영역(alt/loop/tx) 그리기 — 메시지 뒤에 그리면 가려지므로 먼저
+    for start_idx, end_idx, region_label, bg_color in regions:
+        y1 = top_y - 1.2 - start_idx * row_height + 0.25
+        y2 = top_y - 1.2 - end_idx * row_height - 0.25
+        rect = plt.Rectangle((0.3, y2), fig_width - 0.6, y1 - y2,
+                              facecolor=bg_color, edgecolor='#78909C',
+                              linewidth=1.5, linestyle='--', alpha=0.3, zorder=0)
+        ax.add_patch(rect)
+        # 라벨 배지
+        badge = FancyBboxPatch((0.3, y1 - 0.25), len(region_label) * 0.13 + 0.4, 0.25,
+                               boxstyle="round,pad=0.05",
+                               facecolor='#78909C', edgecolor='none', alpha=0.8)
+        ax.add_patch(badge)
+        ax.text(0.5, y1 - 0.12, region_label, fontsize=6.5, fontweight='bold', color='white')
+
+    # 메시지 화살표
+    for msg_idx, (from_i, to_i, label, style) in enumerate(messages):
+        y = top_y - 1.2 - msg_idx * row_height
+        x1 = px[from_i]
+        x2 = px[to_i]
+
+        if style == 'error':
+            color = ERROR_COLOR
+            ls = '-'
+            lw = 1.5
+        elif style == 'async':
+            color = ASYNC_COLOR
+            ls = '--'
+            lw = 1.2
+        elif style == 'return':
+            color = '#78909C'
+            ls = '--'
+            lw = 1
+        elif style == 'self':
+            color = ARROW_COLOR
+            ls = '-'
+            lw = 1.2
+        else:
+            color = ARROW_COLOR
+            ls = '-'
+            lw = 1.2
+
+        if from_i == to_i:
+            # 자기 자신에게 보내는 메시지
+            loop_w = col_spacing * 0.3
+            ax.annotate('', xy=(x1 + 0.05, y - 0.15),
+                        xytext=(x1 + loop_w, y - 0.15),
+                        arrowprops=dict(arrowstyle='->', color=color, lw=lw, ls=ls))
+            ax.plot([x1, x1 + loop_w], [y, y], color=color, lw=lw, ls=ls)
+            ax.plot([x1 + loop_w, x1 + loop_w], [y, y - 0.15], color=color, lw=lw, ls=ls)
+            ax.text(x1 + loop_w + 0.1, y - 0.05, label,
+                    ha='left', va='center', fontsize=6, color=color,
+                    bbox=dict(boxstyle='round,pad=0.15', facecolor='white', edgecolor='none', alpha=0.8))
+        else:
+            # 일반 화살표
+            ax.annotate('', xy=(x2, y), xytext=(x1, y),
+                        arrowprops=dict(arrowstyle='->', color=color, lw=lw,
+                                        linestyle=ls, connectionstyle='arc3,rad=0'))
+
+            # 라벨 위치
+            mid_x = (x1 + x2) / 2
+            offset_y = 0.12
+            txt_color = color if style in ('error', 'async') else '#212121'
+
+            # 긴 텍스트 줄바꿈
+            display = label
+            if len(label) > 40:
+                mid = len(label) // 2
+                # 공백 기준 줄바꿈
+                space_pos = label.rfind(' ', 0, mid + 10)
+                if space_pos > 10:
+                    display = label[:space_pos] + '\n' + label[space_pos+1:]
+
+            ax.text(mid_x, y + offset_y, display,
+                    ha='center', va='bottom', fontsize=5.8, color=txt_color,
+                    bbox=dict(boxstyle='round,pad=0.1', facecolor='white', edgecolor='none', alpha=0.85))
+
+    # 노트 그리기
+    for over_idx, note_text, bg in notes:
+        # 해당 메시지 인덱스 위치에 노트
+        if isinstance(over_idx, tuple):
+            x_pos = (px[over_idx[0]] + px[over_idx[1]]) / 2
+            y_pos = top_y - 0.6
+        else:
+            x_pos = px[over_idx]
+            y_pos = top_y - 0.6
+        note_box = FancyBboxPatch((x_pos - 1.5, y_pos - 0.2), 3, 0.4,
+                                   boxstyle="round,pad=0.1",
+                                   facecolor=bg, edgecolor='#FBC02D',
+                                   linewidth=1, alpha=0.9)
+        ax.add_patch(note_box)
+        ax.text(x_pos, y_pos, note_text, ha='center', va='center',
+                fontsize=6, style='italic', color='#5D4037')
+
+    plt.tight_layout(pad=0.5)
+    return fig
 
 
-def add_data_row(ws, row, data, fill=None):
-    for c, val in enumerate(data, 1):
-        ws.cell(row=row, column=c, value=val)
-    style_data_row(ws, row, len(data), fill)
-    return row + 1
+# ── 시퀀스 다이어그램 데이터 정의 ──
+
+diagrams = []
+
+# 1-1. 로그인
+diagrams.append({
+    'title': '1-1. 로그인',
+    'sheet': '1-1. 로그인',
+    'participants': [
+        ('actor', '사용자'),
+        ('frontend', 'Frontend\\n(React)'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('auth', 'Auth Service\\n(:8001)'),
+        ('db', 'PostgreSQL\\n(auth)'),
+        ('redis', 'Redis'),
+    ],
+    'messages': [
+        (0, 1, '이메일/비밀번호 입력 후 로그인 클릭', 'normal'),
+        (1, 2, 'POST /api/auth/login {email, password}', 'normal'),
+        (2, 3, '프록시 전달 (공개 경로 — JWT 생략)', 'normal'),
+        (3, 4, 'SELECT user WHERE email (+ role, teams 조인)', 'normal'),
+        (4, 3, '사용자 정보 반환', 'return'),
+        (3, 3, 'bcrypt.compare(password, hash)', 'self'),
+        (3, 1, '[실패] 401 이메일 또는 비밀번호 오류', 'error'),
+        (3, 3, 'Access Token 생성 (15분)', 'self'),
+        (3, 3, 'Refresh Token 생성 (8시간)', 'self'),
+        (3, 2, '{ok:true, data:{token, refreshToken, user}}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 1, 'Access Token → 메모리 저장', 'self'),
+        (1, 2, 'POST /api/auth/session {refreshToken}', 'normal'),
+        (2, 2, 'Set-Cookie: labnote_rt (HttpOnly, Secure)', 'self'),
+        (2, 1, '200 OK', 'return'),
+        (1, 0, '대시보드로 이동', 'normal'),
+    ],
+})
+
+# 1-2. 토큰 갱신
+diagrams.append({
+    'title': '1-2. 토큰 갱신 (자동)',
+    'sheet': '1-2. 토큰 갱신',
+    'participants': [
+        ('frontend', 'Frontend\\n(React)'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('auth', 'Auth Service\\n(:8001)'),
+        ('redis', 'Redis'),
+    ],
+    'messages': [
+        (0, 0, 'Access Token 만료 감지 (15분)', 'self'),
+        (0, 1, 'POST /api/auth/session/refresh (Cookie: labnote_rt)', 'normal'),
+        (1, 1, '쿠키에서 Refresh Token 추출', 'self'),
+        (1, 2, 'POST /api/auth/refresh (x-user-id 헤더)', 'normal'),
+        (2, 2, 'Refresh Token 서명 검증', 'self'),
+        (2, 3, 'GET blacklist:user:{userId}', 'normal'),
+        (2, 0, '[무효화] 401 "권한이 변경되었습니다"', 'error'),
+        (2, 2, '새 Access Token (15분) 발급', 'self'),
+        (2, 2, '새 Refresh Token (8시간) 발급', 'self'),
+        (2, 1, '{token, refreshToken}', 'return'),
+        (1, 1, 'Set-Cookie: labnote_rt 교체', 'self'),
+        (1, 0, '{ok:true, data:{token}}', 'return'),
+        (0, 0, '새 Access Token → 메모리 교체', 'self'),
+    ],
+})
+
+# 1-3. 로그아웃
+diagrams.append({
+    'title': '1-3. 로그아웃',
+    'sheet': '1-3. 로그아웃',
+    'participants': [
+        ('actor', '사용자'),
+        ('frontend', 'Frontend\\n(React)'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('auth', 'Auth Service\\n(:8001)'),
+        ('redis', 'Redis'),
+    ],
+    'messages': [
+        (0, 1, '로그아웃 클릭', 'normal'),
+        (1, 2, 'POST /api/auth/logout (Bearer {accessToken})', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 3, '토큰에서 만료시각(exp) 추출', 'self'),
+        (3, 4, 'SET blacklist:{token} "1" TTL=남은 만료 시간', 'normal'),
+        (3, 2, '{ok:true}', 'return'),
+        (1, 2, 'DELETE /api/auth/session', 'normal'),
+        (2, 2, 'Set-Cookie: labnote_rt=; Max-Age=0', 'self'),
+        (2, 1, '200 OK', 'return'),
+        (1, 1, '메모리의 Access Token 삭제', 'self'),
+        (1, 0, '로그인 페이지로 이동', 'normal'),
+    ],
+})
+
+# 1-4. JWT 검증
+diagrams.append({
+    'title': '1-4. API 요청 시 Gateway JWT 검증',
+    'sheet': '1-4. JWT 검증',
+    'participants': [
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('redis', 'Redis'),
+        ('service', '내부 서비스'),
+    ],
+    'messages': [
+        (0, 1, 'API 요청 (Authorization: Bearer {token})', 'normal'),
+        (1, 1, '① 내부 헤더 제거 (스푸핑 방지)', 'self'),
+        (1, 1, '② 공개 경로 확인 (/health, /login)', 'self'),
+        (1, 1, '③ /internal 경로 차단 (404)', 'self'),
+        (1, 2, '④ GET blacklist:{token}', 'normal'),
+        (1, 0, '[블랙리스트] 401 "만료된 세션"', 'error'),
+        (1, 1, '⑤ JWT 서명 검증 (JWT_SECRET)', 'self'),
+        (1, 2, '⑥ GET blacklist:user:{userId}', 'normal'),
+        (1, 0, '[무효화] 401 "권한이 변경되었습니다"', 'error'),
+        (1, 1, '⑦ 내부 헤더 주입 (x-user-id, role, permissions...)', 'self'),
+        (1, 3, '⑧ 프록시 전달 (+ 주입된 헤더)', 'normal'),
+        (3, 1, '응답', 'return'),
+        (1, 0, '응답 전달', 'return'),
+    ],
+})
+
+# 2-1. 노트 생성
+diagrams.append({
+    'title': '2-1. 연구노트 생성',
+    'sheet': '2-1. 노트 생성',
+    'participants': [
+        ('actor', '연구자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('eln', 'ELN Service\\n(:8002)'),
+        ('db', 'PostgreSQL\\n(eln)'),
+        ('search', 'Search\\n(:8006)'),
+        ('signature', 'Sig-Audit\\n(:8003)'),
+    ],
+    'messages': [
+        (0, 1, '새 연구노트 작성 클릭', 'normal'),
+        (1, 2, 'POST /api/notes {title, content, type, tags}', 'normal'),
+        (2, 2, 'JWT 검증 + 헤더 주입', 'self'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 4, "INSERT note (status:'draft')", 'normal'),
+        (4, 3, '생성된 노트', 'return'),
+        (3, 4, 'INSERT noteRevision (revision:1)', 'normal'),
+        (3, 4, '[opt] UPDATE template useCount+1', 'normal'),
+        (3, 5, '[비동기] POST /api/search/index', 'async'),
+        (3, 6, '[비동기] 감사로그 note.created', 'async'),
+        (3, 2, '201 {ok:true, data:note}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '에디터 화면으로 이동', 'normal'),
+    ],
+    'regions': [
+        (8, 9, 'par (비동기)', '#FFF9C4'),
+    ],
+})
+
+# 2-2. 노트 수정
+diagrams.append({
+    'title': '2-2. 연구노트 수정 (저장)',
+    'sheet': '2-2. 노트 수정',
+    'participants': [
+        ('actor', '연구자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('eln', 'ELN Service\\n(:8002)'),
+        ('db', 'PostgreSQL\\n(eln)'),
+        ('search', 'Search\\n(:8006)'),
+        ('signature', 'Sig-Audit\\n(:8003)'),
+    ],
+    'messages': [
+        (0, 1, '노트 내용 수정 후 저장', 'normal'),
+        (1, 2, 'PUT /api/notes/:id {title, content, tags}', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 4, 'SELECT note WHERE id AND orgId', 'normal'),
+        (3, 1, '[없음] 404 NOTE_NOT_FOUND', 'error'),
+        (3, 1, '[잠김] 403 NOTE_LOCKED / NOTE_SIGNED', 'error'),
+        (3, 3, '소유자 또는 Admin 확인', 'self'),
+        (3, 4, 'UPDATE note SET title, content, tags', 'normal'),
+        (3, 4, 'INSERT noteRevision (revision:count+1)', 'normal'),
+        (3, 5, '[비동기] POST /api/search/index 재인덱싱', 'async'),
+        (3, 6, '[비동기] 감사로그 note.updated', 'async'),
+        (3, 2, '200 {ok:true, data:updatedNote}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '저장 완료 토스트', 'normal'),
+    ],
+    'regions': [
+        (9, 10, 'par (비동기)', '#FFF9C4'),
+    ],
+})
+
+# 3. 실시간 협업 편집
+diagrams.append({
+    'title': '3. 실시간 협업 편집',
+    'sheet': '3. 실시간 협업',
+    'participants': [
+        ('actor', 'Alice\\n(연구자 A)'),
+        ('actor', 'Bob\\n(연구자 B)'),
+        ('collab', 'Collab Service\\n(:8009 WS)'),
+        ('redis', 'Redis\\n(pub/sub)'),
+    ],
+    'messages': [
+        (0, 2, 'WebSocket 연결 ws://.../collab/notes/{noteId}', 'normal'),
+        (2, 2, 'JWT 검증 + Room에 Alice 추가 (colorIdx:0)', 'self'),
+        (2, 0, "{type:'joined', users:[]}", 'return'),
+        (1, 2, 'WebSocket 연결 (같은 노트)', 'normal'),
+        (2, 2, 'Room에 Bob 추가 (colorIdx:1)', 'self'),
+        (2, 1, "{type:'joined', users:[alice]}", 'return'),
+        (2, 0, "{type:'user-joined', userId:'bob'}", 'normal'),
+        (2, 3, "PUBLISH labnote:collab (user-joined)", 'normal'),
+        (0, 2, "{type:'content-update', content:'실험 결과...'}", 'normal'),
+        (2, 1, "content-update 전달 (400ms 디바운스)", 'normal'),
+        (2, 3, 'PUBLISH labnote:collab (content-update)', 'normal'),
+        (0, 2, "{type:'awareness', cursorLine:15}", 'normal'),
+        (2, 1, "awareness 전달 (커서 위치)", 'normal'),
+        (1, 2, 'WebSocket 연결 종료', 'normal'),
+        (2, 2, 'Room에서 Bob 제거', 'self'),
+        (2, 0, "{type:'user-left', userId:'bob'}", 'normal'),
+        (2, 3, "PUBLISH labnote:collab (user-left)", 'normal'),
+    ],
+})
+
+# 4. 전자서명 → 상태 전환
+diagrams.append({
+    'title': '4. 전자서명 → 상태 전환 (해시체인)',
+    'sheet': '4. 전자서명',
+    'participants': [
+        ('actor', '검토자\\n(Reviewer)'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('signature', 'Sig-Audit\\n(:8003)'),
+        ('auth', 'Auth\\n(:8001)'),
+        ('db', 'PostgreSQL\\n(signature)'),
+        ('redis', 'Redis Stream'),
+        ('eln', 'ELN\\n(:8002)'),
+        ('db', 'PostgreSQL\\n(eln)'),
+    ],
+    'messages': [
+        (0, 1, '서명 버튼 클릭 + 비밀번호 입력', 'normal'),
+        (1, 2, 'POST /api/signatures/sign/:noteId {password, comment}', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 4, 'POST /internal/verify-password (x-internal-secret)', 'normal'),
+        (4, 3, '{verified: true}', 'return'),
+        (3, 1, '[실패] 400 SIGNATURE_PASSWORD_INVALID', 'error'),
+        (3, 7, 'GET /api/notes/:noteId (내부 호출)', 'normal'),
+        (7, 3, '노트 정보 (authorId, teamId, status)', 'return'),
+        (3, 3, '권한 검증 (자기서명 차단, reviewer/admin 확인)', 'self'),
+        (3, 5, 'SELECT 이전 서명 (prevHash 조회)', 'normal'),
+        (3, 3, 'sha256(noteId:signerId:timestamp:prevHash:comment)', 'self'),
+        (3, 5, 'INSERT signature (해시체인)', 'normal'),
+        (3, 5, "INSERT auditLog (action:'signed')", 'normal'),
+        (3, 6, 'XADD labnote:events * type=NOTE_SIGNED', 'normal'),
+        (3, 7, '[폴백] PATCH /status {signed} x-user-role:system', 'async'),
+        (3, 2, '201 {ok:true, data:signature}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '서명 완료 안내', 'normal'),
+        (6, 7, '--- 비동기 이벤트 소비 ---', 'normal'),
+        (7, 8, "UPDATE note SET status='signed'", 'normal'),
+        (7, 8, "INSERT noteStatusHistory (in_progress→signed)", 'normal'),
+        (7, 6, 'XACK labnote:events (처리 완료)', 'normal'),
+    ],
+    'regions': [
+        (18, 21, 'async (Consumer Group: eln-service)', '#F3E5F5'),
+    ],
+})
+
+# 5. 관리자 잠금 해제
+diagrams.append({
+    'title': '5. 관리자 잠금 해제',
+    'sheet': '5. 잠금 해제',
+    'participants': [
+        ('actor', '관리자\\n(Admin)'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('eln', 'ELN Service\\n(:8002)'),
+        ('auth', 'Auth\\n(:8001)'),
+        ('db', 'PostgreSQL\\n(eln)'),
+        ('signature', 'Sig-Audit\\n(:8003)'),
+    ],
+    'messages': [
+        (0, 1, '잠금 해제 클릭 + 비밀번호/사유 입력', 'normal'),
+        (1, 2, 'POST /api/notes/:id/admin-unlock {adminPassword, reason}', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 3, 'requireRole(ADMIN) + requirePermission(NOTE_UNLOCK)', 'self'),
+        (3, 5, 'SELECT note WHERE id AND orgId', 'normal'),
+        (3, 1, '[없음] 404 NOTE_NOT_FOUND', 'error'),
+        (3, 1, '[locked 아님] 400 "잠긴 상태가 아닙니다"', 'error'),
+        (3, 4, 'POST /internal/verify-password (x-internal-secret)', 'normal'),
+        (4, 3, '{verified: true}', 'return'),
+        (3, 1, '[실패] 400 NOTE_ADMIN_PASSWORD_INVALID', 'error'),
+        (3, 5, "UPDATE note SET status='draft'", 'normal'),
+        (3, 5, 'INSERT noteStatusHistory (locked→draft, isAdminAction:true)', 'normal'),
+        (3, 6, '[비동기] 감사로그 note.admin_unlocked', 'async'),
+        (3, 6, '[비동기] 알림 발송 (작성자≠관리자 시)', 'async'),
+        (3, 2, "200 {ok:true, data:note, message:'잠금 해제'}", 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '상태 변경 반영 (locked → draft)', 'normal'),
+    ],
+    'regions': [
+        (12, 13, 'par (비동기)', '#FFF9C4'),
+    ],
+})
+
+# 6. PDF/ZIP 내보내기
+diagrams.append({
+    'title': '6. PDF/ZIP 내보내기',
+    'sheet': '6. PDF 내보내기',
+    'participants': [
+        ('actor', '사용자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('signature', 'Sig-Audit\\n(:8003)'),
+        ('bullmq', 'BullMQ\\n(Redis 큐)'),
+        ('worker', 'Export\\nWorker'),
+        ('eln', 'ELN\\n(:8002)'),
+        ('puppeteer', 'Puppeteer'),
+        ('file', 'File Service\\n(:8008)'),
+        ('minio', 'MinIO'),
+        ('redis', 'Redis\\n(pub/sub)'),
+    ],
+    'messages': [
+        (0, 1, 'PDF 내보내기 클릭', 'normal'),
+        (1, 2, 'POST /api/export/pdf/:noteId', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 4, "exportQueue.add('pdf', {jobId, noteId})", 'normal'),
+        (3, 2, "202 Accepted {jobId, status:'pending'}", 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 2, 'SSE 연결 GET /api/events/exports', 'normal'),
+        (2, 10, 'SUBSCRIBE export-status', 'normal'),
+        (4, 5, '작업 수신 (concurrency:2)', 'normal'),
+        (5, 10, 'PUBLISH export-status {progress:10%}', 'normal'),
+        (5, 6, 'GET /api/notes/:noteId (내부 호출)', 'normal'),
+        (5, 5, 'Handlebars 템플릿 컴파일', 'self'),
+        (5, 7, 'HTML → PDF 변환 (A4)', 'normal'),
+        (7, 5, 'PDF Buffer', 'return'),
+        (5, 10, 'PUBLISH export-status {progress:80%}', 'normal'),
+        (5, 8, 'POST /api/exports/internal/upload', 'normal'),
+        (8, 9, "PutObject (bucket:'labnote-exports')", 'normal'),
+        (8, 9, 'PresignedGetObject (24시간 유효)', 'normal'),
+        (8, 5, '{fileId, downloadUrl}', 'return'),
+        (5, 10, "PUBLISH export-status {completed, 100%}", 'normal'),
+        (10, 2, 'SSE event → Frontend', 'normal'),
+        (1, 0, '다운로드 버튼 활성화', 'normal'),
+        (0, 1, '다운로드 클릭', 'normal'),
+        (1, 9, 'GET presigned URL (직접 다운로드)', 'normal'),
+    ],
+})
+
+# 7. 통합 검색
+diagrams.append({
+    'title': '7. 통합 검색',
+    'sheet': '7. 통합 검색',
+    'participants': [
+        ('actor', '사용자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('search', 'Search Service\\n(:8006)'),
+        ('redis', 'Redis\\n(캐시)'),
+        ('opensearch', 'OpenSearch'),
+        ('db', 'PostgreSQL\\n(search)'),
+    ],
+    'messages': [
+        (0, 1, '검색어 타이핑 ("세포 배양")', 'normal'),
+        (1, 2, 'GET /api/search/suggest?q=세포 배양', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 5, 'multi_match (title^3, tags^2, phrase_prefix)', 'normal'),
+        (5, 3, '상위 7건 매칭 결과', 'return'),
+        (3, 1, '[{text, domainType, docId}, ...]', 'return'),
+        (1, 0, '자동완성 드롭다운 표시', 'normal'),
+        (0, 1, '검색 실행 (Enter)', 'normal'),
+        (1, 2, 'GET /api/search?q=세포 배양&domainTypes=NOTE,PROTOCOL', 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 3, '캐시 키 생성 SHA256(q+types+page+userId+orgId)', 'self'),
+        (3, 4, 'GET cache:{hash}', 'normal'),
+        (3, 1, '[캐시 히트] 즉시 응답 (3분 TTL)', 'return'),
+        (3, 5, 'bool 쿼리 (title^4, tags^3, fuzziness:AUTO)', 'normal'),
+        (5, 3, '검색 결과 + 하이라이트 + 집계', 'return'),
+        (3, 6, '[비동기] INSERT searchHistory', 'async'),
+        (3, 4, '[비동기] SET cache:{hash} EX 180', 'async'),
+        (3, 2, '{results[], counts:{NOTE:12}, pagination}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '검색 결과 목록 + 도메인별 탭', 'normal'),
+    ],
+    'regions': [
+        (15, 16, 'par (비동기)', '#FFF9C4'),
+    ],
+})
+
+# 8-1. 수량 입출고
+diagrams.append({
+    'title': '8-1. 인벤토리 수량 입출고',
+    'sheet': '8-1. 수량 입출고',
+    'participants': [
+        ('actor', '연구자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('inventory', 'Inventory\\n(:8004)'),
+        ('db', 'PostgreSQL\\n(inventory)'),
+        ('search', 'Search\\n(:8006)'),
+    ],
+    'messages': [
+        (0, 1, '시약 출고 수량 입력 (Ethanol 500ml)', 'normal'),
+        (1, 2, "POST /api/inventory/items/:id/quantity {out, 500}", 'normal'),
+        (2, 3, '프록시 전달', 'normal'),
+        (3, 4, 'SELECT inventoryItem WHERE id AND orgId', 'normal'),
+        (3, 3, '현재 수량 확인 (2000ml) → 계산: after=1500', 'self'),
+        (3, 1, '[부족] 400 ITEM_STOCK_INSUFFICIENT', 'error'),
+        (3, 3, "자동 상태 전환 판단 (0→depleted, >0→available)", 'self'),
+        (3, 4, "[TX] UPDATE item SET quantity=1500, status='available'", 'normal'),
+        (3, 4, '[TX] INSERT inventoryHistory (out, 2000→1500, -500)', 'normal'),
+        (3, 5, '[비동기] POST /api/search/index 재인덱싱', 'async'),
+        (3, 2, '200 {ok:true, data:{item, before:2000, after:1500}}', 'return'),
+        (2, 1, '응답 전달', 'return'),
+        (1, 0, '수량 변경 완료 표시', 'normal'),
+    ],
+    'regions': [
+        (7, 8, 'Transaction', '#E3F2FD'),
+    ],
+})
+
+# 8-2. 재고 경고
+diagrams.append({
+    'title': '8-2. 재고 경고 (대시보드)',
+    'sheet': '8-2. 재고 경고',
+    'participants': [
+        ('actor', '관리자'),
+        ('frontend', 'Frontend'),
+        ('gateway', 'API Gateway\\n(:8000)'),
+        ('redis', 'Redis\\n(캐시)'),
+        ('inventory', 'Inventory\\n(:8004)'),
+        ('db', 'PostgreSQL\\n(inventory)'),
+    ],
+    'messages': [
+        (0, 1, '대시보드 접근', 'normal'),
+        (1, 2, 'GET /api/dashboard/org', 'normal'),
+        (2, 3, 'GET cache:dashboard:org:{orgId}', 'normal'),
+        (2, 1, '[캐시 히트] 즉시 응답 (5분 TTL)', 'return'),
+        (2, 4, '[병렬] GET /api/inventory/alerts/low-stock', 'normal'),
+        (2, 4, '[병렬] GET /api/inventory/alerts/expiring?days=30', 'normal'),
+        (4, 5, "SELECT items WHERE quantity<=minQuantity", 'normal'),
+        (4, 5, "SELECT items WHERE expiryDate<=NOW()+30일", 'normal'),
+        (4, 2, '재고 부족 항목 목록', 'return'),
+        (4, 2, '만료 임박 항목 목록 (daysLeft 포함)', 'return'),
+        (2, 2, '응답 집계 (lowStock/expiring 상위 5건)', 'self'),
+        (2, 3, 'SET cache:dashboard:org:{orgId} EX 300', 'normal'),
+        (2, 1, '대시보드 데이터', 'return'),
+        (1, 0, '재고 부족 + 만료 임박 경고 카드 표시', 'normal'),
+    ],
+    'regions': [
+        (4, 9, 'par (Promise.allSettled 병렬 요청)', '#E3F2FD'),
+    ],
+})
 
 
-def set_col_widths(ws, widths):
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
+# ── 엑셀 생성 ──
 
+wb = openpyxl.Workbook()
+ws_toc = wb.active
+ws_toc.title = '목차'
 
-# ── 시퀀스 데이터 정의 ──
+# 목차
+TITLE_FONT_XL = Font(name='맑은 고딕', bold=True, size=16, color='1A237E')
+ws_toc.cell(row=1, column=1, value='LabNote ELN - 시퀀스 다이어그램').font = TITLE_FONT_XL
+ws_toc.cell(row=2, column=1, value='전자연구노트(ELN) 협업 플랫폼의 핵심 흐름 8가지를 시퀀스 다이어그램으로 정리').font = Font(name='맑은 고딕', size=11, color='546E7A')
 
-HEADERS = ['단계', '발신자(From)', '수신자(To)', '메서드/액션', 'API 경로 / 메시지', '데이터 / 페이로드', '비고 / 조건', '유형']
+toc_header_fill = PatternFill(start_color='2F5496', end_color='2F5496', fill_type='solid')
+toc_header_font = Font(name='맑은 고딕', bold=True, size=11, color='FFFFFF')
+thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-sequences = {
-    '1-1. 로그인': [
-        ('1', '사용자', 'Frontend', '클릭', '로그인 버튼', '{email, password}', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/auth/login', '{email, password}', '공개 경로 — JWT 검증 생략', ''),
-        ('3', 'API Gateway', 'Auth Service', '프록시', '전달', '', '', ''),
-        ('4', 'Auth Service', 'PostgreSQL', 'SELECT', 'user WHERE email', '+ role, teams 조인', '', ''),
-        ('5', 'Auth Service', 'Auth Service', '검증', 'bcrypt.compare(password, hash)', '', '', ''),
-        ('5-E', 'Auth Service', 'Frontend', '401', '응답', '{ok:false, error:"이메일 또는 비밀번호가 올바르지 않습니다"}', '비밀번호 불일치 또는 비활성 계정', 'error'),
-        ('6', 'Auth Service', 'Auth Service', '생성', 'Access Token (15분)', 'payload: sub, email, role, permissions, orgId, teams', '', ''),
-        ('7', 'Auth Service', 'Auth Service', '생성', 'Refresh Token (8시간)', 'payload: sub, type:refresh', '', ''),
-        ('8', 'Auth Service', 'API Gateway', '200', '응답', '{ok:true, data:{token, refreshToken, user}}', '', 'success'),
-        ('9', 'API Gateway', 'Frontend', '200', '응답 전달', '', '', ''),
-        ('10', 'Frontend', 'Frontend', '저장', 'Access Token → 메모리 저장', '', '', ''),
-        ('11', 'Frontend', 'API Gateway', 'POST', '/api/auth/session', '{refreshToken}', '', ''),
-        ('12', 'API Gateway', 'API Gateway', '설정', 'Set-Cookie: labnote_rt', 'HttpOnly; Secure; SameSite=Strict; Path=/api/auth/session; Max-Age=28800', '', ''),
-        ('13', 'Frontend', '사용자', '이동', '대시보드', '', '', ''),
-    ],
-    '1-2. 토큰 갱신': [
-        ('1', 'Frontend', 'Frontend', '감지', 'Access Token 만료 (15분)', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/auth/session/refresh', 'Cookie: labnote_rt={refreshToken}', '', ''),
-        ('3', 'API Gateway', 'API Gateway', '추출', '쿠키에서 Refresh Token 추출', '', '', ''),
-        ('4', 'API Gateway', 'Auth Service', 'POST', '/api/auth/refresh', 'x-user-id 헤더 주입', '', ''),
-        ('5', 'Auth Service', 'Auth Service', '검증', 'Refresh Token 서명 검증', "type='refresh' 확인", '', ''),
-        ('6', 'Auth Service', 'Redis', 'GET', 'blacklist:user:{userId}', '', '', ''),
-        ('6-E', 'Auth Service', 'Frontend', '401', '응답', '"권한이 변경되었습니다"', '사용자 무효화 존재 & token.iat < 무효화 시각', 'error'),
-        ('7', 'Auth Service', 'Auth Service', '발급', '새 Access Token (15분)', '', '', ''),
-        ('8', 'Auth Service', 'Auth Service', '발급', '새 Refresh Token (8시간)', '', '', ''),
-        ('9', 'Auth Service', 'API Gateway', '200', '응답', '{token, refreshToken}', '', 'success'),
-        ('10', 'API Gateway', 'API Gateway', '설정', 'Set-Cookie: labnote_rt={newRefreshToken}', '기존 쿠키 교체', '', ''),
-        ('11', 'API Gateway', 'Frontend', '200', '응답', '{ok:true, data:{token}}', '', ''),
-        ('12', 'Frontend', 'Frontend', '교체', '새 Access Token → 메모리 교체', '', '', ''),
-    ],
-    '1-3. 로그아웃': [
-        ('1', '사용자', 'Frontend', '클릭', '로그아웃', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/auth/logout', 'Authorization: Bearer {accessToken}', '', ''),
-        ('3', 'API Gateway', 'Auth Service', '프록시', '전달', '', '', ''),
-        ('4', 'Auth Service', 'Auth Service', '추출', '토큰에서 만료시각(exp) 추출', '', '', ''),
-        ('5', 'Auth Service', 'Redis', 'SET', 'blacklist:{token} "1"', 'TTL = 남은 만료 시간', '', ''),
-        ('6', 'Auth Service', 'API Gateway', '200', '응답', '{ok:true}', '', 'success'),
-        ('7', 'Frontend', 'API Gateway', 'DELETE', '/api/auth/session', '', '', ''),
-        ('8', 'API Gateway', 'API Gateway', '설정', 'Set-Cookie: labnote_rt=;', 'Max-Age=0 (쿠키 삭제)', '', ''),
-        ('9', 'Frontend', 'Frontend', '삭제', '메모리의 Access Token 삭제', '', '', ''),
-        ('10', 'Frontend', '사용자', '이동', '로그인 페이지로 이동', '', '', ''),
-    ],
-    '1-4. JWT 검증': [
-        ('1', 'Frontend', 'API Gateway', '요청', 'API 요청', 'Authorization: Bearer {token}', '', ''),
-        ('2', 'API Gateway', 'API Gateway', '제거', '① 내부 헤더 제거', 'x-user-id, x-user-role 등 스푸핑 방지', '', ''),
-        ('3', 'API Gateway', 'API Gateway', '확인', '② 공개 경로 확인', '/health, /login 등', '', ''),
-        ('4', 'API Gateway', 'API Gateway', '차단', '③ /internal 경로 차단 (404)', '', '', ''),
-        ('5', 'API Gateway', 'Redis', 'GET', '④ blacklist:{token}', '', '', ''),
-        ('5-E', 'API Gateway', 'Frontend', '401', '응답', '"만료된 세션"', '블랙리스트 존재', 'error'),
-        ('6', 'API Gateway', 'API Gateway', '검증', '⑤ JWT 서명 검증 (JWT_SECRET)', '', '', ''),
-        ('7', 'API Gateway', 'Redis', 'GET', '⑥ blacklist:user:{userId}', '', '', ''),
-        ('7-E', 'API Gateway', 'Frontend', '401', '응답', '"권한이 변경되었습니다"', '사용자 무효화 & iat < 무효화 시각', 'error'),
-        ('8', 'API Gateway', 'API Gateway', '주입', '⑦ 내부 헤더 주입', 'x-user-id, x-user-role, x-user-email, x-user-permissions, x-user-org-id, x-user-team-ids, x-user-team-roles', '', ''),
-        ('9', 'API Gateway', '내부 서비스', '프록시', '⑧ 프록시 전달', '+ 주입된 헤더', '', ''),
-        ('10', '내부 서비스', 'API Gateway', '응답', '응답', '', '', ''),
-        ('11', 'API Gateway', 'Frontend', '응답', '응답 전달', '', '', ''),
-    ],
-    '2-1. 노트 생성': [
-        ('1', '연구자', 'Frontend', '클릭', '새 연구노트 작성', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/notes', '{title, content, type:note, tags, templateId?}', '', ''),
-        ('3', 'API Gateway', 'API Gateway', '검증', 'JWT 검증 + 헤더 주입', '', '', ''),
-        ('4', 'API Gateway', 'ELN Service', '프록시', '전달', '', '', ''),
-        ('5', 'ELN Service', 'PostgreSQL', 'INSERT', 'note', '{id, title, content, status:draft, authorId, orgId, tags}', '', ''),
-        ('6', 'ELN Service', 'PostgreSQL', 'INSERT', 'noteRevision', '{revision:1, content, changedBy, changeSummary:노트 생성}', '', ''),
-        ('7', 'ELN Service', 'PostgreSQL', 'UPDATE', 'template SET useCount+1', '', 'templateId가 있는 경우', ''),
-        ('8', 'ELN Service', 'Search Service', 'POST (비동기)', '/api/search/index', '{id, domainType:NOTE, title, content, tags, orgId}', 'x-internal-secret 인증', 'async'),
-        ('9', 'ELN Service', 'Signature-Audit', 'POST (비동기)', '감사로그', "{action:'note.created', entityId, actorId}", '', 'async'),
-        ('10', 'ELN Service', 'API Gateway', '201', '응답', '{ok:true, data:note}', '', 'success'),
-        ('11', 'API Gateway', 'Frontend', '201', '응답 전달', '', '', ''),
-        ('12', 'Frontend', '연구자', '이동', '에디터 화면으로 이동', '', '', ''),
-    ],
-    '2-2. 노트 수정': [
-        ('1', '연구자', 'Frontend', '저장', '노트 내용 수정 후 저장', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'PUT', '/api/notes/:id', '{title, content, sections, tags, changeSummary}', '', ''),
-        ('3', 'API Gateway', 'ELN Service', '프록시', '전달', '', '', ''),
-        ('4', 'ELN Service', 'PostgreSQL', 'SELECT', 'note WHERE id AND orgId', '', '', ''),
-        ('4-E1', 'ELN Service', 'Frontend', '404', '응답', 'NOTE_NOT_FOUND', '노트 없음', 'error'),
-        ('4-E2', 'ELN Service', 'Frontend', '403', '응답', 'NOTE_LOCKED / NOTE_SIGNED', '상태가 locked 또는 signed', 'error'),
-        ('5', 'ELN Service', 'ELN Service', '확인', '소유자 또는 Admin 확인', '', '', ''),
-        ('6', 'ELN Service', 'PostgreSQL', 'UPDATE', 'note SET title, content, sections, tags', '', '', ''),
-        ('7', 'ELN Service', 'PostgreSQL', 'SELECT', 'COUNT(*) FROM noteRevision WHERE noteId', '', '', ''),
-        ('8', 'ELN Service', 'PostgreSQL', 'INSERT', 'noteRevision', '{revision: count+1, content, changedBy, changeSummary:노트 수정}', '', ''),
-        ('9', 'ELN Service', 'Search Service', 'POST (비동기)', '/api/search/index (재인덱싱)', '', '', 'async'),
-        ('10', 'ELN Service', 'Signature-Audit', 'POST (비동기)', '감사로그', "{action:'note.updated', changedFields:[...]}", '', 'async'),
-        ('11', 'ELN Service', 'API Gateway', '200', '응답', '{ok:true, data:updatedNote}', '', 'success'),
-        ('12', 'API Gateway', 'Frontend', '200', '응답 전달', '', '', ''),
-        ('13', 'Frontend', '연구자', '표시', '저장 완료 토스트', '', '', ''),
-    ],
-    '3. 실시간 협업 편집': [
-        ('1', 'Alice', 'Collab Service', 'WebSocket', 'ws://.../collab/notes/{noteId}?token={jwt}', '', 'Alice가 먼저 진입', ''),
-        ('2', 'Collab Service', 'Collab Service', '처리', 'JWT 검증 + 사용자 정보 추출', '', '', ''),
-        ('3', 'Collab Service', 'Collab Service', '처리', '방(Room)에 Alice 추가, colorIdx:0 할당', '', '', ''),
-        ('4', 'Collab Service', 'Alice', '응답', "{type:'joined', users:[]}", '', '', ''),
-        ('5', 'Bob', 'Collab Service', 'WebSocket', '연결', '', 'Bob이 같은 노트에 진입', ''),
-        ('6', 'Collab Service', 'Collab Service', '처리', '방에 Bob 추가, colorIdx:1', '', '', ''),
-        ('7', 'Collab Service', 'Bob', '응답', "{type:'joined', users:[{id:'alice', colorIdx:0}]}", '', '', ''),
-        ('8', 'Collab Service', 'Alice', '알림', "{type:'user-joined', userId:'bob', colorIdx:1}", '', '', ''),
-        ('9', 'Collab Service', 'Redis', 'PUBLISH', 'labnote:collab', "{noteId, payload:'user-joined', sourceUserId:'bob'}", '', 'event'),
-        ('10', 'Alice', 'Collab Service', '메시지', "{type:'content-update', content:'실험 결과...'}", '', '400ms 디바운스 후 전송', ''),
-        ('11', 'Collab Service', 'Bob', '전달', "{type:'content-update', userId:'alice', content, colorIdx:0}", '', '1초 이내 자신 편집이면 무시, 아니면 반영 (last-write-wins)', ''),
-        ('12', 'Collab Service', 'Redis', 'PUBLISH', 'labnote:collab', "{noteId, payload:'content-update', sourceUserId:'alice'}", '', 'event'),
-        ('13', 'Alice', 'Collab Service', '메시지', "{type:'awareness', cursorLine:15}", '', '커서 이동', ''),
-        ('14', 'Collab Service', 'Bob', '전달', "{type:'awareness', userId:'alice', cursorLine:15, colorIdx:0}", '', '', ''),
-        ('15', 'Bob', 'Collab Service', '종료', 'WebSocket 연결 종료', '', 'Bob이 편집 화면을 떠남', ''),
-        ('16', 'Collab Service', 'Collab Service', '처리', '방에서 Bob 제거', '', '', ''),
-        ('17', 'Collab Service', 'Alice', '알림', "{type:'user-left', userId:'bob'}", '', '', ''),
-        ('18', 'Collab Service', 'Redis', 'PUBLISH', 'labnote:collab', "{noteId, payload:'user-left', sourceUserId:'bob'}", '', 'event'),
-    ],
-    '4. 전자서명 → 상태 전환': [
-        ('1', '검토자(Reviewer)', 'Frontend', '입력', '서명 버튼 클릭 + 비밀번호 입력', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/signatures/sign/:noteId', '{password, comment}', '', ''),
-        ('3', 'API Gateway', 'API Gateway', '검증', 'JWT 검증 + 헤더 주입', '', '', ''),
-        ('4', 'API Gateway', 'Signature-Audit', '프록시', '전달', '', '', ''),
-        ('5', 'Signature-Audit', 'Auth Service', 'POST', '/api/auth/internal/verify-password', '{userId, password}', 'x-internal-secret 인증', ''),
-        ('6', 'Auth Service', 'Auth Service', '검증', 'bcrypt.compare', '', '', ''),
-        ('7', 'Auth Service', 'Signature-Audit', '응답', '{verified: true}', '', '', 'success'),
-        ('7-E', 'Signature-Audit', 'Frontend', '400', '응답', 'SIGNATURE_PASSWORD_INVALID', '비밀번호 불일치', 'error'),
-        ('8', 'Signature-Audit', 'ELN Service', 'GET', '/api/notes/:noteId (내부 호출)', '', '노트 정보 조회 (authorId, teamId, status)', ''),
-        ('9', 'ELN Service', 'Signature-Audit', '응답', '노트 정보', '', '', ''),
-        ('10', 'Signature-Audit', 'Signature-Audit', '검증', '권한 검증', '', '자기 서명 차단 (admin 제외), reviewer/admin/팀장 확인', ''),
-        ('11', 'Signature-Audit', 'PostgreSQL', 'SELECT', 'signature WHERE noteId ORDER BY chainIndex DESC LIMIT 1', '', '이전 서명 (prevHash) 조회', ''),
-        ('12', 'Signature-Audit', 'Signature-Audit', '생성', '해시체인 생성', 'hashInput = noteId:signerId:timestamp:prevHash:comment → sha256', '', ''),
-        ('13', 'Signature-Audit', 'PostgreSQL', 'INSERT', 'signature', "{noteId, signerId, signatureHash, prevHash, chainIndex, status:'valid'}", '', ''),
-        ('14', 'Signature-Audit', 'PostgreSQL', 'INSERT', 'auditLog', "{action:'signed', entityId:noteId}", '', ''),
-        ('15', 'Signature-Audit', 'Redis Stream', 'XADD', 'labnote:events *', 'type=NOTE_SIGNED noteId={id} status=signed userId={signerId}', 'Redis Stream 이벤트 발행', 'event'),
-        ('15-F', 'Signature-Audit', 'ELN Service', 'PATCH (폴백)', "/api/notes/:id/status {status:'signed'}", 'x-user-role: system', 'Redis 실패 시 HTTP 폴백', ''),
-        ('16', 'Signature-Audit', 'PostgreSQL', 'INSERT', 'notification', "{recipientId:authorId, type:'NOTE_SIGNED'}", '서명자 ≠ 작성자인 경우', ''),
-        ('17', 'Signature-Audit', 'API Gateway', '201', '응답', '{ok:true, data:signature}', '', 'success'),
-        ('18', 'API Gateway', 'Frontend', '201', '응답 전달', '', '', ''),
-        ('19', 'Frontend', '검토자', '표시', '서명 완료 안내', '', '', ''),
-        ('20', 'Redis Stream', 'ELN Service', '이벤트', 'NOTE_SIGNED 이벤트 수신', '', '비동기 이벤트 소비 (Consumer Group: eln-service)', 'event'),
-        ('21', 'ELN Service', 'PostgreSQL', 'UPDATE', "note SET status='signed' WHERE id={noteId}", '', '', ''),
-        ('22', 'ELN Service', 'PostgreSQL', 'INSERT', 'noteStatusHistory', "{fromStatus:'in_progress', toStatus:'signed'}", '', ''),
-        ('23', 'ELN Service', 'PostgreSQL', 'INSERT', 'auditLog (이중 기록)', '', '', ''),
-        ('24', 'ELN Service', 'Redis Stream', 'XACK', 'labnote:events (처리 완료)', '', '', ''),
-    ],
-    '5. 관리자 잠금 해제': [
-        ('1', '관리자(Admin)', 'Frontend', '입력', '잠금 해제 클릭 + 비밀번호/사유 입력', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/notes/:id/admin-unlock', '{adminPassword, reason}', '', ''),
-        ('3', 'API Gateway', 'API Gateway', '검증', 'JWT 검증 + 헤더 주입', '', '', ''),
-        ('4', 'API Gateway', 'ELN Service', '프록시', '전달', '', '', ''),
-        ('5', 'ELN Service', 'ELN Service', '확인', 'requireRole(ADMIN) + requirePermission(NOTE_UNLOCK)', '', '', ''),
-        ('6', 'ELN Service', 'PostgreSQL', 'SELECT', 'note WHERE id AND orgId', '', '', ''),
-        ('6-E1', 'ELN Service', 'Frontend', '404', '응답', 'NOTE_NOT_FOUND', '노트 없음', 'error'),
-        ('6-E2', 'ELN Service', 'Frontend', '400', '응답', '"잠긴 상태가 아닙니다"', '상태가 locked가 아닌 경우', 'error'),
-        ('7', 'ELN Service', 'Auth Service', 'POST', '/api/auth/internal/verify-password', '{userId:adminId, password:adminPassword}', 'x-internal-secret 인증', ''),
-        ('8', 'Auth Service', 'Auth Service', '검증', 'bcrypt.compare', '', '', ''),
-        ('9', 'Auth Service', 'ELN Service', '응답', '{verified: true}', '', '', 'success'),
-        ('9-E', 'ELN Service', 'Frontend', '400', '응답', 'NOTE_ADMIN_PASSWORD_INVALID', '비밀번호 불일치', 'error'),
-        ('10', 'ELN Service', 'PostgreSQL', 'UPDATE', "note SET status='draft' WHERE id={noteId}", '', '', ''),
-        ('11', 'ELN Service', 'PostgreSQL', 'INSERT', 'noteStatusHistory', "{fromStatus:'locked', toStatus:'draft', changedBy:adminId, reason, isAdminAction:true}", '', ''),
-        ('12', 'ELN Service', 'Signature-Audit', 'POST (비동기)', '감사로그', "{action:'note.admin_unlocked', reason}", '', 'async'),
-        ('13', 'ELN Service', 'Signature-Audit', 'POST (비동기)', '알림 발송', "{recipientId:authorId, type:'NOTE_UNLOCKED'}", '작성자 ≠ 관리자인 경우', 'async'),
-        ('14', 'ELN Service', 'API Gateway', '200', '응답', "{ok:true, data:note, message:'잠금이 해제되었습니다'}", '', 'success'),
-        ('15', 'API Gateway', 'Frontend', '200', '응답 전달', '', '', ''),
-        ('16', 'Frontend', '관리자', '표시', '상태 변경 반영 (locked → draft)', '', '', ''),
-    ],
-    '6. PDF/ZIP 내보내기': [
-        ('1', '사용자', 'Frontend', '클릭', 'PDF 내보내기', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/export/pdf/:noteId', '', '', ''),
-        ('3', 'API Gateway', 'Signature-Audit', '프록시', '전달', '', '', ''),
-        ('4', 'Signature-Audit', 'PostgreSQL', 'INSERT', 'exportJob', "{noteId, format:'pdf', status:'pending', requestedBy, orgId}", '', ''),
-        ('5', 'Signature-Audit', 'BullMQ', 'add', "exportQueue.add('pdf', {jobId, noteId, format, requestedBy, orgId})", '', '', ''),
-        ('6', 'Signature-Audit', 'PostgreSQL', 'INSERT', 'auditLog', "{action:'export_requested'}", '', ''),
-        ('7', 'Signature-Audit', 'API Gateway', '202', 'Accepted', '{jobId, status:pending}', '', 'success'),
-        ('8', 'API Gateway', 'Frontend', '202', '응답 전달', '', '', ''),
-        ('9', 'Frontend', 'API Gateway', 'GET (SSE)', '/api/events/exports', '', 'SSE 연결', ''),
-        ('10', 'API Gateway', 'Redis', 'SUBSCRIBE', 'export-status', '', 'SSE 연결 유지 (30초 heartbeat)', ''),
-        ('11', 'BullMQ', 'Export Worker', '수신', '작업 수신', '', 'concurrency: 2', ''),
-        ('12', 'Export Worker', 'PostgreSQL', 'UPDATE', "exportJob SET status='processing'", '', '', ''),
-        ('13', 'Export Worker', 'Redis', 'PUBLISH', 'export-status', '{jobId, progress:10%}', '', 'event'),
-        ('14', 'Redis → GW → FE', '사용자', 'SSE', 'event: {progress:10%}', '', '', ''),
-        ('15', 'Export Worker', 'ELN Service', 'GET', '/api/notes/:noteId (내부 호출)', '', '노트 데이터 조회', ''),
-        ('16', 'Export Worker', 'PostgreSQL', 'SELECT', 'signature WHERE noteId', '', '서명 정보 조회', ''),
-        ('17', 'Export Worker', 'Export Worker', '처리', 'Handlebars 템플릿 컴파일', '', '', ''),
-        ('18', 'Export Worker', 'Puppeteer', '변환', 'HTML → PDF', 'A4, printBackground', '', ''),
-        ('19', 'Export Worker', 'Redis', 'PUBLISH', 'export-status', '{jobId, progress:80%}', '', 'event'),
-        ('20', 'Redis → GW → FE', '사용자', 'SSE', 'event: {progress:80%}', '', '', ''),
-        ('21', 'Export Worker', 'File Service', 'POST', '/api/exports/internal/upload', 'FormData: {file, jobId, format}', 'x-internal-secret 인증', ''),
-        ('22', 'File Service', 'MinIO', 'PutObject', "bucket:'labnote-exports'", "key:'pdf/{jobId}/export-{date}.pdf'", '', ''),
-        ('23', 'File Service', 'MinIO', 'PresignedGetObject', '24시간 유효', '', '', ''),
-        ('24', 'File Service', 'Export Worker', '응답', '{fileId, downloadUrl}', '', '', 'success'),
-        ('25', 'Export Worker', 'PostgreSQL', 'UPDATE', "exportJob SET status='completed'", 'fileUrl, fileId, completedAt', '', ''),
-        ('26', 'Export Worker', 'PostgreSQL', 'INSERT', 'auditLog', "{action:'export_completed'}", '', ''),
-        ('27', 'Export Worker', 'Redis', 'PUBLISH', 'export-status', '{jobId, status:completed, fileUrl, progress:100%}', '', 'event'),
-        ('28', 'Redis → GW → FE', '사용자', 'SSE', "event: {status:'completed', fileUrl}", '', '다운로드 버튼 활성화', ''),
-        ('29', '사용자', 'Frontend', '클릭', '다운로드', '', '', ''),
-        ('30', 'Frontend', 'MinIO', 'GET', 'presigned URL (직접 다운로드)', '', 'PDF 파일 스트림', ''),
-    ],
-    '7. 통합 검색': [
-        ('1', '사용자', 'Frontend', '입력', '검색어 타이핑 (예: "세포 배양")', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'GET', '/api/search/suggest?q=세포 배양', '', '자동완성', ''),
-        ('3', 'API Gateway', 'Search Service', '프록시', '전달', '', '', ''),
-        ('4', 'Search Service', 'OpenSearch', 'multi_match', '쿼리', 'fields: title^3, tags^2, type: phrase_prefix, filter: orgId, docStatus=active', '', ''),
-        ('5', 'OpenSearch', 'Search Service', '응답', '상위 7건 매칭 결과', '', '', ''),
-        ('6', 'Search Service', 'Frontend', '응답', '[{text, domainType, docId}, ...]', '', '', ''),
-        ('7', 'Frontend', '사용자', '표시', '자동완성 드롭다운', '', '', ''),
-        ('8', '사용자', 'Frontend', '클릭', '검색 실행 (Enter 또는 검색 버튼)', '', '', ''),
-        ('9', 'Frontend', 'API Gateway', 'GET', '/api/search?q=세포 배양&domainTypes=NOTE,PROTOCOL&page=1&size=20', '', '', ''),
-        ('10', 'API Gateway', 'Search Service', '프록시', '전달', '', '', ''),
-        ('11', 'Search Service', 'Search Service', '생성', '캐시 키 생성', 'SHA256(q + domainTypes + page + userId + orgId)', '', ''),
-        ('12', 'Search Service', 'Redis', 'GET', 'cache:{hash}', '', '3분 TTL', ''),
-        ('12-H', 'Redis', 'Search Service', '응답', '캐시된 결과', '', '캐시 히트 시 즉시 응답', 'success'),
-        ('13', 'Search Service', 'OpenSearch', 'bool 쿼리', '실행', 'must: multi_match (title^4, tags^3, summary^2, content^1, fuzziness:AUTO), filter: orgId, docStatus, domainTypes, 권한 필터', '', ''),
-        ('14', 'OpenSearch', 'Search Service', '응답', '검색 결과 + 하이라이트 + domainType별 집계', '', '', ''),
-        ('15', 'Search Service', 'Search Service', '처리', '결과 매핑', 'docId, title, snippet, score, highlight', '', ''),
-        ('16', 'Search Service', 'PostgreSQL', 'INSERT (비동기)', 'searchHistory', '{userId, query, orgId}', '', 'async'),
-        ('17', 'Search Service', 'Redis', 'SET (비동기)', 'cache:{hash}', '{results} EX 180 (3분 캐시)', '', 'async'),
-        ('18', 'Search Service', 'API Gateway', '200', '응답', '{results[], counts:{NOTE:12, PROTOCOL:3}, pagination, took}', '', 'success'),
-        ('19', 'API Gateway', 'Frontend', '200', '응답 전달', '', '', ''),
-        ('20', 'Frontend', '사용자', '표시', '검색 결과 목록 + 도메인별 탭 카운트', '', '', ''),
-    ],
-    '8-1. 수량 입출고': [
-        ('1', '연구자', 'Frontend', '입력', '시약 출고 수량 입력', '예: Ethanol 500ml 출고', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'POST', '/api/inventory/items/:id/quantity', "{changeType:'out', quantity:500, reason:'실험 사용'}", '', ''),
-        ('3', 'API Gateway', 'Inventory Service', '프록시', '전달', '', '', ''),
-        ('4', 'Inventory Service', 'PostgreSQL', 'SELECT', 'inventoryItem WHERE id AND orgId', '', '', ''),
-        ('5', 'Inventory Service', 'Inventory Service', '확인', '현재 수량 확인 (예: 2000ml)', '', '', ''),
-        ('6', 'Inventory Service', 'Inventory Service', '계산', 'before=2000, delta=-500, after=1500', '', '', ''),
-        ('6-E', 'Inventory Service', 'Frontend', '400', '응답', 'ITEM_STOCK_INSUFFICIENT "재고가 부족합니다"', "changeType='out' & 재고 부족", 'error'),
-        ('7', 'Inventory Service', 'Inventory Service', '판단', '자동 상태 전환', "after=0 → 'depleted', depleted & after>0 → 'available'", '', ''),
-        ('8', 'Inventory Service', 'PostgreSQL', 'UPDATE (TX)', "inventoryItem SET quantity=1500, status='available'", '', '트랜잭션 시작', 'tx'),
-        ('9', 'Inventory Service', 'PostgreSQL', 'INSERT (TX)', 'inventoryHistory', "{changeType:'out', quantityBefore:2000, quantityAfter:1500, quantityDelta:-500, reason, performedBy}", '트랜잭션 커밋', 'tx'),
-        ('10', 'Inventory Service', 'Search Service', 'POST (비동기)', '/api/search/index (재인덱싱)', '', '', 'async'),
-        ('11', 'Inventory Service', 'API Gateway', '200', '응답', '{ok:true, data:{item, before:2000, after:1500, delta:-500}}', '', 'success'),
-        ('12', 'API Gateway', 'Frontend', '200', '응답 전달', '', '', ''),
-        ('13', 'Frontend', '연구자', '표시', '수량 변경 완료', '', '', ''),
-    ],
-    '8-2. 재고 경고 (대시보드)': [
-        ('1', '관리자', 'Frontend', '접근', '대시보드 접근', '', '', ''),
-        ('2', 'Frontend', 'API Gateway', 'GET', '/api/dashboard/org', '', '', ''),
-        ('3', 'API Gateway', 'Redis', 'GET', 'cache:dashboard:org:{orgId}', '', '5분 TTL', ''),
-        ('3-H', 'Redis', 'API Gateway', '응답', '캐시된 결과', '', '캐시 히트 시 즉시 응답', 'success'),
-        ('4a', 'API Gateway', 'Inventory Service', 'GET (병렬)', '/api/inventory/alerts/low-stock', '', 'Promise.allSettled 병렬 요청', ''),
-        ('4b', 'API Gateway', 'Inventory Service', 'GET (병렬)', '/api/inventory/alerts/expiring?days=30', '', '', ''),
-        ('4c', 'API Gateway', '기타 서비스', 'GET (병렬)', 'ELN, Scheduler, Audit 통계', '', '', ''),
-        ('5a', 'Inventory Service', 'PostgreSQL', 'SELECT', "items WHERE quantity <= minQuantity AND status NOT IN ('disposed','depleted')", '', '재고 부족 조회', ''),
-        ('5b', 'Inventory Service', 'PostgreSQL', 'SELECT', "items WHERE expiryDate <= NOW() + 30일 AND status NOT IN ('disposed','depleted')", '', '만료 임박 조회', ''),
-        ('6a', 'Inventory Service', 'API Gateway', '응답', '재고 부족 항목 목록', '', '', ''),
-        ('6b', 'Inventory Service', 'API Gateway', '응답', '만료 임박 항목 목록', 'daysLeft, isExpired, isWarning 계산 포함', '', ''),
-        ('7', 'API Gateway', 'API Gateway', '집계', '응답 집계', 'lowStockItems 상위 5건, expiringItems 상위 5건', '', ''),
-        ('8', 'API Gateway', 'Redis', 'SET', 'cache:dashboard:org:{orgId}', 'EX 300 (5분 캐시)', '', ''),
-        ('9', 'API Gateway', 'Frontend', '200', '대시보드 데이터', '', '', 'success'),
-        ('10', 'Frontend', '관리자', '표시', '재고 부족 경고 카드 + 만료 임박 경고 카드', '', '', ''),
-    ],
-}
+for c, h in enumerate(['번호', '시퀀스명', '설명', '주요 서비스'], 1):
+    cell = ws_toc.cell(row=4, column=c, value=h)
+    cell.font = toc_header_font
+    cell.fill = toc_header_fill
+    cell.alignment = Alignment(horizontal='center', vertical='center')
+    cell.border = thin
 
-# 이벤트 흐름 매핑 데이터
+toc_data = [
+    ('1-1', '로그인', '이메일/비밀번호 → JWT(Access+Refresh) 발급', 'Auth, Redis, PostgreSQL'),
+    ('1-2', '토큰 갱신', 'Access Token 만료 → 자동 갱신', 'Auth, Redis'),
+    ('1-3', '로그아웃', '토큰 블랙리스트 등록 + 쿠키 삭제', 'Auth, Redis'),
+    ('1-4', 'JWT 검증', 'Gateway의 8단계 JWT 검증 파이프라인', 'API Gateway, Redis'),
+    ('2-1', '노트 생성', '연구노트 생성 + 리비전 + 검색 인덱싱 + 감사로그', 'ELN, Search, Sig-Audit'),
+    ('2-2', '노트 수정', '노트 수정 + 잠김/서명 체크 + 리비전 생성', 'ELN, Search, Sig-Audit'),
+    ('3', '실시간 협업', 'WebSocket 기반 실시간 편집 (last-write-wins)', 'Collab, Redis Pub/Sub'),
+    ('4', '전자서명', '비밀번호 검증 → 해시체인 서명 → Redis Stream 상태 전환', 'Sig-Audit, Auth, ELN'),
+    ('5', '잠금 해제', '관리자 비밀번호 검증 후 locked→draft 전환', 'ELN, Auth, Sig-Audit'),
+    ('6', 'PDF 내보내기', 'BullMQ 큐 → Puppeteer PDF → MinIO 업로드 → SSE 진행률', 'Sig-Audit, File, MinIO'),
+    ('7', '통합 검색', 'OpenSearch 자동완성 + 본검색 + Redis 캐싱', 'Search, OpenSearch, Redis'),
+    ('8-1', '수량 입출고', '인벤토리 수량 변경 (트랜잭션)', 'Inventory, Search'),
+    ('8-2', '재고 경고', '대시보드 재고 부족/만료 경고 (병렬 집계)', 'API Gateway, Inventory'),
+]
+
+normal_font = Font(name='맑은 고딕', size=10)
+for i, (num, name, desc, svcs) in enumerate(toc_data, 5):
+    row_fill = PatternFill(start_color='F5F5F5' if i % 2 == 0 else 'FFFFFF', end_color='F5F5F5' if i % 2 == 0 else 'FFFFFF', fill_type='solid')
+    for c, val in enumerate([num, name, desc, svcs], 1):
+        cell = ws_toc.cell(row=i, column=c, value=val)
+        cell.font = normal_font
+        cell.border = thin
+        cell.fill = row_fill
+        cell.alignment = Alignment(vertical='center')
+
+ws_toc.column_dimensions['A'].width = 8
+ws_toc.column_dimensions['B'].width = 18
+ws_toc.column_dimensions['C'].width = 55
+ws_toc.column_dimensions['D'].width = 35
+
+# 범례
+lr = len(toc_data) + 7
+ws_toc.cell(row=lr, column=1, value='화살표 색상 범례').font = Font(name='맑은 고딕', bold=True, size=11, color='1A237E')
+legend_items = [
+    ('실선 검정', '동기 호출 (요청)', '#37474F'),
+    ('점선 회색', '응답 (반환)', '#78909C'),
+    ('실선 빨강', '에러 / 예외 흐름', '#E53935'),
+    ('점선 주황', '비동기 호출 (fire-and-forget)', '#FF9800'),
+    ('자기 루프', '내부 처리 (self-call)', '#37474F'),
+]
+for j, (style, desc, color) in enumerate(legend_items, lr + 1):
+    ws_toc.cell(row=j, column=1, value=style).font = Font(name='맑은 고딕', size=10, color=color[1:])
+    ws_toc.cell(row=j, column=2, value=desc).font = normal_font
+
+# 각 다이어그램을 이미지로 생성 + 엑셀에 삽입
+tmp_dir = tempfile.mkdtemp()
+print(f'임시 디렉토리: {tmp_dir}')
+
+for d in diagrams:
+    print(f"  그리는 중: {d['title']}")
+
+    fig = draw_sequence_diagram(
+        title=d['title'],
+        participants=d['participants'],
+        messages=d['messages'],
+        fig_width=max(18, len(d['participants']) * 3.2),
+        regions=d.get('regions', []),
+    )
+
+    img_path = os.path.join(tmp_dir, f"{d['sheet']}.png")
+    fig.savefig(img_path, dpi=150, bbox_inches='tight', facecolor='white', edgecolor='none')
+    plt.close(fig)
+
+    ws = wb.create_sheet(title=d['sheet'])
+    ws.cell(row=1, column=1, value=d['title']).font = Font(name='맑은 고딕', bold=True, size=14, color='1A237E')
+
+    img = XlImage(img_path)
+    # 이미지 크기 조정
+    img.width = img.width * 0.75
+    img.height = img.height * 0.75
+    ws.add_image(img, 'A3')
+
+# 이벤트 흐름 시트
+ws_ev = wb.create_sheet(title='이벤트 흐름')
+ws_ev.cell(row=1, column=1, value='서비스 간 이벤트 흐름 매핑').font = Font(name='맑은 고딕', bold=True, size=14, color='1A237E')
+
+ev_headers = ['이벤트명', '통신 방식', '발행자 (Publisher)', '구독자 (Subscriber)', '트리거 조건']
+for c, h in enumerate(ev_headers, 1):
+    cell = ws_ev.cell(row=3, column=c, value=h)
+    cell.font = toc_header_font
+    cell.fill = toc_header_fill
+    cell.alignment = Alignment(horizontal='center', vertical='center')
+    cell.border = thin
+
 event_mapping = [
     ('NOTE_SIGNED', 'Redis Stream (labnote:events)', 'Signature-Audit', 'ELN Service', '전자서명 완료'),
     ('note.created/updated', 'HTTP POST (내부)', 'ELN Service', 'Search Service', '노트 CRUD'),
@@ -322,104 +788,26 @@ event_mapping = [
     ('NOTE_LOCKED/UNLOCKED', 'HTTP POST (내부)', 'ELN Service', 'Signature-Audit (알림)', '상태 변경'),
 ]
 
-# ── 엑셀 생성 ──
-
-wb = openpyxl.Workbook()
-
-# 1) 목차 시트
-ws_toc = wb.active
-ws_toc.title = '목차'
-ws_toc.cell(row=1, column=1, value='LabNote ELN - 시퀀스 다이어그램 정리').font = TITLE_FONT
-ws_toc.cell(row=2, column=1, value='전자연구노트(ELN) 협업 플랫폼의 핵심 흐름을 정리한 문서').font = NORMAL_FONT
-ws_toc.cell(row=4, column=1, value='시트명').font = SUB_HEADER_FONT
-ws_toc.cell(row=4, column=1).fill = SUB_HEADER_FILL
-ws_toc.cell(row=4, column=2, value='설명').font = SUB_HEADER_FONT
-ws_toc.cell(row=4, column=2).fill = SUB_HEADER_FILL
-ws_toc.cell(row=4, column=3, value='관련 서비스').font = SUB_HEADER_FONT
-ws_toc.cell(row=4, column=3).fill = SUB_HEADER_FILL
-
-toc_items = [
-    ('1-1. 로그인', '사용자 이메일/비밀번호 로그인 → JWT 발급 흐름', 'Frontend, API Gateway, Auth, PostgreSQL, Redis'),
-    ('1-2. 토큰 갱신', 'Access Token 만료 시 자동 갱신 흐름', 'Frontend, API Gateway, Auth, Redis'),
-    ('1-3. 로그아웃', '토큰 블랙리스트 등록 및 세션 정리', 'Frontend, API Gateway, Auth, Redis'),
-    ('1-4. JWT 검증', 'API 요청 시 Gateway의 JWT 검증 파이프라인', 'Frontend, API Gateway, Redis, 내부 서비스'),
-    ('2-1. 노트 생성', '연구노트 생성 + 검색 인덱싱 + 감사로그', 'Frontend, API Gateway, ELN, PostgreSQL, Search, Signature-Audit'),
-    ('2-2. 노트 수정', '노트 수정 + 리비전 생성 + 재인덱싱', 'Frontend, API Gateway, ELN, PostgreSQL, Search, Signature-Audit'),
-    ('3. 실시간 협업', 'WebSocket 기반 실시간 협업 편집 (last-write-wins)', 'Collab Service, Redis (Pub/Sub)'),
-    ('4. 전자서명', '전자서명 + 해시체인 + Redis Stream 상태 전환', 'Signature-Audit, Auth, ELN, PostgreSQL, Redis Stream'),
-    ('5. 잠금 해제', '관리자 비밀번호 확인 후 잠금 해제', 'ELN, Auth, PostgreSQL, Signature-Audit'),
-    ('6. PDF 내보내기', 'BullMQ → Puppeteer PDF → MinIO 업로드 → SSE 진행률', 'Signature-Audit, BullMQ, Puppeteer, File, MinIO, Redis'),
-    ('7. 통합 검색', 'OpenSearch 검색 + 자동완성 + 캐싱', 'Search, OpenSearch, Redis, PostgreSQL'),
-    ('8-1. 수량 입출고', '인벤토리 수량 변경 (트랜잭션)', 'Inventory, PostgreSQL, Search'),
-    ('8-2. 재고 경고', '대시보드 재고 경고 (병렬 집계)', 'API Gateway, Inventory, PostgreSQL, Redis'),
-    ('이벤트 흐름', '서비스 간 이벤트 발행/구독 매핑 요약', '전체 서비스'),
-]
-
-for i, (name, desc, svcs) in enumerate(toc_items, 5):
-    ws_toc.cell(row=i, column=1, value=name).font = NORMAL_FONT
-    ws_toc.cell(row=i, column=2, value=desc).font = NORMAL_FONT
-    ws_toc.cell(row=i, column=3, value=svcs).font = NORMAL_FONT
-    for c in range(1, 4):
-        ws_toc.cell(row=i, column=c).border = THIN_BORDER
-
-ws_toc.column_dimensions['A'].width = 22
-ws_toc.column_dimensions['B'].width = 55
-ws_toc.column_dimensions['C'].width = 55
-
-# 범례
-legend_row = len(toc_items) + 7
-ws_toc.cell(row=legend_row, column=1, value='행 색상 범례').font = SUB_HEADER_FONT
-legends = [
-    ('노란색', COLORS['async'], '비동기 호출 (fire-and-forget)'),
-    ('분홍색', COLORS['error'], '에러 / 예외 흐름'),
-    ('연두색', COLORS['success'], '최종 성공 응답'),
-    ('하늘색', COLORS['tx'], '트랜잭션 내 작업'),
-    ('보라색', COLORS['event'], '이벤트 발행 (Redis Stream/Pub/Sub)'),
-]
-for j, (label, fill, desc) in enumerate(legends, legend_row + 1):
-    ws_toc.cell(row=j, column=1, value=label).font = NORMAL_FONT
-    ws_toc.cell(row=j, column=1).fill = fill
-    ws_toc.cell(row=j, column=2, value=desc).font = NORMAL_FONT
-
-# 2) 각 시퀀스 시트
-for sheet_name, rows in sequences.items():
-    # 시트 이름: 특수문자 제거 + 길이 제한 (31자)
-    safe_name = sheet_name.replace('/', '_').replace('→', '-')[:31]
-    ws = wb.create_sheet(title=safe_name)
-    set_col_widths(ws, [8, 22, 22, 16, 40, 45, 35, 10])
-
-    # 헤더
-    for c, h in enumerate(HEADERS, 1):
-        ws.cell(row=1, column=c, value=h)
-    style_header_row(ws, 1, len(HEADERS))
-
-    # 데이터
-    r = 2
-    for row_data in rows:
-        fill = COLORS.get(row_data[7]) if row_data[7] else None
-        r = add_data_row(ws, r, row_data, fill)
-
-    # 자동 필터
-    ws.auto_filter.ref = f'A1:H{r-1}'
-    ws.freeze_panes = 'A2'
-
-# 3) 이벤트 흐름 시트
-ws_ev = wb.create_sheet(title='이벤트 흐름')
-ev_headers = ['이벤트명', '통신 방식', '발행자 (Publisher)', '구독자 (Subscriber)', '트리거 조건']
-set_col_widths(ws_ev, [25, 28, 25, 30, 20])
-for c, h in enumerate(ev_headers, 1):
-    ws_ev.cell(row=1, column=c, value=h)
-style_header_row(ws_ev, 1, len(ev_headers))
-
-for i, ev in enumerate(event_mapping, 2):
+for i, ev in enumerate(event_mapping, 4):
+    row_fill = PatternFill(start_color='F5F5F5' if i % 2 == 0 else 'FFFFFF', end_color='F5F5F5' if i % 2 == 0 else 'FFFFFF', fill_type='solid')
     for c, val in enumerate(ev, 1):
-        ws_ev.cell(row=i, column=c, value=val)
-    style_data_row(ws_ev, i, len(ev_headers))
+        cell = ws_ev.cell(row=i, column=c, value=val)
+        cell.font = normal_font
+        cell.border = thin
+        cell.fill = row_fill
 
-ws_ev.auto_filter.ref = f'A1:E{len(event_mapping)+1}'
-ws_ev.freeze_panes = 'A2'
+ws_ev.column_dimensions['A'].width = 25
+ws_ev.column_dimensions['B'].width = 30
+ws_ev.column_dimensions['C'].width = 25
+ws_ev.column_dimensions['D'].width = 30
+ws_ev.column_dimensions['E'].width = 18
 
 # 저장
 output_path = r'C:\vscode\lab\lab-companion-feature-phase1-backend-infra\docs\LabNote_ELN_시퀀스다이어그램.xlsx'
 wb.save(output_path)
-print(f'생성 완료: {output_path}')
+print(f'\n완료: {output_path}')
+
+# 임시 파일 정리
+import shutil
+shutil.rmtree(tmp_dir, ignore_errors=True)
+print('임시 파일 정리 완료')
