@@ -1,20 +1,6 @@
-  Keycloak 관리 콘솔                                                                                                                                                                                                               
-  - URL: http://localhost:8080                                                                                                                                                                                                   
-  - ID: admin                                               
-  - PW: admin_secret_2024                                                                                                                                                                                                                  
-  
-   MinIO 콘솔                                                                                                                                                                                                                     
-  - URL: http://localhost:9001                                                                                                                                                                                                   
-  - ID: minioadmin
-  - PW: minioadmin123   
- 
-
-admin@labnote.local  Admin1234!   
-researcher@labnote.local Researcher1234!   
-reviewer@labnote.local  Reviewer1234!
-viewer@labnote.local Reviewer1234!  Researcher1234!
-
 # LabNote ELN — MSA 설계 문서
+
+> **참고**: 로컬 개발 환경의 서비스 접속 정보는 `.env` 파일 또는 `docker-compose.yml`을 참고하세요.
 
 ## 1. 시스템 개요
 
