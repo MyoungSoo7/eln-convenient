@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 .env
-docs/research/
+docs/month/research/
 .idea/
 *.iml
 # Crash dumps
