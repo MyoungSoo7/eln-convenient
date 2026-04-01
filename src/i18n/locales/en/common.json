@@ -74,7 +74,8 @@
     "noteLocked": "Locked",
     "noteSigned": "Signed",
     "noteUnlocked": "Unlocked",
-    "bookingApproved": "Booking Approved"
+    "bookingApproved": "Booking Approved",
+    "viewAll": "View all"
   },
   "time": {
     "justNow": "Just now",

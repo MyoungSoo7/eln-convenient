@@ -122,6 +122,12 @@ export default function CodeManagePage() {
           {codesQuery.isLoading && (
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           )}
+          {codesQuery.isError && (
+            <div className="p-4 text-sm text-destructive">
+              {(codesQuery.error as Error).message}
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => codesQuery.refetch()}>재시도</Button>
+            </div>
+          )}
           {codesQuery.data && (
             <Table>
               <TableHeader>

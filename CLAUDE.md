@@ -82,7 +82,7 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 ## 인증/권한 흐름
 
 1. api-gateway가 JWT 검증 (jose JWKS + 로컬 JWT 듀얼 모드)
-2. 검증 후 내부 서비스로 헤더 주입: `x-user-id`, `x-user-role`, `x-user-permissions`, `x-user-org-id`
+2. 검증 후 내부 서비스로 헤더 주입: `x-user-id`, `x-user-role`, `x-user-email`, `x-user-permissions`, `x-user-org-id`, `x-user-team-ids`, `x-user-team-roles`
 3. 각 서비스는 `requireAuth` → `requirePermission(Permission.*)` 미들웨어로 접근 제어
 4. 모든 데이터 쿼리는 `getOrgId(req)`로 조직 스코프 필터링 (멀티테넌시)
 5. 내부 서비스 간 통신: `x-internal-secret` 헤더 인증
@@ -91,7 +91,7 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 
 하나의 PostgreSQL 인스턴스, 서비스별 Prisma 스키마 분리:
 - `auth` — Organization, Role, User, Team, TeamMember
-- `eln` — Note(type: note|protocol), NoteRevision, NoteLink, Attachment, Template, NoteStatusHistory
+- `eln` — Note(type: note|protocol), NoteRevision, NoteLink, Attachment, Template, NoteStatusHistory, Code
 - `signature` — Signature(해시체인), AuditLog, ExportJob, Notification
 - `inventory` — InventoryItem, InventoryHistory, Category
 - `scheduler` — Resource(EQUIPMENT|ROOM), Booking(PENDING→APPROVED/REJECTED→COMPLETED)
@@ -166,17 +166,23 @@ SYSTEM_STATUS_TRANSITIONS = {
 - DB 트리거 `check_note_status_transition()`이 잘못된 전환을 DB 레벨에서 차단
 - 모든 상태 변경은 `NoteStatusHistory` + `AuditLog` 이중 기록
 
-## 서비스 간 이벤트
+## 서비스 간 통신
+
+### Redis Stream 이벤트
 
 | 이벤트 | 발행자 | 구독자 | 설명 |
 |--------|--------|--------|------|
-| note.created/updated | eln-service | search-service | 검색 인덱스 갱신 |
-| note.signed | signature-audit | eln-service | 노트 status → signed |
-| note.locked | eln-service | signature-audit | 잠금 알림 발송 |
-| inventory.updated | inventory-service | search-service | 인덱스 갱신 |
-| export.completed | signature-audit | (알림) | PDF/ZIP 생성 완료 |
+| NOTE_SIGNED | signature-audit | eln-service (eventConsumer) | 노트 status → signed (HTTP PATCH 폴백) |
 
-이벤트는 Redis Stream 기반 비동기 처리 (HTTP 콜백 폴백).
+### HTTP 직접 호출 (서비스 간)
+
+| 호출 | 발신 | 수신 | 설명 |
+|------|------|------|------|
+| POST /api/search/index | eln-service, inventory-service | search-service | 검색 인덱스 갱신 (fire-and-forget) |
+| POST /api/audit/internal | eln-service, auth-service | signature-audit | 감사로그 기록 |
+| POST /api/notifications/internal | eln-service, scheduler-service | signature-audit | 알림 발송 (잠금/서명/해제/예약) |
+| POST /api/auth/internal/verify-password | signature-audit, eln-service | auth-service | 비밀번호 검증 (서명/잠금해제) |
+| GET /api/notes/:id | file-service, collab-service | eln-service | 노트 데이터 조회 (내보내기/상태확인) |
 
 ## Claude Code 자동화 (.claude/)
 

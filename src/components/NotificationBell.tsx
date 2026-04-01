@@ -194,6 +194,17 @@ export function NotificationBell() {
             );
           })
         )}
+        {notifications.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <button
+              onClick={() => { setOpen(false); navigate('/notifications'); }}
+              className="w-full px-3 py-2 text-center text-xs text-primary hover:bg-muted transition-colors"
+            >
+              {t('notification.viewAll')}
+            </button>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

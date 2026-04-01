@@ -127,7 +127,7 @@ function getStatusTransitions(status: string, role: string): string[] {
 | `updateNote()` | `PUT` | `/api/notes/:id` | 노트 수정 |
 | `deleteNote()` | `DELETE` | `/api/notes/:id` | 노트 삭제 |
 
-### 4.3 백엔드 (Express)
+### 4.3 백엔드 (Fastify)
 
 상태 관리 로직은 **두 서비스**에 걸쳐 구현되어 있습니다.
 
@@ -157,7 +157,7 @@ services/signature-audit-service/src/
 
 **① `PATCH /api/notes/:id/status` — 상태 변경** (ELN 서비스)
 
-미들웨어: `requireAuth` → `requirePermission(Permission.NOTE_WRITE)` → `validate(ChangeStatusSchema)`
+미들웨어: `requireAuth` → `requirePermission(Permission.NOTE_STATUS)` → `validate(ChangeStatusSchema)`
 
 요청:
 ```json

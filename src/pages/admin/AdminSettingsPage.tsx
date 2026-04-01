@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { listOrgs } from "@/api/admin";
@@ -9,6 +11,7 @@ import apiClient from "@/api/client";
 
 export default function AdminSettingsPage() {
   const { t, i18n } = useTranslation('admin');
+  const { t: tc } = useTranslation('common');
 
   const orgsQuery = useQuery({
     queryKey: ['admin', 'orgs'],
@@ -54,6 +57,16 @@ export default function AdminSettingsPage() {
           <CardTitle className="text-base">{t('settings.systemSettings')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {(orgsQuery.isLoading || storageQuery.isLoading) && (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          )}
+          {(orgsQuery.isError || storageQuery.isError) && (
+            <div className="p-4 text-sm text-destructive">
+              {(orgsQuery.error as Error)?.message ?? (storageQuery.error as Error)?.message}
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => { orgsQuery.refetch(); storageQuery.refetch(); }}>{tc('retry')}</Button>
+            </div>
+          )}
+          {!orgsQuery.isLoading && !storageQuery.isLoading && !orgsQuery.isError && !storageQuery.isError && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('settings.orgName')}</label>
@@ -79,6 +92,7 @@ export default function AdminSettingsPage() {
               )}
             </div>
           </div>
+          )}
         </CardContent>
       </Card>
     </div>

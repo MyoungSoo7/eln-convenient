@@ -10,6 +10,33 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+// ── 노트 상태 캐시 (signed/locked 여부) ───────────────────────
+const noteStatusCache = new Map<string, { status: string; expiry: number }>();
+const STATUS_CACHE_TTL = 30_000; // 30초
+
+async function isNoteReadOnly(noteId: string): Promise<boolean> {
+  const cached = noteStatusCache.get(noteId);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.status === 'signed' || cached.status === 'locked';
+  }
+  try {
+    const res = await fetch(`${ELN_SERVICE_URL}/api/notes/${noteId}`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET },
+    });
+    if (res.ok) {
+      const body = await res.json();
+      const status = body.data?.status ?? 'draft';
+      noteStatusCache.set(noteId, { status, expiry: Date.now() + STATUS_CACHE_TTL });
+      return status === 'signed' || status === 'locked';
+    }
+  } catch (err) {
+    console.error('[collab] Note status check failed:', err);
+  }
+  return false;
+}
 
 // ── 프로세스 레벨 에러 핸들러 ───────────────────────────────
 process.on('unhandledRejection', (reason) => {
@@ -66,15 +93,21 @@ try {
   pubClient.on('error', (err) => { console.error('[collab] Redis pub error:', err.message); });
   subClient.on('error', (err) => { console.error('[collab] Redis sub error:', err.message); });
 
-  subClient.subscribe('labnote:collab', (err) => {
+  subClient.subscribe('labnote:collab', 'labnote:note-status', (err) => {
     if (err) {
       console.error('[collab] Redis subscribe failed:', err.message);
       subClient = null; pubClient = null;
     }
   });
 
-  subClient.on('message', (_channel, data) => {
+  subClient.on('message', (channel, data) => {
     try {
+      if (channel === 'labnote:note-status') {
+        // 노트 상태 변경 시 캐시 무효화 → 다음 content-update에서 재조회
+        const { noteId } = JSON.parse(data);
+        if (noteId) noteStatusCache.delete(noteId);
+        return;
+      }
       const { noteId, payload, sourceUserId } = JSON.parse(data);
       if (noteId) broadcast(noteId, payload, sourceUserId);
     } catch (err) {
@@ -149,6 +182,15 @@ wss.on('connection', (
   const user: CollabUser = { id: userId, name: userName, colorIdx, ws, noteId };
   room.set(userId, user);
 
+  // 노트 상태 체크 → signed/locked이면 읽기전용 플래그 전송
+  let readOnly = false;
+  isNoteReadOnly(noteId).then((ro) => {
+    readOnly = ro;
+    if (ro) {
+      ws.send(JSON.stringify({ type: 'read-only', noteId, reason: 'signed/locked' }));
+    }
+  });
+
   // 신규 사용자에게 현재 참여자 목록 전송
   ws.send(JSON.stringify({
     type: 'joined',
@@ -167,6 +209,10 @@ wss.on('connection', (
       const msg = JSON.parse(String(raw));
 
       if (msg.type === 'content-update') {
+        if (readOnly) {
+          ws.send(JSON.stringify({ type: 'error', code: 'READ_ONLY', message: '서명 완료/잠금 상태의 노트는 수정할 수 없습니다.' }));
+          return;
+        }
         const outgoing = { type: 'content-update', userId, userName, colorIdx, content: msg.content };
         broadcast(noteId, outgoing, userId);
         publishToRedis(noteId, outgoing, userId);

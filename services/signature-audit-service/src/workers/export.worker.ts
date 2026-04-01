@@ -269,6 +269,7 @@ async function processExportJob(job: Job<ExportJobPayload>): Promise<void> {
       entityId: jobId,
       action: 'export_completed',
       actorId: requestedBy,
+      orgId,
       details: { jobId, format, noteId, fileUrl },
     },
   });
@@ -303,6 +304,7 @@ exportWorker.on('failed', (job, err) => {
       data: { status: 'failed', errorMsg: err.message.slice(0, 500) },
     }).catch(() => {});
 
+    const failOrgId = job.data.orgId;
     prisma.auditLog.create({
       data: {
         id: uuidv4(),
@@ -310,6 +312,7 @@ exportWorker.on('failed', (job, err) => {
         entityId: jobId,
         action: 'export_failed',
         actorId: requestedBy ?? 'system',
+        orgId: failOrgId,
         details: { jobId, format, noteId, error: err.message.slice(0, 500) },
       },
     }).catch(() => {});

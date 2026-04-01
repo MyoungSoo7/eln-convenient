@@ -11,6 +11,7 @@
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from './prisma';
+import { callAuditLog } from './audit';
 
 const EVENT_STREAM = 'labnote:events';
 const GROUP_NAME = 'eln-service';
@@ -79,6 +80,17 @@ async function handleNoteSigned(data: Record<string, string>): Promise<void> {
     },
   }).catch((err) => {
     console.error('[event-consumer] 상태 이력 기록 실패 (상태 변경은 완료):', err);
+  });
+
+  // 감사로그 기록 (상태 변경 추적)
+  await callAuditLog({
+    entityType: 'note',
+    entityId: noteId,
+    action: 'note.status_changed',
+    actorId: userId || 'system',
+    details: { from: 'in_progress', to: 'signed', trigger: 'NOTE_SIGNED_EVENT' },
+  }).catch((err) => {
+    console.error('[event-consumer] 감사로그 기록 실패 (상태 변경은 완료):', err);
   });
 
   console.log(`[event-consumer] NOTE_SIGNED 처리 완료: noteId=${noteId}`);
