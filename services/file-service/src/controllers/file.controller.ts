@@ -149,7 +149,6 @@ export async function getPresignedUpload(request: FastifyRequest, reply: Fastify
   }
 
   const fileId = uuidv4();
-  const fn = filename as string;
   const ext = fn.includes('.') ? fn.split('.').pop() : '';
   const key = `${fileId}${ext ? '.' + ext : ''}`;
 

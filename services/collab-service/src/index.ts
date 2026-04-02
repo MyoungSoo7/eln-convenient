@@ -27,7 +27,7 @@ async function isNoteReadOnly(noteId: string): Promise<boolean> {
       headers: { 'x-internal-secret': INTERNAL_SECRET },
     });
     if (res.ok) {
-      const body = await res.json();
+      const body = (await res.json()) as { data?: { status?: string } };
       const status = body.data?.status ?? 'draft';
       noteStatusCache.set(noteId, { status, expiry: Date.now() + STATUS_CACHE_TTL });
       return status === 'signed' || status === 'locked';
