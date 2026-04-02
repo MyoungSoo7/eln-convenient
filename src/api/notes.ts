@@ -220,25 +220,44 @@ export interface TemplateRecord {
   updatedAt?: string;
 }
 
+export interface TemplateListResponse {
+  ok: boolean;
+  data: TemplateRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  error?: string;
+}
+
 export async function listTemplates(params?: {
   category?: string;
+  search?: string;
+  sortBy?: string;
   page?: number;
   limit?: number;
-}): Promise<ApiResponse<TemplateRecord[]>> {
+}): Promise<TemplateListResponse> {
   try {
     const q: Record<string, string> = {};
     if (params?.category) q.category = params.category;
+    if (params?.search) q.search = params.search;
+    if (params?.sortBy) q.sortBy = params.sortBy;
     if (params?.page != null) q.page = String(params.page);
     if (params?.limit != null) q.limit = String(params.limit);
-    const res = await apiClient.get<{ data: TemplateRecord[] }>(
+    const res = await apiClient.get<TemplateRecord[]>(
       '/templates',
       Object.keys(q).length ? q : undefined,
     );
-    if (!res.ok) return { ok: false, data: [], error: res.error };
-    const data = (res as unknown as { data?: TemplateRecord[] }).data;
-    return { ok: true, data: Array.isArray(data) ? data : [] };
+    if (!res.ok) return { ok: false, data: [], total: 0, page: 1, limit: 12, error: res.error };
+    const raw = res as unknown as { data: TemplateRecord[]; total?: number; page?: number; limit?: number };
+    return {
+      ok: true,
+      data: Array.isArray(raw.data) ? raw.data : [],
+      total: raw.total ?? 0,
+      page: raw.page ?? 1,
+      limit: raw.limit ?? 12,
+    };
   } catch (err) {
-    return { ok: false, data: [], error: (err as Error).message || ERR_CONN };
+    return { ok: false, data: [], total: 0, page: 1, limit: 12, error: (err as Error).message || ERR_CONN };
   }
 }
 

@@ -21,6 +21,13 @@
   "deleteDesc": "Delete template \"{{title}}\". This cannot be undone. Notes created from this template will be kept.",
   "deleteSuccess": "Template \"{{title}}\" deleted.",
   "deleteFailed": "Failed to delete template.",
+  "allCategories": "All",
+  "sortLatest": "Latest",
+  "sortPopular": "Popular",
+  "sortName": "Name",
+  "pageInfo": "{{from}}-{{to}} of {{total}}",
+  "prevPage": "Previous",
+  "nextPage": "Next",
   "dialog": {
     "createTitle": "Create New Template",
     "editTitle": "Edit Template",
