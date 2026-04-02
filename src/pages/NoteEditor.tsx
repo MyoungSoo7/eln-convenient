@@ -165,8 +165,8 @@ export default function NoteEditor() {
     const MAX_RETRIES = 5;
 
     function connectWs() {
-      const base = (import.meta.env.VITE_COLLAB_URL as string | undefined) ?? 'ws://localhost:8009';
-      const ws = new WebSocket(`${base}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
+      const wsBase = `ws://${window.location.host}`;
+      const ws = new WebSocket(`${wsBase}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
       wsRef.current = ws;
 
       ws.onopen = () => {

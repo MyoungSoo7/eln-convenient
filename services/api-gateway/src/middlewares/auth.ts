@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 import redis from '../lib/redis';
 
 // 공개 경로 (인증 불필요)
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/session'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/session', '/collab'];
 
 // 내부 전용 경로 (외부 접근 차단 — 서비스 간 직접 통신으로만 접근 가능)
 // URL 경로에 /internal 세그먼트가 포함되면 일괄 차단 → 새 internal 엔드포인트 추가 시 수정 불필요

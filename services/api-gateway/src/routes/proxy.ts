@@ -64,6 +64,16 @@ export async function registerProxies(app: FastifyInstance) {
   // 엔드포인트별 rate limit 훅 등록
   app.addHook('onRequest', endpointRateLimitHook);
 
+  // WebSocket 프록시 — collab-service (자체 JWT 검증)
+  const collabUpstream = process.env.COLLAB_SERVICE_URL || 'http://collab-service:8009';
+  await app.register(httpProxy, {
+    upstream: collabUpstream,
+    prefix: '/collab',
+    rewritePrefix: '/collab',
+    websocket: true,
+    http2: false,
+  });
+
   for (const [prefix, upstream] of Object.entries(PROXY_TABLE)) {
     await app.register(httpProxy, {
       upstream,
@@ -73,5 +83,5 @@ export async function registerProxies(app: FastifyInstance) {
     });
   }
 
-  app.log.info('프록시 라우팅 등록 완료: %o', Object.keys(PROXY_TABLE));
+  app.log.info('프록시 라우팅 등록 완료: %o', ['/collab (ws)', ...Object.keys(PROXY_TABLE)]);
 }
