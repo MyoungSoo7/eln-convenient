@@ -1,7 +1,7 @@
 {
   "name": "inventory-service",
   "version": "2.0.0",
-  "description": "LabNote ELN - 시약/샘플/자산 인벤토리 서비스 (Fastify)",
+  "description": "LabNote ELN - 자원/장비/자산 인벤토리 서비스 (Fastify)",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",

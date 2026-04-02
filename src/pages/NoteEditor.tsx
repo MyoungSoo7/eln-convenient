@@ -102,7 +102,7 @@ export default function NoteEditor() {
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
   const BLOCKED_EXTENSIONS = ['exe', 'sh', 'bat'];
 
-  // 시약/장비 연결
+  // 인벤토리 항목 연결
   const [links, setLinks] = useState<NoteLink[]>([]);
   const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
   const [inventorySearch, setInventorySearch] = useState("");

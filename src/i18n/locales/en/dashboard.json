@@ -11,7 +11,7 @@
     "experimentsTooltip": "Number of experiments currently in progress.",
     "inventory": "Inventory Items",
     "inventoryChange": "3 low stock",
-    "inventoryTooltip": "Total number of registered reagents, samples, and equipment.",
+    "inventoryTooltip": "Total number of registered resources, equipment, and assets.",
     "bookings": "Equipment Bookings",
     "bookingsChange": "2 pending approval",
     "bookingsTooltip": "Number of pending booking approvals."

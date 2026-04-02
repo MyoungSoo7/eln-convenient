@@ -21,7 +21,7 @@ export function buildApp(logger?: boolean): FastifyInstance {
     openapi: {
       info: {
         title: '인벤토리 서비스 API',
-        description: '시약, 샘플, 장비, 자산 관리 CRUD',
+        description: '자원, 장비, 자산 관리 CRUD',
         version: '1.0.0',
       },
       tags: [

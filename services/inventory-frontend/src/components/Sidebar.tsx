@@ -8,7 +8,7 @@ interface Props {
 }
 
 const NAV_ITEMS: { id: Page; icon: string; label: string; sub: string }[] = [
-  { id: 'inventory', icon: '🧪', label: '인벤토리', sub: '시약·샘플·장비' },
+  { id: 'inventory', icon: '📦', label: '인벤토리', sub: '자원·장비·자산' },
   { id: 'template', icon: '📋', label: '템플릿', sub: '실험법·SOP' },
 ];
 

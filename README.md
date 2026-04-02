@@ -41,7 +41,7 @@ viewer@labnote.local Reviewer1234!  Researcher1234!
 | **auth-service** | 8001 | 조직/팀/사용자 CRUD, RBAC, 토큰 발급(jsonwebtoken + bcryptjs) |
 | **eln-service** | 8002 | 연구노트/프로토콜 CRUD, 버전관리, 상태 흐름, 태그, 첨부메타, 링크, 템플릿 |
 | **signature-audit-service** | 8003 | 전자서명(해시체인), 감사로그, PDF/ZIP/보고서 변환(Puppeteer+BullMQ), 알림 |
-| **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드, 수량관리, 재고/유효기간 알림 |
+| **inventory-service** | 8004 | 자원/장비/자산 CRUD, 바코드, 수량관리, 재고/유효기간 알림 |
 | **scheduler-service** | 8005 | 장비/회의실 예약, 승인/거절/취소/완료 흐름 |
 | **search-service** | 8006 | 통합검색(OpenSearch), 자동완성, 검색히스토리, 즐겨찾기, 키워드 즐겨찾기 |
 | **file-service** | 8008 | 파일 업로드/다운로드(MinIO), presigned URL, 스트리밍, 내보내기 잡 |
@@ -453,7 +453,7 @@ model InventoryItem {
   id                String             @id @default(uuid())
   orgId             String
   name              String
-  type              String             // reagent | sample | equipment | consumable | antibody | plasmid | cell_line
+  type              String             // reagent(자재) | sample | equipment | consumable | antibody(부품) | plasmid(모듈) | cell_line(시험자원)
   status            String             @default("available") // available | in_use | depleted | maintenance
   category          String?
   location          String?

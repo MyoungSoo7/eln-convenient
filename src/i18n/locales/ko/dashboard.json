@@ -11,7 +11,7 @@
     "experimentsTooltip": "현재 진행 중인 실험 노트 수입니다.",
     "inventory": "인벤토리 항목",
     "inventoryChange": "3 재고 부족",
-    "inventoryTooltip": "등록된 시약, 샘플, 장비의 총 수량입니다.",
+    "inventoryTooltip": "등록된 자원, 장비, 자산의 총 수량입니다.",
     "bookings": "장비 예약",
     "bookingsChange": "2 승인 대기",
     "bookingsTooltip": "승인 대기 중인 예약 건수입니다."

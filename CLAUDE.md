@@ -38,7 +38,7 @@ services/
 ├── auth-service/             # Fastify — 조직/팀/사용자 CRUD, RBAC, JWT 발급, SSO 훅
 ├── eln-service/              # Fastify — 연구노트/프로토콜/템플릿 CRUD, 버전관리, 상태 흐름
 ├── signature-audit-service/  # Fastify — 전자서명(해시체인), 감사로그, PDF/ZIP 변환(Puppeteer+BullMQ), 알림
-├── inventory-service/        # Fastify — 시약/샘플/장비 CRUD, 바코드, 수량관리, 알림
+├── inventory-service/        # Fastify — 자원/장비/자산 CRUD, 바코드, 수량관리, 알림
 ├── scheduler-service/        # Fastify — 장비/회의실 예약, 승인/거절/취소/완료
 ├── search-service/           # Fastify — 통합검색(OpenSearch), 자동완성, 히스토리, 즐겨찾기
 ├── file-service/             # Fastify — 파일 업/다운로드(MinIO), presigned URL, 내보내기

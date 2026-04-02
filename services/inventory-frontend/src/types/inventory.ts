@@ -70,13 +70,13 @@ export interface ItemFilters {
 }
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
-  reagent: '시약',
+  reagent: '자재',
   sample: '샘플',
   equipment: '장비',
   consumable: '소모품',
-  antibody: '항체',
-  plasmid: '플라스미드',
-  cell_line: '세포주',
+  antibody: '부품',
+  plasmid: '모듈',
+  cell_line: '시험자원',
   other: '기타',
 };
 
