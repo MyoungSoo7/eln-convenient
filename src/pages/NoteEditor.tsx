@@ -82,6 +82,12 @@ export default function NoteEditor() {
     return t('sectionTemplateFromProtocol', { category, title });
   };
 
+  const buildSectionsContent = (sections: Array<{ title?: string; content?: string; order?: number }>, tmplTitle: string) => {
+    const sorted = [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const body = sorted.map((s) => `## ${s.title || ''}\n${s.content || ''}`).join('\n\n');
+    return `${body}\n\n---\n> 📋 템플릿 "${tmplTitle}" 기반으로 생성됨`;
+  };
+
   const [content, setContent] = useState(buildProtocolContent());
   const [title, setTitle] = useState(protocolState?.title || "");
   const [noteStatus, setNoteStatus] = useState("draft");
@@ -131,6 +137,21 @@ export default function NoteEditor() {
   const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'reconnecting' | 'failed'>('disconnected');
 
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
+
+  // 새 노트 생성 시 템플릿 sections 로드
+  useEffect(() => {
+    if (!isNew || !protocolState?.fromProtocol || !protocolState?.protocolId) return;
+    getTemplate(protocolState.protocolId).then((res) => {
+      if (res.ok) {
+        const tmpl = res.data;
+        setTemplateTitle(tmpl.title);
+        const sections = tmpl.sections as Array<{ title?: string; content?: string; order?: number }> | undefined;
+        if (sections && sections.length > 0) {
+          setContent(buildSectionsContent(sections, tmpl.title));
+        }
+      }
+    });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 기존 노트 데이터 로드 (제목·내용·상태·첨부파일·링크 병렬)
   useEffect(() => {

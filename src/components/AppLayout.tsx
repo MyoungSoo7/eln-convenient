@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { NotificationBell } from "@/components/NotificationBell";
 
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { SessionExpiryWarning } from "@/components/SessionExpiryWarning";
@@ -45,6 +46,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-3">
               <ThemeToggle />
+              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-8 w-8 rounded-full p-0 bg-primary/10 text-xs font-medium text-primary">
