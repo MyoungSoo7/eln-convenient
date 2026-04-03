@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Bell, Lock, Unlock, FileSignature, CalendarCheck, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { getToken } from "@/lib/authToken";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,9 +69,10 @@ export function NotificationBell() {
     const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
     let es: EventSource | null = null;
     let useSse = false;
+    const token = getToken();
 
     try {
-      es = new EventSource(`${apiBase}/events/notifications`);
+      es = new EventSource(`${apiBase}/events/notifications${token ? `?token=${encodeURIComponent(token)}` : ''}`);
       es.addEventListener('notification', (event) => {
         try {
           const data = JSON.parse(event.data);

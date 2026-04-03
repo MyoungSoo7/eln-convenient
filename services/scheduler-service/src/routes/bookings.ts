@@ -316,6 +316,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       if (booking.userId && booking.userId !== approvedBy) {
         callNotification({
           recipientId: booking.userId,
+          orgId,
           type: 'BOOKING_APPROVED',
           entityType: 'booking',
           entityId: booking.id,

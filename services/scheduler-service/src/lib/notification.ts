@@ -4,6 +4,7 @@ const TIMEOUT_MS = 5000;
 
 export interface NotificationEvent {
   recipientId: string;
+  orgId: string;
   type: 'NOTE_LOCKED' | 'NOTE_SIGNED' | 'NOTE_UNLOCKED' | 'BOOKING_APPROVED';
   entityType: string;
   entityId: string;

@@ -62,11 +62,14 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply) {
 
   const authHeader = request.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  // SSE 등 EventSource는 커스텀 헤더를 보낼 수 없으므로 쿼리파라미터 토큰도 허용
+  const queryToken = path.startsWith('/api/events/') ? (request.query as any)?.token as string | undefined : undefined;
+
+  if (!authHeader?.startsWith('Bearer ') && !queryToken) {
     return reply.status(401).send({ ok: false, error: '인증이 필요합니다.' });
   }
 
-  const token = authHeader.replace('Bearer ', '');
+  const token = queryToken || authHeader!.replace('Bearer ', '');
 
   // Redis 블랙리스트 확인
   if (redis) {
