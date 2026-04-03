@@ -20,6 +20,7 @@ const PROXY_TABLE: Record<string, string> = {
   '/api/inventory':  process.env.INVENTORY_SERVICE_URL  || 'http://inventory-service:8004',
   '/api/scheduler':  process.env.SCHEDULER_SERVICE_URL  || 'http://scheduler-service:8005',
   '/api/search':     process.env.SEARCH_SERVICE_URL     || 'http://search-service:8006',
+  '/api/ai':         process.env.AI_SERVICE_URL         || 'http://ai-assistant-service:8007',
   '/api/files':      process.env.FILE_SERVICE_URL       || 'http://file-service:8008',
   '/api/exports':    process.env.FILE_SERVICE_URL       || 'http://file-service:8008',
 };

@@ -214,12 +214,12 @@ SYSTEM_STATUS_TRANSITIONS = {
 
 ### 팀 공유 deny 룰 (settings.json)
 - `rm -rf` 명령 차단
-- GitHub push 차단 (GitLab만 허용)
+- GitLab(origin) push 차단 (GitHub만 허용)
 - `DROP TABLE/DATABASE` 차단
 
 ## 작업 규칙
 
-- **Git push는 GitLab origin만 허용** — GitHub에 push 금지
+- **Git push는 GitHub만 허용** — GitLab(origin)에 push 금지
 - 백엔드 서비스 코드 수정 후에는 `docker compose up -d --build <서비스명>`으로 반영
 - 프론트엔드 코드는 Vite HMR로 자동 반영 (빌드 불필요)
 - 다국어: 텍스트 추가 시 `src/i18n/locales/ko/`, `en/` 두 곳 모두 반영

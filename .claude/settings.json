@@ -3,7 +3,8 @@
     "deny": [
       "Bash(rm -rf *)",
       "Bash(rm -rf/*)",
-      "Bash(git push*github*)",
+      "Bash(git push*origin*)",
+      "Bash(git push*gitlab*)",
       "Bash(drop database:*)",
       "Bash(DROP TABLE:*)"
     ]
