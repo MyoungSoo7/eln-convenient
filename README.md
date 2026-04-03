@@ -9,10 +9,20 @@
   - PW: minioadmin123   
  
 
-admin@labnote.local  Admin1234!   
-researcher@labnote.local Researcher1234!   
-reviewer@labnote.local  Reviewer1234!
-viewer@labnote.local Reviewer1234!  Researcher1234!
+
+       역할         │  이름  │       이메일 (ID)        │    비밀번호     │                                                                                                
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤                                                                                                
+│ Admin (관리자)      │ 김태호 │ admin@labnote.local      │ Admin1234!      │                                                                                                
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤                                                                                              
+│ Reviewer (검토자)   │ 박준영 │ reviewer@labnote.local   │ Reviewer1234!   │
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤
+│ Researcher (연구원) │ 이서연 │ researcher@labnote.local │ Researcher1234! │
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤
+│ Researcher (연구원) │ 정하은 │ dev1@labnote.local       │ Researcher1234! │
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤
+│ Researcher (연구원) │ 한지우 │ dev2@labnote.local       │ Researcher1234! │
+├─────────────────────┼────────┼──────────────────────────┼─────────────────┤
+│ Viewer (열람자)     │ 최민지 │ viewer@labnote.local     │ Researcher1234! │
 
 # LabNote ELN — MSA 설계 문서
 

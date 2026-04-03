@@ -89,9 +89,12 @@ export function AppSidebar() {
     { title: t('nav.search'), url: "/search", icon: Search },
   ];
 
+  const isAdmin = user.role === 'admin';
+  const isReviewer = user.role === 'reviewer';
+
   const complianceItems = [
     { title: t('nav.signatures'), url: "/signatures", icon: ShieldCheck },
-    { title: t('nav.auditLogs'), url: "/audit-logs", icon: ClipboardList },
+    ...(isAdmin ? [{ title: t('nav.auditLogs'), url: "/audit-logs", icon: ClipboardList }] : []),
     { title: t('nav.exports'), url: "/exports", icon: FileDown },
   ];
 
@@ -120,8 +123,10 @@ export function AppSidebar() {
 
       <SidebarContent className="py-2">
         <SidebarNavGroup label={t('sidebar.main')} items={mainItems} />
-        <SidebarNavGroup label={t('sidebar.compliance')} items={complianceItems} />
-        {user.role === 'admin' && (
+        {(isAdmin || isReviewer) && (
+          <SidebarNavGroup label={t('sidebar.compliance')} items={complianceItems} />
+        )}
+        {isAdmin && (
           <SidebarNavGroup label={t('sidebar.admin')} items={adminItems} defaultOpen={false} />
         )}
       </SidebarContent>

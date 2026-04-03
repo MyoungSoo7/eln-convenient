@@ -12,3 +12,16 @@ export function AdminRoute({ children }: AdminRouteProps) {
   }
   return <>{children}</>;
 }
+
+interface RoleRouteProps {
+  children: React.ReactNode;
+  roles: string[];
+}
+
+export function RoleRoute({ children, roles }: RoleRouteProps) {
+  const user = getStoredUser();
+  if (!user?.role || !roles.includes(user.role as string)) {
+    return <Navigate to="/forbidden" replace />;
+  }
+  return <>{children}</>;
+}

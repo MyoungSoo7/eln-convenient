@@ -2,7 +2,7 @@ import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { NotificationBell } from "@/components/NotificationBell";
+
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { SessionExpiryWarning } from "@/components/SessionExpiryWarning";
 import { LogOut, KeyRound } from "lucide-react";
@@ -19,9 +19,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTranslation } from "react-i18next";
 
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   const storedUser = getStoredUser();
   const userName = (storedUser?.name as string) || '사용자';
   const userRole = (storedUser?.role as string) || '';
@@ -32,9 +33,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     navigate('/login', { replace: true });
   };
 
-  const toggleLanguage = () => {
-    i18n.changeLanguage(i18n.language === 'ko' ? 'en' : 'ko');
-  };
 
   return (
     <SidebarProvider>
@@ -46,16 +44,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             </div>
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs font-medium px-2 h-7"
-                onClick={toggleLanguage}
-              >
-                {i18n.language === 'ko' ? 'EN' : '한국어'}
-              </Button>
               <ThemeToggle />
-              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-8 w-8 rounded-full p-0 bg-primary/10 text-xs font-medium text-primary">
