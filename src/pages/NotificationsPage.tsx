@@ -11,6 +11,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ArrowRight,
   Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +53,15 @@ export default function NotificationsPage() {
     queryFn: async () => {
       const res = await listNotifications(page, PAGE_SIZE);
       if (!res.ok) throw new Error(res.error ?? "Failed to load notifications");
+      // 디버깅: 서버가 실제로 반환한 isRead 분포 로그
+      // eslint-disable-next-line no-console
+      console.log(
+        "[NotificationsPage] fetched:",
+        res.data.length,
+        "items —",
+        "read:", res.data.filter((n) => n.isRead).length,
+        "unread:", res.data.filter((n) => !n.isRead).length,
+      );
       return res.data;
     },
     staleTime: 0, // 항상 stale — 캐시 표시 후 즉시 백그라운드 refetch
@@ -71,22 +81,60 @@ export default function NotificationsPage() {
     });
   }, [notifications, readFilter, typeFilter]);
 
+  /** 헤더 종 배지 카운트 감소 (optimistic) */
+  const decrementUnreadBadge = useCallback(() => {
+    queryClient.setQueryData<{ count: number }>(["notifications-unread-count"], (old) => ({
+      count: Math.max(0, (old?.count ?? 0) - 1),
+    }));
+  }, [queryClient]);
+
+  /** 헤더 종 배지 카운트 증가 (롤백용) */
+  const incrementUnreadBadge = useCallback(() => {
+    queryClient.setQueryData<{ count: number }>(["notifications-unread-count"], (old) => ({
+      count: (old?.count ?? 0) + 1,
+    }));
+  }, [queryClient]);
+
+  /** 항목 본문 클릭 — 읽음 처리만 (페이지에 머무름, "읽음" 필터로 즉시 이동) */
   const handleItemClick = useCallback(
     async (n: Notification) => {
+      if (n.isRead) return; // 이미 읽음이면 아무 것도 안함
+      // Optimistic: 현재 캐시의 해당 항목 + 헤더 배지 카운트 즉시 반영
+      queryClient.setQueryData<Notification[]>(["notifications", page], (old) =>
+        old ? old.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)) : old,
+      );
+      decrementUnreadBadge();
+      try {
+        await markAsRead(n.id);
+      } catch {
+        // 롤백
+        queryClient.setQueryData<Notification[]>(["notifications", page], (old) =>
+          old ? old.map((x) => (x.id === n.id ? { ...x, isRead: false } : x)) : old,
+        );
+        incrementUnreadBadge();
+        toast({
+          title: t("error.serverError"),
+          variant: "destructive",
+        });
+      }
+    },
+    [queryClient, page, t, decrementUnreadBadge, incrementUnreadBadge],
+  );
+
+  /** "이동" 버튼 — 읽음 처리 + 관련 페이지로 이동 */
+  const handleNavigate = useCallback(
+    async (n: Notification, e: React.MouseEvent) => {
+      e.stopPropagation();
       if (!n.isRead) {
-        // 1) Optimistic update — 현재 페이지 캐시의 해당 항목을 즉시 isRead=true로 변경
         queryClient.setQueryData<Notification[]>(["notifications", page], (old) =>
           old ? old.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)) : old,
         );
+        decrementUnreadBadge();
         try {
           await markAsRead(n.id);
-          // 성공 시 다른 뷰(NotificationBell 등)와도 동기화
-          queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
         } catch {
-          // 실패 시 롤백
-          queryClient.setQueryData<Notification[]>(["notifications", page], (old) =>
-            old ? old.map((x) => (x.id === n.id ? { ...x, isRead: false } : x)) : old,
-          );
+          incrementUnreadBadge();
+          // 이동은 진행 (읽음 처리만 실패)
         }
       }
       if (n.entityType === "note") {
@@ -95,15 +143,19 @@ export default function NotificationsPage() {
         navigate("/scheduler");
       }
     },
-    [navigate, queryClient, page],
+    [navigate, queryClient, page, decrementUnreadBadge, incrementUnreadBadge],
   );
 
   const handleMarkAllRead = async () => {
-    // Optimistic update — 현재 페이지 모두 읽음 처리
-    const previous = queryClient.getQueryData<Notification[]>(["notifications", page]);
+    // Optimistic update — 현재 페이지 + 헤더 배지 0으로 즉시 반영
+    const previousList = queryClient.getQueryData<Notification[]>(["notifications", page]);
+    const previousBadge = queryClient.getQueryData<{ count: number }>([
+      "notifications-unread-count",
+    ]);
     queryClient.setQueryData<Notification[]>(["notifications", page], (old) =>
       old ? old.map((x) => ({ ...x, isRead: true })) : old,
     );
+    queryClient.setQueryData<{ count: number }>(["notifications-unread-count"], { count: 0 });
     try {
       const res = await markAllAsRead();
       if (res.ok) {
@@ -111,13 +163,14 @@ export default function NotificationsPage() {
           title: t("notification.markAllReadDone"),
           description: t("notification.markAllReadDesc", { count: res.data.updated }),
         });
-        // 다른 쿼리 캐시도 초기화
-        queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
       }
     } catch {
       // 롤백
-      if (previous) {
-        queryClient.setQueryData(["notifications", page], previous);
+      if (previousList) {
+        queryClient.setQueryData(["notifications", page], previousList);
+      }
+      if (previousBadge) {
+        queryClient.setQueryData(["notifications-unread-count"], previousBadge);
       }
       toast({
         title: t("error.serverError"),
@@ -244,14 +297,20 @@ export default function NotificationsPage() {
                 const Icon = config?.icon ?? Bell;
                 const unread = !n.isRead;
                 return (
-                  <button
+                  <div
                     key={n.id}
-                    onClick={() => handleItemClick(n)}
-                    aria-label={`${unread ? t("notification.filter.unread") : t("notification.filter.read")}: ${n.title}`}
-                    className={`relative w-full text-left pl-5 pr-4 py-3 flex items-start gap-3 transition-colors ${
+                    className={`relative flex items-start ${
                       unread
                         ? "bg-primary/10 hover:bg-primary/15"
                         : "bg-background hover:bg-muted/40 opacity-70"
+                    } transition-colors`}
+                  >
+                  <button
+                    onClick={() => handleItemClick(n)}
+                    disabled={!unread}
+                    aria-label={`${unread ? t("notification.markAsRead") : t("notification.filter.read")}: ${n.title}`}
+                    className={`flex-1 relative text-left pl-5 pr-2 py-3 flex items-start gap-3 ${
+                      unread ? "cursor-pointer" : "cursor-default"
                     }`}
                   >
                     {/* 왼쪽 컬러 스트라이프 — 안 읽음 표시 */}
@@ -328,6 +387,17 @@ export default function NotificationsPage() {
                       />
                     )}
                   </button>
+                  {/* 이동 버튼 — 관련 페이지로 이동 (읽음 처리 포함) */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleNavigate(n, e)}
+                    aria-label={t("notification.goToSource")}
+                    title={t("notification.goToSource")}
+                    className="flex-none px-3 py-3 text-muted-foreground hover:text-primary hover:bg-muted/60 border-l border-border/50 flex items-center transition-colors"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                  </div>
                 );
               })}
             </div>

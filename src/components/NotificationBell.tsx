@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Bell, Lock, Unlock, FileSignature, CalendarCheck, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { getToken } from "@/lib/authToken";
 import {
   DropdownMenu,
@@ -42,18 +42,38 @@ export function NotificationBell() {
     const days = Math.floor(hours / 24);
     return t('time.daysAgo', { count: days });
   }
-  const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
+  // unreadCount를 TanStack Query로 관리 — NotificationsPage와 자동 동기화
+  const { data: unreadCountData } = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: async () => {
       const res = await getUnreadCount();
-      if (res.ok) setUnreadCount(res.data.count);
-    } catch {
-      // 조용히 실패
-    }
-  }, []);
+      if (!res.ok) throw new Error(res.error ?? "Failed to load unread count");
+      return res.data;
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const unreadCount = unreadCountData?.count ?? 0;
+
+  const setUnreadCount = useCallback(
+    (updater: number | ((c: number) => number)) => {
+      queryClient.setQueryData<{ count: number }>(["notifications-unread-count"], (old) => {
+        const current = old?.count ?? 0;
+        const next = typeof updater === "function" ? updater(current) : updater;
+        return { count: Math.max(0, next) };
+      });
+    },
+    [queryClient],
+  );
+
+  const fetchUnreadCount = useCallback(async () => {
+    // TanStack Query가 자동 refetch — 명시적 invalidate로 트리거
+    await queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+  }, [queryClient]);
 
   const fetchNotifications = useCallback(async () => {
     try {

@@ -94,7 +94,9 @@
     "badge": {
       "new": "NEW",
       "read": "Read"
-    }
+    },
+    "markAsRead": "Mark as read",
+    "goToSource": "Go to source"
   },
   "time": {
     "justNow": "Just now",
