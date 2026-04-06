@@ -21,6 +21,7 @@ const SearchPage = lazy(() => import("./pages/SearchPage"));
 const SignaturesPage = lazy(() => import("./pages/SignaturesPage"));
 const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
 const ExportsPage = lazy(() => import("./pages/ExportsPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const OrgTeamUserPage = lazy(() => import("./pages/admin/OrgTeamUserPage"));
 const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
@@ -67,6 +68,7 @@ const App = () => (
                       <Route path="/signatures" element={<RoleRoute roles={['admin', 'reviewer']}><SignaturesPage /></RoleRoute>} />
                       <Route path="/audit-logs" element={<AdminRoute><AuditLogsPage /></AdminRoute>} />
                       <Route path="/exports" element={<RoleRoute roles={['admin', 'reviewer']}><ExportsPage /></RoleRoute>} />
+                      <Route path="/notifications" element={<NotificationsPage />} />
                       <Route path="/admin/users" element={<AdminRoute><OrgTeamUserPage /></AdminRoute>} />
                       <Route path="/admin/roles" element={<AdminRoute><RolesPage /></AdminRoute>} />
                       <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />

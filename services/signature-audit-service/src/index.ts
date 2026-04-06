@@ -2,6 +2,7 @@ import '@lab/shared/dist/tracing';
 import { buildApp } from './app';
 import { setupProcessHandlers, createLogger } from '@lab/shared';
 import './workers/export.worker'; // BullMQ 워커 자동 시작
+import './workers/notification.worker'; // 알림 워커 (NOTE_SIGNED 등 at-least-once)
 
 const logger = createLogger('signature-audit-service');
 

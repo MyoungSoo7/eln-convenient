@@ -400,6 +400,7 @@ export async function changeNoteStatus(request: FastifyRequest, reply: FastifyRe
   if (newStatus === 'locked' && updated.authorId && updated.authorId !== actorId) {
     callNotification({
       recipientId: updated.authorId,
+      orgId: getOrgId(request.headers),
       type: 'NOTE_LOCKED',
       entityType: 'note',
       entityId: id,
@@ -468,6 +469,7 @@ export async function adminUnlockNote(request: FastifyRequest, reply: FastifyRep
   if (note.authorId && note.authorId !== adminId) {
     callNotification({
       recipientId: note.authorId,
+      orgId: getOrgId(request.headers),
       type: 'NOTE_UNLOCKED',
       entityType: 'note',
       entityId: id,

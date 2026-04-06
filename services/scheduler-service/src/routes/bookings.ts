@@ -312,7 +312,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
         });
       }, { timeout: 5000 });
 
-      // 예약 승인 알림: 예약자에게 알림
+      // 예약 승인 알림: 예약자에게 알림 (재시도 + 멱등키)
       if (booking.userId && booking.userId !== approvedBy) {
         callNotification({
           recipientId: booking.userId,
@@ -323,6 +323,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           title: '장비 예약이 승인되었습니다',
           message: `'${booking.resource?.name ?? ''}' 예약이 승인되었습니다.`,
           actorId: approvedBy,
+          idempotencyKey: `booking-${booking.id}-approved`,
         }).catch((err: any) => {
           request.log.error({ err: err.message, bookingId: booking.id }, '[NOTIFICATION_WARN] 승인 알림 실패');
         });

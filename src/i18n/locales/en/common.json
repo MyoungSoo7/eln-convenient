@@ -70,12 +70,31 @@
   "notification": {
     "title": "Notifications",
     "markAllRead": "Mark all read",
+    "markAllReadDone": "All marked as read",
+    "markAllReadDesc": "{{count}} notifications marked as read.",
     "empty": "No notifications",
     "noteLocked": "Locked",
     "noteSigned": "Signed",
     "noteUnlocked": "Unlocked",
     "bookingApproved": "Booking Approved",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "pageTitle": "All Notifications",
+    "pageTooltip": "View all notifications received. Filter by read status and type.",
+    "pageSubtitle": "See note lock, signature, unlock, and booking approval alerts at a glance.",
+    "filters": "Filters",
+    "readStatus": "Read status",
+    "typeStatus": "Notification type",
+    "listTitle": "Notifications",
+    "pageInfo": "Page {{page}} · {{count}} items",
+    "filter": {
+      "all": "All",
+      "unread": "Unread",
+      "read": "Read"
+    },
+    "badge": {
+      "new": "NEW",
+      "read": "Read"
+    }
   },
   "time": {
     "justNow": "Just now",

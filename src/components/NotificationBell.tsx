@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Bell, Lock, Unlock, FileSignature, CalendarCheck, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/authToken";
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ const POLL_INTERVAL = 30_000;
 export function NotificationBell() {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
+  const queryClient = useQueryClient();
 
   const typeConfig: Record<Notification["type"], { icon: typeof Bell; label: string }> = {
     NOTE_LOCKED:      { icon: Lock,           label: t('notification.noteLocked') },
@@ -116,6 +118,19 @@ export function NotificationBell() {
     }
   }, [open, fetchNotifications]);
 
+  /** 캐시된 ["notifications", ...] 쿼리 데이터를 직접 변형 */
+  const patchNotificationCache = (patcher: (n: Notification) => Notification) => {
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ["notifications"] })
+      .forEach((query) => {
+        const oldData = query.state.data as Notification[] | undefined;
+        if (Array.isArray(oldData)) {
+          queryClient.setQueryData(query.queryKey, oldData.map(patcher));
+        }
+      });
+  };
+
   const handleItemClick = async (notification: Notification) => {
     if (!notification.isRead) {
       try {
@@ -124,6 +139,8 @@ export function NotificationBell() {
         setNotifications((prev) =>
           prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)),
         );
+        // NotificationsPage 쿼리 캐시 직접 업데이트 — 즉시 리렌더 유발
+        patchNotificationCache((n) => (n.id === notification.id ? { ...n, isRead: true } : n));
       } catch {
         // 조용히 실패
       }
@@ -142,6 +159,8 @@ export function NotificationBell() {
       await markAllAsRead();
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      // NotificationsPage 쿼리 캐시 전체 읽음 처리 — 즉시 리렌더 유발
+      patchNotificationCache((n) => ({ ...n, isRead: true }));
     } catch {
       // 조용히 실패
     }

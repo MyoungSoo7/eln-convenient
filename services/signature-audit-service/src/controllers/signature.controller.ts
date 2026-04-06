@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import { AppError, ErrorCode, createLogger, getOrgId, getTeamRoles, Permission } from '@lab/shared';
 import prisma from '../lib/prisma';
-import { publishEvent } from '../lib/queue';
+import { publishEvent, notificationQueue } from '../lib/queue';
 import { fetchNoteCount, fetchNotes, fetchNote, ElnServiceError } from '../lib/eln';
 
 const logger = createLogger('signature-audit-service');
@@ -180,13 +180,13 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
   // ELN 서비스 노트 상태 → signed
   const statusUpdated = await patchNoteStatus(noteId, 'signed', signerId, orgId);
 
-  // 서명 알림: 노트 작성자에게 알림
+  // 서명 알림: 노트 작성자에게 알림 — BullMQ 큐에 등록 (at-least-once, 재시도 3회)
   try {
     const note = await fetchNote(noteId, orgId);
     if (note && note.authorId && note.authorId !== signerId) {
-      await prisma.notification.create({
-        data: {
-          id: uuidv4(),
+      await notificationQueue.add(
+        'note-signed',
+        {
           recipientId: note.authorId,
           orgId,
           type: 'NOTE_SIGNED',
@@ -195,11 +195,17 @@ export async function signNote(request: FastifyRequest, reply: FastifyReply) {
           title: '연구노트가 서명되었습니다',
           message: `'${note.title}' 노트가 서명 처리되었습니다.`,
           actorId: signerId,
+          // 같은 서명(signature.id)에 대해 한 번만 발송 — 재시도/중복 호출에도 안전
+          idempotencyKey: `note-signed-${signature.id}`,
         },
-      });
+        {
+          jobId: `note-signed-${signature.id}`, // 큐 레벨에서도 중복 enqueue 방지
+        },
+      );
     }
   } catch (notifErr) {
-    logger.warn({ noteId, err: notifErr }, '서명 알림 실패');
+    // 큐잉 실패는 드물지만(=Redis 다운) 로그만 남기고 서명 자체는 성공 반환
+    logger.error({ noteId, signatureId: signature.id, err: notifErr }, '[NOTIFICATION_FAIL] 서명 알림 큐잉 실패');
   }
 
   reply.code(201);
