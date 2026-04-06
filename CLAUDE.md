@@ -1,23 +1,27 @@
 # CLAUDE.md — LabNote ELN 프로젝트 지시서
 
+> **프로젝트 현황은 [STATUS.md](./STATUS.md)를 참고** — 서비스 목록, 포트, 컨테이너 상태, 최근 커밋 등이 자동 갱신됨.
+> STATUS.md는 `.claude/hooks/update-status.sh`가 `docker-compose.yml`, `package.json`, `schema.prisma` 변경 시 PostToolUse 훅으로 자동 갱신한다. 수동 실행: `bash .claude/hooks/update-status.sh`
+
 ## 프로젝트 개요
 
 사내 구축형 전자연구노트(ELN) 협업 플랫폼. 온프레미스 Docker Compose 배포 기반 MSA 아키텍처.
 
 ```
-┌──────────────────────────────────────────────────┐
-│              api-gateway (Fastify :8000)          │
-└──┬──────┬──────┬──────┬──────┬──────┬──────┬─────┘
-   │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  file  collab
- :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009(ws)
+┌───────────────────────────────────────────────────────────┐
+│                 api-gateway (Fastify :8000)                │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬───────┘
+   │      │      │      │      │      │      │      │
+ auth   eln   sig/aud  inv   sched  search   ai   file  collab
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008  :8009(ws)
 ```
 
 ## 기술 스택
 
 - **프론트엔드**: React + Vite + TypeScript, shadcn/ui, TanStack Query, react-i18next (ko/en)
-- **백엔드**: Fastify (전 서비스 통일), Prisma ORM, TypeScript
-- **인프라**: PostgreSQL 15, Redis 7, MinIO (S3 호환), OpenSearch 2, Keycloak 24 (선택)
+- **백엔드**: Fastify (전 서비스 통일), Prisma ORM, TypeScript — 단, ai-assistant-service만 Express
+- **인프라**: PostgreSQL 15, Redis 7, MinIO (S3 호환), OpenSearch 2, Qdrant (벡터 DB), Keycloak 24 (선택, 현재 미배포)
+- **AI**: OpenAI API (gpt-4o-mini), Qdrant 벡터 임베딩, RAG 파이프라인
 - **공용 패키지**: `@lab/shared` (services/shared/) — 에러, 로거(Pino), 권한, Zod 검증, 미들웨어
 - **모니터링**: Jaeger (OpenTelemetry 트레이싱), Dozzle (로그 뷰어)
 
@@ -41,10 +45,10 @@ services/
 ├── inventory-service/        # Fastify — 자원/장비/자산 CRUD, 바코드, 수량관리, 알림
 ├── scheduler-service/        # Fastify — 장비/회의실 예약, 승인/거절/취소/완료
 ├── search-service/           # Fastify — 통합검색(OpenSearch), 자동완성, 히스토리, 즐겨찾기
+├── ai-assistant-service/     # Express — AI 템플릿 추천, 초안 생성, RAG 질의 (OpenAI + Qdrant)
 ├── file-service/             # Fastify — 파일 업/다운로드(MinIO), presigned URL, 내보내기
 ├── collab-service/           # ws — WebSocket 실시간 협업 편집, Redis pub/sub
 ├── inventory-frontend/       # React SPA (인벤토리/프로토콜 전용, Nginx :80 → localhost:3000)
-├── keycloak/                 # Keycloak realm 설정 (realm-labnote.json)
 └── docker-compose.yml
 ```
 
@@ -78,6 +82,7 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 | MinIO 콘솔 | http://localhost:9001 |
 | Keycloak 관리 | http://localhost:8080 |
 | OpenSearch | http://localhost:9200 |
+| Qdrant (벡터 DB) | http://localhost:6333 |
 
 ## 인증/권한 흐름
 
@@ -183,6 +188,8 @@ SYSTEM_STATUS_TRANSITIONS = {
 | POST /api/notifications/internal | eln-service, scheduler-service | signature-audit | 알림 발송 (잠금/서명/해제/예약) |
 | POST /api/auth/internal/verify-password | signature-audit, eln-service | auth-service | 비밀번호 검증 (서명/잠금해제) |
 | GET /api/notes/:id | file-service, collab-service | eln-service | 노트 데이터 조회 (내보내기/상태확인) |
+| POST /api/exports/internal/upload | signature-audit (worker) | file-service | 내보내기 파일 업로드 |
+| POST /api/ai/index | eln-service | ai-assistant-service | AI 벡터 인덱싱 (문서 임베딩) |
 
 ## Claude Code 자동화 (.claude/)
 

@@ -37,8 +37,8 @@
 │                    (api-gateway:8000)                         │
 └──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬─────────┘
    │      │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  file  collab
- :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009(ws)
+ auth   eln   sig/aud  inv   sched  search   ai   file  collab
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008  :8009(ws)
 ```
 
 ---
@@ -55,6 +55,7 @@
 | **scheduler-service** | 8005 | 장비/회의실 예약, 승인/거절/취소/완료 흐름 |
 | **search-service** | 8006 | 통합검색(OpenSearch), 자동완성, 검색히스토리, 즐겨찾기, 키워드 즐겨찾기 |
 | **file-service** | 8008 | 파일 업로드/다운로드(MinIO), presigned URL, 스트리밍, 내보내기 잡 |
+| **ai-assistant-service** | 8007 | AI 템플릿 추천, 초안 생성, RAG 질의 (OpenAI + Qdrant 벡터 임베딩) |
 | **collab-service** | 8009 | WebSocket 실시간 협업 편집, Redis pub/sub 멀티 인스턴스 동기화 |
 | **inventory-frontend** | 80 (Nginx) | 인벤토리/프로토콜 전용 React SPA 프론트엔드 |
 | **shared** | — | 공용 유틸리티 패키지 (에러, 로거, 권한, Zod 검증) |
@@ -69,6 +70,7 @@
 | **Redis 7** | 세션, 캐시, 잡큐, 토큰 블랙리스트 | pub/sub (collab-service 멀티 인스턴스 동기화) |
 | **MinIO** | 오브젝트 스토리지 (첨부파일, 내보내기) | S3 호환, 버킷: `labnote-files`, `labnote-exports` |
 | **OpenSearch 2** | 전문검색 인덱스 | search-service 전용 |
+| **Qdrant** | 벡터 데이터베이스 | ai-assistant-service 전용, 문서 임베딩 저장/검색 |
 | **Keycloak 24** | SSO 인증 (선택) | OIDC/PKCE, realm 자동 임포트, 듀얼 모드(JWKS/로컬JWT) |
 
 ---
@@ -242,14 +244,25 @@
 | POST | `/api/exports/internal/upload` | (내부) 내보내기 파일 업로드 |
 | GET | `/api/exports/internal/presigned/:fileId` | (내부) 내보내기 presigned URL |
 
-### 4.8 collab-service
+### 4.8 ai-assistant-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/ai/recommend-template` | AI 템플릿 추천 (note:read 권한) |
+| POST | `/api/ai/draft` | AI 초안 생성 (note:write 권한) |
+| POST | `/api/ai/ask` | RAG 기반 질의 응답 (note:read 권한) |
+| POST | `/api/ai/index` | (내부) 문서 벡터 인덱싱 |
+| DELETE | `/api/ai/index/:documentId` | (내부) 인덱스에서 문서 삭제 |
+| GET | `/api/ai/index/status` | (내부) 벡터 인덱스 상태 조회 |
+
+### 4.9 collab-service
 
 | Method | Path | 설명 |
 |--------|------|------|
 | WS | `/collab/notes/:noteId?token=<JWT>` | 실시간 협업 편집 (WebSocket) |
 | GET | `/health` | 헬스체크 (활성 룸 수 포함) |
 
-### 4.9 api-gateway (집계/세션/SSE)
+### 4.10 api-gateway (집계/세션/SSE)
 
 | Method | Path | 설명 |
 |--------|------|------|
@@ -799,6 +812,7 @@ model ExportJob {
 | `POST /api/auth/internal/verify-password` | signature-audit, eln-service | auth-service | 비밀번호 검증 |
 | `GET /api/notes/:id` | file-service, collab-service | eln-service | 노트 데이터 조회 |
 | `POST /api/exports/internal/upload` | signature-audit (worker) | file-service | 내보내기 파일 업로드 |
+| `POST /api/ai/index` | eln-service | ai-assistant-service | AI 벡터 인덱싱 (문서 임베딩) |
 
 ### 6.5 서비스 간 호출 흐름 예시
 
@@ -881,6 +895,7 @@ lab-companion/
 │   ├── inventory-service/         # Fastify + Prisma
 │   ├── scheduler-service/         # Fastify + Prisma
 │   ├── search-service/            # Fastify + Prisma + OpenSearch
+│   ├── ai-assistant-service/       # Express + OpenAI + Qdrant (AI/RAG)
 │   ├── file-service/              # Fastify + Prisma + MinIO (@aws-sdk/client-s3)
 │   ├── collab-service/            # ws + Redis pub/sub (WebSocket)
 │   │
@@ -913,6 +928,7 @@ services:
   redis:        { image: redis:7-alpine, ports: ["6379:6379"] }
   minio:        { image: minio/minio, ports: ["9000:9000", "9001:9001"] }
   opensearch:   { image: opensearchproject/opensearch:2, ports: ["9200:9200"] }
+  qdrant:       { image: qdrant/qdrant, ports: ["6333:6333"] }
   # keycloak:   { image: quay.io/keycloak/keycloak:24.0, ports: ["8080:8080"] }  # 선택, 현재 미배포
 
   # --- 백엔드 서비스 ---
@@ -923,6 +939,7 @@ services:
   inventory-service:        { build: { context: ., dockerfile: inventory-service/Dockerfile } }
   scheduler-service:        { build: { context: ., dockerfile: scheduler-service/Dockerfile } }
   search-service:           { build: { context: ., dockerfile: search-service/Dockerfile } }
+  ai-assistant-service:     { build: { context: ., dockerfile: ai-assistant-service/Dockerfile } }
   file-service:             { build: { context: ., dockerfile: file-service/Dockerfile } }
   collab-service:           { build: ./collab-service }
 
@@ -952,6 +969,7 @@ docker compose up --build
 | Dozzle (로그) | http://localhost:9999 |
 | MinIO 콘솔 | http://localhost:9001 |
 | OpenSearch | http://localhost:9200 |
+| Qdrant (벡터 DB) | http://localhost:6333 |
 | Keycloak 관리 콘솔 | http://localhost:8080 |
 
 ---
@@ -972,4 +990,4 @@ docker compose up --build
 - [x] 알림 시스템 — signature-audit-service 내장, 내부 API + 폴링 UI (NotificationBell) 완료
 - [x] 검색 히스토리/즐겨찾기 — search-service Prisma 모델 + CRUD API 완료
 - [x] 인벤토리 알림 — 재고 부족/유효기간 임박 알림 API 완료
-- [ ] AI 어시스턴트 서비스 (8007) — 템플릿 추천, 초안 생성, 벡터 인덱싱(Qdrant), RAG 질의
+- [x] AI 어시스턴트 서비스 (8007) — 템플릿 추천, 초안 생성, 벡터 인덱싱(Qdrant), RAG 질의 — Express + OpenAI + Qdrant 통합 완료

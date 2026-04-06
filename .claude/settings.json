@@ -37,6 +37,12 @@
             "command": "bash .claude/hooks/check-compose-env.sh",
             "timeout": 10,
             "statusMessage": "Docker Compose 환경변수 확인 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/update-status.sh",
+            "timeout": 15,
+            "statusMessage": "STATUS.md 자동 갱신 중..."
           }
         ]
       }
