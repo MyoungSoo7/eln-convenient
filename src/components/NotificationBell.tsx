@@ -62,17 +62,20 @@ export function NotificationBell() {
     }
   }, []);
 
-  // SSE: 실시간 알림 수신 + 폴링 폴백
+  // SSE: 실시간 알림 수신 (자동 재연결 내장) + 폴링 폴백
   useEffect(() => {
     fetchUnreadCount();
 
     const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
     let es: EventSource | null = null;
-    let useSse = false;
+    let sseConnected = false;
+    let errorCount = 0;
     const token = getToken();
 
-    try {
-      es = new EventSource(`${apiBase}/events/notifications${token ? `?token=${encodeURIComponent(token)}` : ''}`);
+    function connectSSE() {
+      if (!token) return;
+      es = new EventSource(`${apiBase}/events/notifications?token=${encodeURIComponent(token)}`);
+
       es.addEventListener('notification', (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -83,14 +86,22 @@ export function NotificationBell() {
           ]);
         } catch { /* 무시 */ }
       });
-      es.onopen = () => { useSse = true; };
-      es.onerror = () => { es?.close(); useSse = false; };
-    } catch { /* SSE 미지원 */ }
 
-    // SSE가 안되면 폴링 폴백
+      es.onopen = () => { sseConnected = true; errorCount = 0; };
+      es.onerror = () => {
+        sseConnected = false;
+        errorCount++;
+        // 연속 실패 5회 이상이면 SSE 포기 → 폴링으로 전환
+        if (errorCount >= 5) { es?.close(); es = null; }
+      };
+    }
+
+    connectSSE();
+
+    // SSE 실패 시 폴링 폴백 (10초 간격)
     const interval = setInterval(() => {
-      if (!useSse) fetchUnreadCount();
-    }, POLL_INTERVAL);
+      if (!sseConnected) fetchUnreadCount();
+    }, 10_000);
 
     return () => {
       clearInterval(interval);

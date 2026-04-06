@@ -6,7 +6,7 @@
     "notes": "연구노트",
     "notesChange": "+3 이번 주",
     "notesTooltip": "작성된 전체 연구노트 수입니다.",
-    "experiments": "진행 중 실험",
+    "experiments": "진행 중 연구",
     "experimentsChange": "2 서명 대기",
     "experimentsTooltip": "현재 진행 중인 실험 노트 수입니다.",
     "inventory": "인벤토리 항목",

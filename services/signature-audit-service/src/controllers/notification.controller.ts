@@ -134,6 +134,7 @@ export async function createNotificationInternal(request: FastifyRequest, reply:
   try {
     redisConnection.publish(`notifications:${recipientId}`, JSON.stringify({
       id: notification.id, type, entityType, entityId, title, message, actorName: actorName ?? '',
+      orgId: orgId || '',
       createdAt: notification.createdAt,
     }));
   } catch { /* 무시 */ }
