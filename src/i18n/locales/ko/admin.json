@@ -12,6 +12,20 @@
     "settingsNote": "※ 설정 변경은 백엔드 연동 후 활성화됩니다",
     "loadError": "설정을 불러오지 못했습니다."
   },
+  "reindex": {
+    "title": "통합검색 일괄 재색인",
+    "titleTooltip": "노트, 템플릿, 인벤토리 데이터를 검색 인덱스에 전체 재등록합니다. 과거 누락된 항목이나 OpenSearch 동기화 불일치를 해결할 때 사용합니다.",
+    "description": "모든 노트, 템플릿, 인벤토리 항목을 검색 인덱스에 다시 등록합니다. 데이터 양에 따라 반영까지 수 분이 걸릴 수 있습니다.",
+    "button": "재색인 실행",
+    "running": "재색인 실행 중...",
+    "confirmTitle": "통합검색 일괄 재색인",
+    "confirmDesc": "전체 노트/템플릿/인벤토리에 대한 재색인을 진행하시겠습니까? 이 작업은 OpenSearch 인덱스에 다시 반영되며, 데이터 양에 따라 수 분이 걸릴 수 있습니다.",
+    "confirm": "실행",
+    "cancel": "취소",
+    "successTitle": "재색인 요청이 전송되었습니다",
+    "successDesc": "노트 {{note}}건, 템플릿 {{template}}건, 인벤토리 {{item}}건 (총 {{total}}건)",
+    "errorTitle": "재색인 요청에 실패했습니다"
+  },
   "orgTeamUser": {
     "title": "조직 / 팀 / 사용자",
     "titleTooltip": "조직의 사용자, 팀, 조직을 관리하는 관리자 전용 화면입니다.",

@@ -231,3 +231,55 @@ export async function deleteRole(id: string): Promise<ApiResponse<void>> {
   }
 }
 
+// ─── 통합검색 일괄 재색인 (관리자 전용) ─────────────────────
+
+export interface ReindexResult {
+  noteCount: number;
+  templateCount: number;
+  itemCount: number;
+  total: number;
+}
+
+/**
+ * 노트/템플릿/인벤토리 전체 재색인.
+ * eln-service와 inventory-service에 각각 요청을 보내고 병렬로 결과를 집계한다.
+ * 각 서비스는 Redis Stream에 SEARCH_INDEX 이벤트를 발행만 하므로 응답은 빠르고,
+ * 실제 OpenSearch 반영은 search-service consumer가 비동기로 처리한다.
+ */
+export async function adminReindexAll(): Promise<ApiResponse<ReindexResult>> {
+  try {
+    const [notesRes, invRes] = await Promise.all([
+      apiClient.post<{ noteCount: number; templateCount: number; total: number }>('/notes/admin/reindex'),
+      apiClient.post<{ itemCount: number }>('/inventory/admin/reindex'),
+    ]);
+
+    if (!notesRes.ok || !invRes.ok) {
+      return {
+        ok: false,
+        data: { noteCount: 0, templateCount: 0, itemCount: 0, total: 0 },
+        error: notesRes.error ?? invRes.error ?? '재색인 요청에 실패했습니다.',
+      };
+    }
+
+    const noteCount = notesRes.data?.noteCount ?? 0;
+    const templateCount = notesRes.data?.templateCount ?? 0;
+    const itemCount = invRes.data?.itemCount ?? 0;
+
+    return {
+      ok: true,
+      data: {
+        noteCount,
+        templateCount,
+        itemCount,
+        total: noteCount + templateCount + itemCount,
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      data: { noteCount: 0, templateCount: 0, itemCount: 0, total: 0 },
+      error: (err as Error).message || '서버 연결 실패',
+    };
+  }
+}
+

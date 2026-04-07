@@ -29,6 +29,11 @@ const noteRoutes: FastifyPluginAsync = async (app) => {
   // ─── N+1 최적화: GET /notes/stats는 반드시 /notes/:id 앞에 위치해야 한다.
   app.get('/notes/stats', { preHandler: [requirePermission(Permission.NOTE_READ), validate({ query: NoteStatsQuerySchema })] }, ctrl.getNoteStats);
   app.post('/notes/batch', { preHandler: [requirePermission(Permission.NOTE_READ), validate({ body: NotesBatchBodySchema })] }, ctrl.getNotesBatch);
+  // ─── 관리자 전용: 통합검색 일괄 재색인 ─────────────────
+  // /notes/:id 보다 앞에 등록해야 Fastify가 정적 경로로 매칭한다
+  app.post('/notes/admin/reindex', {
+    preHandler: [requireRole(RoleName.ADMIN)],
+  }, ctrl.adminReindexAll);
   app.get('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_READ)] }, ctrl.getNoteById);
   app.put('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_WRITE), validate({ body: UpdateNoteSchema })] }, ctrl.updateNote);
   app.delete('/notes/:id', { preHandler: [requirePermission(Permission.NOTE_DELETE)] }, ctrl.deleteNote);

@@ -71,6 +71,11 @@ const inventoryRoutes: FastifyPluginAsync = async (app) => {
   }, ctrl.updateCategory);
 
   app.delete('/categories/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteCategory);
+
+  // ── 관리자 전용: 통합검색 일괄 재색인 ───────────────────
+  app.post('/admin/reindex', {
+    preHandler: [requireRole(RoleName.ADMIN)],
+  }, ctrl.adminReindexAll);
 };
 
 export default inventoryRoutes;

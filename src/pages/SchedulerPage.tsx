@@ -117,6 +117,37 @@ function formatDate(d: Date): string {
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 }
 
+// 현재 시각 기준으로 "다음 예약 가능 슬롯"을 반환.
+// 영업시간 이전 → 오늘 08:00 / 이후 → 내일 08:00 / 영업중 → 다음 30분 경계로 올림.
+function getNextAvailableSlot(now: Date = new Date()): { date: string; start: string; end: string } {
+  const cur = new Date(now);
+  // 30분 경계로 올림
+  const min = cur.getMinutes();
+  if (min === 0 || min === 30) {
+    cur.setSeconds(0, 0);
+  } else if (min < 30) {
+    cur.setMinutes(30, 0, 0);
+  } else {
+    cur.setHours(cur.getHours() + 1, 0, 0, 0);
+  }
+
+  // 영업시간 밖 보정
+  if (cur.getHours() < BUSINESS_HOUR_START) {
+    cur.setHours(BUSINESS_HOUR_START, 0, 0, 0);
+  }
+  // 마지막 시작 가능 슬롯은 (BUSINESS_HOUR_END - 0:30). 그 이후면 다음날 08:00로.
+  const lastStartMinutes = BUSINESS_HOUR_END * 60 - SLOT_MINUTES;
+  if (cur.getHours() * 60 + cur.getMinutes() > lastStartMinutes) {
+    cur.setDate(cur.getDate() + 1);
+    cur.setHours(BUSINESS_HOUR_START, 0, 0, 0);
+  }
+
+  const start = `${cur.getHours().toString().padStart(2, "0")}:${cur.getMinutes().toString().padStart(2, "0")}`;
+  const startIdx = TIME_SLOTS.indexOf(start);
+  const end = TIME_SLOTS[startIdx + 1] ?? TIME_SLOTS[TIME_SLOTS.length - 1];
+  return { date: formatDate(cur), start, end };
+}
+
 type StatusFilter = "all" | "PENDING" | "APPROVED" | "REJECTED";
 
 export default function SchedulerPage() {
@@ -189,9 +220,10 @@ export default function SchedulerPage() {
   // 예약 폼
   const [formResourceId, setFormResourceId] = useState("");
   const [formTitle, setFormTitle] = useState("");
-  const [formDate, setFormDate] = useState(formatDate(new Date()));
-  const [formStartTime, setFormStartTime] = useState("09:00");
-  const [formEndTime, setFormEndTime] = useState("10:00");
+  const initialSlot = getNextAvailableSlot();
+  const [formDate, setFormDate] = useState(initialSlot.date);
+  const [formStartTime, setFormStartTime] = useState(initialSlot.start);
+  const [formEndTime, setFormEndTime] = useState(initialSlot.end);
 
   const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
@@ -297,11 +329,12 @@ export default function SchedulerPage() {
   }, [loadResourcesAndCalendar, loadBookingList]);
 
   const resetForm = () => {
+    const slot = getNextAvailableSlot();
     setFormResourceId("");
     setFormTitle("");
-    setFormDate(formatDate(new Date()));
-    setFormStartTime("09:00");
-    setFormEndTime("10:00");
+    setFormDate(slot.date);
+    setFormStartTime(slot.start);
+    setFormEndTime(slot.end);
   };
 
   const handleCreate = async () => {
@@ -318,8 +351,14 @@ export default function SchedulerPage() {
       return;
     }
 
-    const startTime = new Date(`${formDate}T${formStartTime}:00`).toISOString();
-    const endTime = new Date(`${formDate}T${formEndTime}:00`).toISOString();
+    const startDate = new Date(`${formDate}T${formStartTime}:00`);
+    const endDate = new Date(`${formDate}T${formEndTime}:00`);
+    if (startDate.getTime() <= Date.now()) {
+      toast({ title: t('form.invalidTime'), variant: "destructive" });
+      return;
+    }
+    const startTime = startDate.toISOString();
+    const endTime = endDate.toISOString();
 
     setSubmitting(true);
     const res = await createBooking({ resourceId: formResourceId, title: formTitle, startTime, endTime });
@@ -506,7 +545,18 @@ export default function SchedulerPage() {
                     type="date"
                     value={formDate}
                     min={formatDate(new Date())}
-                    onChange={(e) => setFormDate(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormDate(next);
+                      // 오늘로 바꿨고 현재 선택된 시작시간이 과거라면 자동 보정
+                      if (next === formatDate(new Date())) {
+                        const slot = getNextAvailableSlot();
+                        if (slot.date === next && formStartTime < slot.start) {
+                          setFormStartTime(slot.start);
+                          if (formEndTime <= slot.start) setFormEndTime(slot.end);
+                        }
+                      }
+                    }}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -528,10 +578,12 @@ export default function SchedulerPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="max-h-[280px]">
-                        {/* 종료 슬롯(마지막)은 시작 시간으로 선택 불가 */}
-                        {TIME_SLOTS.slice(0, -1).map((slot) => (
-                          <SelectItem key={slot} value={slot}>{slot}</SelectItem>
-                        ))}
+                        {/* 종료 슬롯(마지막)은 시작 시간으로 선택 불가. 오늘이면 과거 슬롯 숨김 */}
+                        {TIME_SLOTS.slice(0, -1)
+                          .filter((slot) => formDate !== formatDate(new Date()) || slot >= getNextAvailableSlot().start)
+                          .map((slot) => (
+                            <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>

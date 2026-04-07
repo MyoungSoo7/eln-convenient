@@ -1,77 +1,57 @@
-import http from 'http';
-import https from 'https';
+/**
+ * 검색 인덱스 동기화 클라이언트 (Redis Stream 기반)
+ *
+ * eln-service의 searchClient와 동일한 패턴 — 자세한 설명은 그쪽 주석 참고.
+ * labnote:events 스트림에 SEARCH_INDEX / SEARCH_DELETE 이벤트를 발행하고,
+ * search-service가 consumer group으로 구독하여 OpenSearch에 반영한다.
+ */
+import Redis from 'ioredis';
 
-const SEARCH_SERVICE_URL = process.env.SEARCH_SERVICE_URL || 'http://localhost:8006';
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
-if (!INTERNAL_SECRET) {
-  console.warn('[searchClient] INTERNAL_SECRET 미설정 — 검색 색인 요청이 거부될 수 있습니다.');
-}
+const EVENT_STREAM = 'labnote:events';
+const STREAM_MAXLEN = 10000;
 
 interface IndexPayload {
   id: string;
   doc: Record<string, unknown>;
 }
 
-function postJSON(url: string, body: unknown): Promise<void> {
-  return new Promise((resolve) => {
-    const data = JSON.stringify(body);
-    const parsed = new URL(url);
-    const lib = parsed.protocol === 'https:' ? https : http;
-    const req = lib.request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-        path: parsed.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(data),
-          'x-internal-secret': INTERNAL_SECRET,
-        },
-      },
-      (res) => {
-        res.resume();
-        resolve();
-      },
-    );
-    req.on('error', (err) => {
-      console.warn('[searchClient] 색인 실패 (무시):', err.message);
-      resolve();
+let redis: Redis | null = null;
+function getRedis(): Redis {
+  if (!redis) {
+    redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+      lazyConnect: false,
     });
-    req.write(data);
-    req.end();
-  });
+    redis.on('error', (err: Error) => {
+      console.error('[searchClient] Redis 연결 오류:', err.message);
+    });
+  }
+  return redis;
 }
 
-function deleteDoc(id: string): Promise<void> {
-  return new Promise((resolve) => {
-    const parsed = new URL(`${SEARCH_SERVICE_URL}/api/search/index/${id}`);
-    const lib = parsed.protocol === 'https:' ? https : http;
-    const req = lib.request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-        path: parsed.pathname,
-        method: 'DELETE',
-        headers: { 'x-internal-secret': INTERNAL_SECRET },
-      },
-      (res) => { res.resume(); resolve(); },
+async function publish(type: 'SEARCH_INDEX' | 'SEARCH_DELETE', data: Record<string, string>): Promise<void> {
+  try {
+    await getRedis().xadd(
+      EVENT_STREAM,
+      'MAXLEN', '~', String(STREAM_MAXLEN),
+      '*',
+      'type', type,
+      ...Object.entries(data).flat(),
     );
-    req.on('error', (err) => {
-      console.warn('[searchClient] 삭제 실패 (무시):', err.message);
-      resolve();
-    });
-    req.end();
-  });
+  } catch (err: any) {
+    console.error(`[searchClient] ${type} 발행 실패:`, err.message);
+  }
 }
 
 export const searchClient = {
   index(payload: IndexPayload): void {
-    postJSON(`${SEARCH_SERVICE_URL}/api/search/index`, payload)
-      .catch((err) => console.warn('[searchClient] index 실패:', err));
+    void publish('SEARCH_INDEX', {
+      id: payload.id,
+      doc: JSON.stringify(payload.doc),
+    });
   },
   delete(id: string): void {
-    deleteDoc(id)
-      .catch((err) => console.warn('[searchClient] delete 실패:', err));
+    void publish('SEARCH_DELETE', { id });
   },
 };

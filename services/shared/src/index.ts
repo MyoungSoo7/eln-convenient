@@ -40,4 +40,6 @@ export {
   type UserSuspendedPayload,
   type NoteDeletedPayload,
   type NoteSignedPayload,
+  type SearchIndexPayload,
+  type SearchDeletePayload,
 } from './service-events';

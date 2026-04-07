@@ -12,6 +12,20 @@
     "settingsNote": "※ Settings changes will be enabled after backend integration",
     "loadError": "Failed to load settings."
   },
+  "reindex": {
+    "title": "Rebuild Search Index",
+    "titleTooltip": "Re-registers all notes, templates, and inventory items into the search index. Use this to fix past drift or missing items in OpenSearch.",
+    "description": "Re-registers every note, template, and inventory item into the search index. Depending on data volume, indexing may take several minutes.",
+    "button": "Run Reindex",
+    "running": "Reindexing...",
+    "confirmTitle": "Rebuild Search Index",
+    "confirmDesc": "Do you want to reindex all notes, templates, and inventory items? This will be reflected in OpenSearch and may take several minutes depending on data volume.",
+    "confirm": "Run",
+    "cancel": "Cancel",
+    "successTitle": "Reindex request sent",
+    "successDesc": "{{note}} notes, {{template}} templates, {{item}} inventory items (total {{total}})",
+    "errorTitle": "Reindex request failed"
+  },
   "orgTeamUser": {
     "title": "Org / Team / Users",
     "titleTooltip": "Admin-only page for managing users, teams, and organizations.",
