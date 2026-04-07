@@ -3,7 +3,7 @@
 > 이 파일은 `.claude/hooks/update-status.sh`에 의해 자동 생성됩니다.
 > 수동 갱신: `bash .claude/hooks/update-status.sh`
 
-- **마지막 갱신**: 2026-04-06 16:46:34
+- **마지막 갱신**: 2026-04-07 13:08:21
 - **현재 브랜치**: `eln`
 - **백엔드 서비스 수**: 11
 
@@ -34,24 +34,24 @@ signature-audit-service
 ## Docker 컨테이너 상태
 
 ```
-labnote-ai                   Up 6 hours (healthy)
-labnote-auth                 Up 2 hours (healthy)
-labnote-collab               Up 6 hours (healthy)
-labnote-dozzle               Up 6 hours
-labnote-eln                  Up 2 hours (healthy)
-labnote-file                 Up 2 hours (healthy)
-labnote-gateway              Up 6 hours (healthy)
-labnote-inventory            Up 6 hours (healthy)
-labnote-inventory-frontend   Up 6 hours (healthy)
-labnote-jaeger               Up 6 hours (healthy)
-labnote-minio                Up 6 hours (healthy)
-labnote-opensearch           Up 6 hours (healthy)
-labnote-postgres             Up 6 hours (healthy)
-labnote-qdrant               Up 6 hours
-labnote-redis                Up 6 hours (healthy)
+labnote-ai                   Up 3 hours (healthy)
+labnote-auth                 Up 3 hours (healthy)
+labnote-collab               Up 3 hours (healthy)
+labnote-dozzle               Up 3 hours
+labnote-eln                  Up 3 hours (healthy)
+labnote-file                 Up 3 hours (healthy)
+labnote-gateway              Up 3 hours (healthy)
+labnote-inventory            Up 3 hours (healthy)
+labnote-inventory-frontend   Up 3 hours (healthy)
+labnote-jaeger               Up 3 hours (healthy)
+labnote-minio                Up 3 hours (healthy)
+labnote-opensearch           Up 3 hours (healthy)
+labnote-postgres             Up 3 hours (healthy)
+labnote-qdrant               Up 3 hours
+labnote-redis                Up 3 hours (healthy)
 labnote-scheduler            Up 2 hours (healthy)
-labnote-search               Up 2 hours (healthy)
-labnote-signature            Up 2 hours (healthy)
+labnote-search               Up 3 hours (healthy)
+labnote-signature            Up 3 hours (healthy)
 ```
 
 ## 프론트엔드 i18n
@@ -72,9 +72,9 @@ labnote-signature            Up 2 hours (healthy)
 ## 최근 커밋
 
 ```
+4dd2bd5 fix(scheduler): 예약 카드가 지속 시간만큼 캘린더에 표시되도록 수정
+b01d721 알림 전체 메세지
+5274915 알림 전체 메세지
+e5160dd 알림기능 보완
 3d29619 멀티테넌시
-358950c 멀티테넌시
-b05397e fix: 예약 승인 알림 미수신 수정 (orgId 누락 + SSE 인증)
-b5a9adc 프로토콜 개선
-2a35755 feat: ai-assistant-service 통합 (Qdrant RAG 기반)
 ```

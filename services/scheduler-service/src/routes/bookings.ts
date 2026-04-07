@@ -42,6 +42,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           to:         { type: 'string' },
           page:       { type: 'string' },
           limit:      { type: 'string' },
+          order:      { type: 'string', enum: ['asc', 'desc'] },
         },
       },
     },
@@ -51,6 +52,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     const page  = Math.max(1, parseInt(q.page  ?? '1'));
     const limit = Math.min(100, parseInt(q.limit ?? '20'));
     const skip  = (page - 1) * limit;
+    const order: 'asc' | 'desc' = q.order === 'desc' ? 'desc' : 'asc';
 
     const where: Record<string, unknown> = { orgId };
     if (q.resourceId) where.resourceId = q.resourceId;
@@ -67,7 +69,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       fastify.prisma.booking.findMany({
         where,
         include: { resource: true },
-        orderBy: { startAt: 'asc' },
+        orderBy: { startAt: order },
         skip,
         take: limit,
       }),
