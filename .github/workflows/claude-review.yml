@@ -1,0 +1,54 @@
+name: Claude PR Review
+
+# PR이 열리거나 업데이트되면 Claude가 자동으로 리뷰.
+# PR/이슈 코멘트에 "@claude"가 포함되면 추가 작업(질문/수정 지시) 가능.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # 드래프트 PR은 스킵. 코멘트 트리거는 "@claude" 포함 시에만.
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 프로젝트의 /review 슬래시 커맨드를 그대로 활용.
+          # .claude/commands/review.md 에 정의된 체크리스트 기반으로 리뷰함.
+          prompt: |
+            /review
+
+            위 슬래시 커맨드를 실행해서 이 PR의 변경사항을 리뷰해줘.
+            결과는 PR 코멘트로 남기고, Critical 항목이 있으면 review를 "REQUEST_CHANGES"로 제출해.
+            Critical이 없으면 "COMMENT"로 제출해.
+          claude_args: |
+            --model claude-opus-4-5

@@ -32,3 +32,4 @@ docs/month/research/
 
 # Claude local settings
 .claude/settings.local.json
+.tmp-workflows/
