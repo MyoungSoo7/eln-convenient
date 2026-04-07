@@ -475,14 +475,25 @@ export default function SchedulerPage() {
               {weekDates.map((d, i) => {
                 const dateStr = formatDate(d);
                 const booking = bookingIndex.get(`${dateStr}_${hour}`);
+                const isBookingStart = booking && toLocalHHMM(booking.startAt) === hour;
+                // 예약 지속 시간(시간 단위) 계산 — 행 높이(48px) × 지속시간 만큼 카드 높이 확장
+                const durationHours = isBookingStart
+                  ? (new Date(booking!.endAt).getTime() - new Date(booking!.startAt).getTime()) / (1000 * 60 * 60)
+                  : 0;
                 return (
-                  <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
-                    {booking && toLocalHHMM(booking.startAt) === hour && (
-                      <div className={`rounded p-1.5 text-[10px] border ${statusColors[booking.status]}`}>
+                  <div key={i} className={`relative border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
+                    {isBookingStart && (
+                      <div
+                        className={`absolute inset-x-0.5 top-0.5 z-10 rounded p-1.5 text-[10px] border overflow-hidden ${statusColors[booking!.status]}`}
+                        style={{ height: `calc(${durationHours * 48}px - 4px)` }}
+                      >
                         <p className="font-medium truncate">
-                          {booking.resource?.name || booking.resourceId}
+                          {booking!.resource?.name || booking!.resourceId}
                         </p>
-                        <p className="opacity-70 truncate">{booking.title}</p>
+                        <p className="opacity-70 truncate">{booking!.title}</p>
+                        <p className="opacity-60 truncate">
+                          {toLocalHHMM(booking!.startAt)}–{toLocalHHMM(booking!.endAt)}
+                        </p>
                       </div>
                     )}
                   </div>
