@@ -26,6 +26,7 @@ model Signature {
 
 model AuditLog {
   id         String   @id @default(uuid())
+  eventId    String?  @unique  // 멱등성 키 — publisher가 UUID 부여, 재시도 시 중복 생성 방지
   entityType String
   entityId   String
   action     String

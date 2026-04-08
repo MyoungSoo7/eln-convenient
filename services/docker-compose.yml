@@ -133,6 +133,7 @@ services:
       - REVIEWER_INITIAL_PASSWORD=${REVIEWER_INITIAL_PASSWORD:-Reviewer1234!}
       - DEFAULT_RESET_PASSWORD=${DEFAULT_RESET_PASSWORD:-eln0330}
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=auth-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -163,6 +164,7 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - SEARCH_SERVICE_URL=http://search-service:8006
       - SEED_ON_START=true
       - OTEL_SERVICE_NAME=eln-service
@@ -197,6 +199,7 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=signature-audit-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -232,6 +235,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=inventory-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -261,6 +265,7 @@ services:
       - PORT=8005
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=scheduler-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -288,6 +293,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=search-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -349,6 +355,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=3&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=file-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:

@@ -32,6 +32,8 @@ export {
   type MinimalReply,
 } from './middleware';
 
+export { maskPII, maskEmail, maskPhone } from './pii';
+
 export {
   ServiceEventType,
   buildServiceEvent,
