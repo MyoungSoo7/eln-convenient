@@ -5,11 +5,13 @@ import aiRoutes from './routes/ai.routes';
 import { swaggerDocument } from './swagger';
 import { startIndexWorker } from './workers/index.worker';
 import { ensureCollection } from './services/qdrant.service';
+import { logProviderConfig } from './providers/llm';
 
 const app = express();
 const PORT = process.env.PORT || 8007;
 
-// Qdrant 컬렉션 초기화 + BullMQ Worker 시작
+// Provider 설정 로깅 + Qdrant 컬렉션 초기화 + BullMQ Worker 시작
+logProviderConfig();
 ensureCollection().catch((e: Error) => console.warn('[startup] Qdrant 초기화 실패:', e.message));
 startIndexWorker();
 

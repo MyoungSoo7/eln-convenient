@@ -1,8 +1,12 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { EMBEDDING_DIM } from '../providers/llm';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
-const COLLECTION_NAME = 'labnote_docs';
-const VECTOR_SIZE = 1536; // text-embedding-3-small
+// 컬렉션 이름에 차원을 포함해 provider 전환 시 다른 컬렉션을 쓰도록 한다.
+// (예: labnote_docs_1536 = OpenAI, labnote_docs_1024 = bge-m3)
+// 기존 컬렉션 유지를 원하면 QDRANT_COLLECTION env로 고정 가능.
+const COLLECTION_NAME = process.env.QDRANT_COLLECTION || `labnote_docs_${EMBEDDING_DIM}`;
+const VECTOR_SIZE = EMBEDDING_DIM;
 
 export const qdrant = new QdrantClient({ url: QDRANT_URL });
 

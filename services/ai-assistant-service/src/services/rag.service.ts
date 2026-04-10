@@ -1,13 +1,9 @@
-import OpenAI from 'openai';
-import { embed, OPENAI_ENABLED } from './embedding.service';
+import { embed } from './embedding.service';
 import { searchSimilar } from './qdrant.service';
+import { chatClient, CHAT_MODEL } from '../providers/llm';
 
-const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini';
-
-let openai: OpenAI | null = null;
-if (OPENAI_ENABLED) {
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
+// 기존 API 호환: rag.service 내부에서만 openai 참조
+const openai = chatClient;
 
 export interface RagResult {
   answer: string;

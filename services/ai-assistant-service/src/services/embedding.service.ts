@@ -1,21 +1,12 @@
-import OpenAI from 'openai';
+import { embeddingClient, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_ENABLED } from '../providers/llm';
 
-const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
-const EMBEDDING_MODEL = 'text-embedding-3-small';
-const EMBEDDING_DIM = 1536;
-
-let openai: OpenAI | null = null;
-if (OPENAI_ENABLED) {
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  console.log('[embedding] OpenAI 임베딩 활성화됨');
-} else {
-  console.warn('[embedding] OPENAI_API_KEY 미설정 — 해시 기반 더미 임베딩 사용 (의미 검색 불가)');
-}
-
-/** 텍스트를 1536차원 벡터로 변환 */
+/** 텍스트를 벡터로 변환 */
 export async function embed(text: string): Promise<number[]> {
-  if (openai) {
-    const res = await openai.embeddings.create({ model: EMBEDDING_MODEL, input: text.slice(0, 8191) });
+  if (embeddingClient) {
+    const res = await embeddingClient.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: text.slice(0, 8191),
+    });
     return res.data[0].embedding;
   }
   return deterministicVector(text, EMBEDDING_DIM);
@@ -23,8 +14,8 @@ export async function embed(text: string): Promise<number[]> {
 
 /** 여러 텍스트 배치 임베딩 */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
-  if (openai) {
-    const res = await openai.embeddings.create({
+  if (embeddingClient) {
+    const res = await embeddingClient.embeddings.create({
       model: EMBEDDING_MODEL,
       input: texts.map((t) => t.slice(0, 8191)),
     });
@@ -44,7 +35,7 @@ export function chunkText(text: string, chunkSize = 800, overlap = 100): string[
   return chunks.filter((c) => c.trim().length > 20);
 }
 
-/** OpenAI 없을 때 결정적 해시 벡터 (테스트용) */
+/** 임베딩 클라이언트 없을 때 결정적 해시 벡터 (테스트/폴백용) */
 function deterministicVector(text: string, dim: number): number[] {
   const vec = new Array<number>(dim).fill(0);
   for (let i = 0; i < text.length; i++) {
@@ -54,4 +45,4 @@ function deterministicVector(text: string, dim: number): number[] {
   return vec.map((v) => v / norm);
 }
 
-export { OPENAI_ENABLED };
+export { EMBEDDING_ENABLED as OPENAI_ENABLED };
