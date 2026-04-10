@@ -199,7 +199,9 @@ SYSTEM_STATUS_TRANSITIONS = {
 .claude/
 ├── settings.json          # 팀 공유 설정 (deny 룰, hooks) — 커밋 대상
 ├── settings.local.json    # 개인 설정 (allow 권한) — gitignore 대상
+├── HARNESS.md             # 하네스 운영 매뉴얼 (why/how) — .claude/HARNESS.md 참고
 ├── rules/                 # 파일별 자동 로드 규칙 (globs 기반)
+│   ├── 00-meta.md                      # 에이전트 작업 프로토콜 (메타룰)
 │   ├── 01-backend-service-pattern.md   # 서비스 구조, 에러처리, 미들웨어
 │   ├── 02-route-definition.md          # 라우트 정의 패턴
 │   ├── 03-dto-validation.md            # Zod 스키마 컨벤션
@@ -209,15 +211,20 @@ SYSTEM_STATUS_TRANSITIONS = {
 │   ├── 07-docker-compose.md            # 인프라 설정 규칙
 │   ├── 08-shared-package.md            # @lab/shared 수정 규칙
 │   ├── 09-prisma-schema.md             # Prisma 스키마 규칙
-│   └── 10-security.md                  # 보안 체크리스트
+│   ├── 10-security.md                  # 보안 체크리스트
+│   └── 11-pii.md                       # PII/민감정보 처리
 ├── hooks/                 # PostToolUse 자동 실행 스크립트
+│   ├── dispatch.sh                    # 단일 디스패처 — file_path 기반 라우팅
 │   ├── check-i18n-sync.sh             # ko/en 키 누락 감지
 │   ├── rebuild-reminder.sh            # 백엔드 수정 시 빌드 리마인더
 │   ├── prisma-migration-reminder.sh   # 스키마 변경 시 마이그레이션 안내
-│   └── check-compose-env.sh           # docker-compose 환경변수/포트 검증
-├── agents/                # 특화 에이전트 (25개)
+│   ├── check-compose-env.sh           # docker-compose 환경변수/포트 검증
+│   └── update-status.sh               # STATUS.md 자동 갱신
+├── agents/                # 특화 에이전트 (25개) + README.md 카탈로그
 └── commands/              # 슬래시 커맨드 (/review, /rebuild 등)
 ```
+
+> 하네스 동작의 **why/how** 는 [.claude/HARNESS.md](./.claude/HARNESS.md) 를 읽을 것. 훅은 `Write|Edit` 발생 시 `dispatch.sh`가 단일 진입점으로 발화하고, 파일 경로에 해당하는 하위 훅만 병렬 실행한다.
 
 ### 팀 공유 deny 룰 (settings.json)
 - `rm -rf` 명령 차단

@@ -3,7 +3,7 @@
 > 이 파일은 `.claude/hooks/update-status.sh`에 의해 자동 생성됩니다.
 > 수동 갱신: `bash .claude/hooks/update-status.sh`
 
-- **마지막 갱신**: 2026-04-07 18:14:53
+- **마지막 갱신**: 2026-04-10 10:00:03
 - **현재 브랜치**: `eln`
 - **백엔드 서비스 수**: 11
 
@@ -34,24 +34,7 @@ signature-audit-service
 ## Docker 컨테이너 상태
 
 ```
-labnote-ai                   Up 8 hours (healthy)
-labnote-auth                 Up 8 hours (healthy)
-labnote-collab               Up 8 hours (healthy)
-labnote-dozzle               Up 8 hours
-labnote-eln                  Up 2 hours (healthy)
-labnote-file                 Up 8 hours (healthy)
-labnote-gateway              Up 8 hours (healthy)
-labnote-inventory            Up 2 hours (healthy)
-labnote-inventory-frontend   Up 8 hours (healthy)
-labnote-jaeger               Up 8 hours (healthy)
-labnote-minio                Up 8 hours (healthy)
-labnote-opensearch           Up 8 hours (healthy)
-labnote-postgres             Up 8 hours (healthy)
-labnote-qdrant               Up 8 hours
-labnote-redis                Up 8 hours (healthy)
-labnote-scheduler            Up 7 hours (healthy)
-labnote-search               Up 2 hours (healthy)
-labnote-signature            Up 8 hours (healthy)
+
 ```
 
 ## 프론트엔드 i18n
@@ -64,17 +47,17 @@ labnote-signature            Up 8 hours (healthy)
 
 | 항목 | 개수 |
 |------|------|
-| agents/ | 25 |
-| rules/ | 10 |
-| hooks/ | 5 |
+| agents/ | 26 |
+| rules/ | 12 |
+| hooks/ | 6 |
 | commands/ | 9 |
 
 ## 최근 커밋
 
 ```
+20da3ef chore(infra): DR/감사로그/시크릿/PII 5종 인프라 강화
+82b9de5 통합검색
+84234d5 docs: enable agent teams flag and add team recipes
 2e062cc ci: add Claude PR auto-review workflow
 a4b0ab2 통합검색
-69ace71 알림 전체 메세지
-4dd2bd5 fix(scheduler): 예약 카드가 지속 시간만큼 캘린더에 표시되도록 수정
-b01d721 알림 전체 메세지
 ```
