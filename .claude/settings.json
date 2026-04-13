@@ -3,8 +3,7 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "LAB_COMPOSE_DIR": "services",
     "LAB_FRONTEND_DEV_URL": "http://localhost:5173",
-    "LAB_API_GATEWAY_URL": "http://localhost:8000",
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "LAB_API_GATEWAY_URL": "http://localhost:8000"
   },
   "permissions": {
     "deny": [

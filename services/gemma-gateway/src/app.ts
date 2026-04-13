@@ -5,6 +5,8 @@ import swaggerUi from '@fastify/swagger-ui';
 import { buildFastifyErrorHandler, createLogger } from '@lab/shared';
 import v1Routes from './routes/v1.routes';
 import { listEnabledAliases, summarizeRouting } from './config/routing';
+import { piiScannerHook } from './middlewares/pii-scanner';
+import { getUsageSummary, resetUsage } from './lib/usage-tracker';
 
 const serviceLogger = createLogger('gemma-gateway');
 
@@ -45,6 +47,20 @@ export function buildApp(logger?: boolean): FastifyInstance {
   app.get('/_routing', async () => {
     const lines = summarizeRouting().split('\n');
     return { ok: true, routing: lines };
+  });
+
+  // ── PII 스캐너 (외부 백엔드 전송 전 개인정보 감지) ────────
+  app.addHook('preHandler', piiScannerHook);
+
+  // ── 사용량 대시보드 ─────────────────────────────────────
+  app.get('/_usage', async () => ({
+    ok: true,
+    data: getUsageSummary(),
+  }));
+
+  app.delete('/_usage', async () => {
+    resetUsage();
+    return { ok: true, data: null };
   });
 
   // ── OpenAI 호환 v1 라우트 ──────────────────────────────

@@ -1,0 +1,556 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776039177961,
+  "projectRoot": "C:\\vscode\\lab\\lab-companion-feature-phase1-backend-infra",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.19",
+        "category": "build"
+      },
+      {
+        "name": "vitest",
+        "version": "3.2.4",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "build:dev": "vite build --mode development",
+      "lint": "eslint .",
+      "preview": "vite preview",
+      "test": "vitest run",
+      "test:watch": "vitest"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "public",
+      "scripts",
+      "src",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "ccmonitor": {
+      "path": "ccmonitor",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1776039177854,
+      "keyFiles": [
+        "CLAUDE.md",
+        "filegen.md",
+        "package.json",
+        "README.md"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 4,
+      "lastAccessed": 1776039177858,
+      "keyFiles": [
+        "favicon.ico",
+        "index.html",
+        "placeholder.svg",
+        "robots.txt"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 9,
+      "lastAccessed": 1776039177890,
+      "keyFiles": [
+        "AGENT_TEAMS.md",
+        "AUTOMATION_PIPELINE.md",
+        "ccmonitor.md",
+        "database.md",
+        "DR.md"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 2,
+      "lastAccessed": 1776039177891,
+      "keyFiles": [
+        "placeholder.svg",
+        "robots.txt"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 4,
+      "lastAccessed": 1776039177892,
+      "keyFiles": [
+        "generate-complete-docs.mjs",
+        "generate-func-spec.mjs",
+        "gen_test_plan.py",
+        "i18n-audit.py"
+      ]
+    },
+    "services": {
+      "path": "services",
+      "purpose": "Business logic services",
+      "fileCount": 7,
+      "lastAccessed": 1776039177893,
+      "keyFiles": [
+        "bash.exe.stackdump",
+        "docker-compose.yml",
+        "generate_manual_ppt.py",
+        "rebuild.sh"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 5,
+      "lastAccessed": 1776039177893,
+      "keyFiles": [
+        "App.css",
+        "App.tsx",
+        "index.css",
+        "main.tsx",
+        "vite-env.d.ts"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 2,
+      "lastAccessed": 1776039177894,
+      "keyFiles": [
+        "run-test-plan.mjs",
+        "update-test-results.mjs"
+      ]
+    },
+    "ccmonitor\\scripts": {
+      "path": "ccmonitor\\scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1776039177895,
+      "keyFiles": [
+        "on-skill-complete.sh"
+      ]
+    },
+    "ccmonitor\\src": {
+      "path": "ccmonitor\\src",
+      "purpose": "Source code",
+      "fileCount": 4,
+      "lastAccessed": 1776039177896,
+      "keyFiles": [
+        "index.ts",
+        "parser.ts",
+        "types.ts"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1776039177898,
+      "keyFiles": [
+        "index-bbg1Nn0j.css",
+        "index-DtsGfXHC.js"
+      ]
+    },
+    "src\\api": {
+      "path": "src\\api",
+      "purpose": "API routes",
+      "fileCount": 14,
+      "lastAccessed": 1776039177902,
+      "keyFiles": [
+        "admin.test.ts",
+        "admin.ts",
+        "ai.ts"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 15,
+      "lastAccessed": 1776039177903,
+      "keyFiles": [
+        "AdminRoute.tsx",
+        "AppLayout.tsx",
+        "AppSidebar.tsx"
+      ]
+    },
+    "src\\lib": {
+      "path": "src\\lib",
+      "purpose": "Library code",
+      "fileCount": 4,
+      "lastAccessed": 1776039177904,
+      "keyFiles": [
+        "authToken.ts",
+        "errorCodeMap.ts",
+        "types.ts"
+      ]
+    },
+    "src\\pages": {
+      "path": "src\\pages",
+      "purpose": "Page components",
+      "fileCount": 16,
+      "lastAccessed": 1776039177905,
+      "keyFiles": [
+        "AIAssistantPage.tsx",
+        "AuditLogsPage.tsx",
+        "Dashboard.tsx"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "services\\docker-compose.yml",
+      "accessCount": 9,
+      "lastAccessed": 1776056044648,
+      "type": "file"
+    },
+    {
+      "path": "gemma4.md",
+      "accessCount": 2,
+      "lastAccessed": 1776055457589,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042619196,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\routes\\proxy.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042620014,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\middlewares\\auth.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042621002,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\routes\\session.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042621350,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\routes\\sse.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042621384,
+      "type": "file"
+    },
+    {
+      "path": "services\\api-gateway\\src\\routes\\dashboard.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042621427,
+      "type": "file"
+    },
+    {
+      "path": "services\\auth-service\\src\\routes\\auth.routes.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042644661,
+      "type": "file"
+    },
+    {
+      "path": "services\\auth-service\\src\\controllers\\auth.controller.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042648522,
+      "type": "file"
+    },
+    {
+      "path": "services\\auth-service\\src\\dtos\\auth.dto.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776042648952,
+      "type": "file"
+    },
+    {
+      "path": "k6\\config.js",
+      "accessCount": 1,
+      "lastAccessed": 1776042702513,
+      "type": "file"
+    },
+    {
+      "path": "k6\\load-test.js",
+      "accessCount": 1,
+      "lastAccessed": 1776042731893,
+      "type": "file"
+    },
+    {
+      "path": "k6\\spike-test.js",
+      "accessCount": 1,
+      "lastAccessed": 1776042748424,
+      "type": "file"
+    },
+    {
+      "path": "k6\\stress-test.js",
+      "accessCount": 1,
+      "lastAccessed": 1776042766344,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\HARNESS.md",
+      "accessCount": 1,
+      "lastAccessed": 1776044663529,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\settings.json",
+      "accessCount": 1,
+      "lastAccessed": 1776044663599,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\hooks\\dispatch.sh",
+      "accessCount": 1,
+      "lastAccessed": 1776044668967,
+      "type": "file"
+    },
+    {
+      "path": "services\\ai-assistant-service\\src\\providers\\llm.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776047372374,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055365787,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\app.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055366537,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\package.json",
+      "accessCount": 1,
+      "lastAccessed": 1776055367172,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\tsconfig.json",
+      "accessCount": 1,
+      "lastAccessed": 1776055367373,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\Dockerfile",
+      "accessCount": 1,
+      "lastAccessed": 1776055367476,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\plugins\\prisma.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055371070,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\prisma\\schema.prisma",
+      "accessCount": 1,
+      "lastAccessed": 1776055372489,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\lib\\prisma.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055379134,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\plugins\\auth.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055379960,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\routes\\health.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055380322,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\routes\\resources.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055380739,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\routes\\bookings.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055381207,
+      "type": "file"
+    },
+    {
+      "path": "services\\shared\\src\\index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055385776,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\lib\\conflict.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055398943,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\lib\\state-machine.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055399212,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\src\\lib\\notification.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055399273,
+      "type": "file"
+    },
+    {
+      "path": "services\\scheduler-service\\vitest.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055406817,
+      "type": "file"
+    },
+    {
+      "path": "services\\shared\\docker-entrypoint.sh",
+      "accessCount": 1,
+      "lastAccessed": 1776055489210,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\package.json",
+      "accessCount": 1,
+      "lastAccessed": 1776055510890,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\tsconfig.json",
+      "accessCount": 1,
+      "lastAccessed": 1776055512630,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\vitest.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055514673,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\Dockerfile",
+      "accessCount": 1,
+      "lastAccessed": 1776055517492,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\prisma\\schema.prisma",
+      "accessCount": 1,
+      "lastAccessed": 1776055537546,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055540661,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\app.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055547317,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\lib\\prisma.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055549407,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\plugins\\prisma.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055551167,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\plugins\\auth.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055553518,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\routes\\health.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055558762,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\routes\\models.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055571407,
+      "type": "file"
+    },
+    {
+      "path": "services\\model-registry-service\\src\\routes\\prompts.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776055578090,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

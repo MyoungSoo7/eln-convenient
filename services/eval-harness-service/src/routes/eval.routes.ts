@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { runSmokeEval } from '../evaluators/smoke.evaluator';
 import { AppError, ErrorCode } from '@lab/shared';
+import { enqueueEval, getJobStatus } from '../lib/eval-queue';
 
 const evalRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -38,6 +39,46 @@ const evalRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     return { ok: true, data: results };
+  });
+
+  /**
+   * POST /eval/async
+   * Body: { evalType: 'smoke'|'kmmlu'|'eln-qa'|'rag', model: string, datasetId?, config? }
+   *
+   * 비동기 큐 기반 평가 실행. 대규모 벤치마크용.
+   */
+  app.post('/async', async (req) => {
+    const body = (req.body ?? {}) as {
+      evalType?: string;
+      model?: string;
+      datasetId?: string;
+      config?: Record<string, unknown>;
+    };
+    if (!body.evalType || !body.model) {
+      throw new AppError(400, 'evalType과 model 필드가 필요합니다.', ErrorCode.VALIDATION_ERROR);
+    }
+    const jobId = await enqueueEval({
+      evalType: body.evalType as 'smoke' | 'kmmlu' | 'eln-qa' | 'rag',
+      model: body.model,
+      datasetId: body.datasetId,
+      config: body.config,
+      requestedBy: (req.headers['x-user-id'] as string) || undefined,
+    });
+    return { ok: true, data: { jobId } };
+  });
+
+  /**
+   * GET /eval/jobs/:jobId
+   * 비동기 평가 잡 상태 조회
+   */
+  app.get('/jobs/:jobId', async (req) => {
+    const { jobId } = req.params as { jobId: string };
+    try {
+      const status = await getJobStatus(jobId);
+      return { ok: true, data: status };
+    } catch {
+      throw new AppError(404, '잡을 찾을 수 없습니다.', ErrorCode.NOT_FOUND);
+    }
   });
 };
 

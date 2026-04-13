@@ -426,6 +426,99 @@ services:
       retries: 5
       start_period: 15s
 
+  # ───────────────────────────────────────────────────────
+  #  Model Registry — 모델/프롬프트/평가셋/실험 버전 관리
+  # ───────────────────────────────────────────────────────
+  model-registry-service:
+    build:
+      context: .
+      dockerfile: model-registry-service/Dockerfile
+    container_name: labnote-model-registry
+    profiles: ["research"]
+    expose:
+      - "8012"
+    ports:
+      - "8012:8012"
+    environment:
+      - PORT=8012
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=research&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=model-registry-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8012/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  Experiment Tracker — MLflow 읽기 전용 프록시
+  # ───────────────────────────────────────────────────────
+  experiment-tracker-service:
+    build:
+      context: .
+      dockerfile: experiment-tracker-service/Dockerfile
+    container_name: labnote-experiment-tracker
+    profiles: ["research"]
+    expose:
+      - "8013"
+    ports:
+      - "8013:8013"
+    environment:
+      - PORT=8013
+      - NODE_ENV=${NODE_ENV:-development}
+      - MLFLOW_URL=http://mlflow:5000
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=experiment-tracker-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8013/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  Fine-Tune Jobs — LoRA/QLoRA 파인튜닝 잡 큐잉/상태관리
+  # ───────────────────────────────────────────────────────
+  fine-tune-jobs-service:
+    build:
+      context: .
+      dockerfile: fine-tune-jobs-service/Dockerfile
+    container_name: labnote-fine-tune-jobs
+    profiles: ["research"]
+    expose:
+      - "8014"
+    ports:
+      - "8014:8014"
+    environment:
+      - PORT=8014
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=research&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - REDIS_URL=redis://redis:6379
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=fine-tune-jobs-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8014/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   ai-assistant-service:
     build: ./ai-assistant-service
     container_name: labnote-ai
