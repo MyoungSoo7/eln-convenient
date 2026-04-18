@@ -36,7 +36,7 @@ function Snippet({ result }: { result: SearchResult }) {
   const isHighlight = Boolean(parts?.[0]);
   return (
     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-      {isHighlight ? <span dangerouslySetInnerHTML={{ __html: text }} /> : text}
+      {isHighlight ? <span dangerouslySetInnerHTML={{ __html: text.replace(/<(?!\/?(em)>)[^>]*>/gi, '') }} /> : text}
     </p>
   );
 }
