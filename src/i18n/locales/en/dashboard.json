@@ -32,5 +32,7 @@
   "isExpired": "Expired",
   "daysLeft": "{{count}}d left",
   "viewAll": "View All",
-  "noActivity": "No recent activity"
+  "noActivity": "No recent activity",
+  "cardError": "Unable to load data",
+  "cardRetry": "Retry"
 }

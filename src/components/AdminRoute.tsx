@@ -8,7 +8,7 @@ interface AdminRouteProps {
 export function AdminRoute({ children }: AdminRouteProps) {
   const user = getStoredUser();
   if (user?.role !== 'admin') {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/forbidden" replace />;
   }
   return <>{children}</>;
 }

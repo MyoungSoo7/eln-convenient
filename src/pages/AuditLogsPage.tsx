@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, ClipboardList, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Search, ClipboardList, ChevronLeft, ChevronRight, Loader2, FileSearch } from "lucide-react";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
@@ -151,19 +153,17 @@ export default function AuditLogsPage() {
       <Card className="shadow-card">
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              {t('loadingText')}
-            </div>
+            <LoadingSkeleton variant="table" />
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
               <p>{error}</p>
               <Button variant="outline" size="sm" onClick={fetchLogs}>{tc('retry')}</Button>
             </div>
           ) : logs.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground">
-              {t('empty')}
-            </div>
+            <EmptyState
+              icon={FileSearch}
+              title={t('empty')}
+            />
           ) : (
             <Table>
               <TableHeader>

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── Enums ───────────────────────────────────────
 // ItemType은 Code 테이블(INVENTORY_ITEM_TYPE)에서 관리 — 자유 문자열
-export const ItemTypeEnum = z.string().min(1, 'type은 필수입니다.');
+export const ItemTypeEnum = z.string().min(1);
 export type ItemType = string;
 
 export const ItemStatusEnum = z.enum(['available', 'in_use', 'depleted', 'expired', 'disposed', 'maintenance']);
@@ -19,7 +19,7 @@ export type SortOrder = z.infer<typeof SortOrderEnum>;
 
 // ─── 아이템 CRUD ─────────────────────────────────
 export const CreateItemSchema = z.object({
-  name: z.string().min(1, 'name과 type은 필수입니다.'),
+  name: z.string().min(1),
   type: ItemTypeEnum,
   category: z.string().optional(),
   quantity: z.number().optional(),
@@ -53,16 +53,14 @@ export const UpdateItemSchema = z.object({
 export type UpdateItemDto = z.infer<typeof UpdateItemSchema>;
 
 export const AdjustQuantitySchema = z.object({
-  changeType: z.enum(['in', 'out', 'adjust'], {
-    message: 'changeType은 in | out | adjust 중 하나여야 합니다.',
-  }),
-  quantity: z.number().min(0, 'quantity는 0 이상의 숫자여야 합니다.'),
+  changeType: z.enum(['in', 'out', 'adjust']),
+  quantity: z.number().min(0),
   reason: z.string().optional(),
 });
 export type AdjustQuantityDto = z.infer<typeof AdjustQuantitySchema>;
 
 export const CreateCategorySchema = z.object({
-  name: z.string().min(1, 'name은 필수입니다.'),
+  name: z.string().min(1),
 });
 export type CreateCategoryDto = z.infer<typeof CreateCategorySchema>;
 

@@ -101,6 +101,10 @@ export async function getMe(): Promise<ApiResponse<User>> {
   }
 }
 
+export async function changeMyPassword(currentPassword: string, newPassword: string): Promise<ApiResponse<{ message: string }>> {
+  return await apiClient.patch<{ message: string }>('/auth/me/password', { currentPassword, newPassword });
+}
+
 export async function listUsers(): Promise<ApiResponse<User[]>> {
   try {
     return await apiClient.get<User[]>('/auth/users');

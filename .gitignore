@@ -27,3 +27,8 @@ dist-ssr
 docs/research/
 .idea/
 *.iml
+# Crash dumps
+*.stackdump
+
+# Claude local settings
+.claude/settings.local.json

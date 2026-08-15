@@ -5,7 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock, Trash2, FileText } from "lucide-react";
+import { Plus, Search, ChevronDown, ShieldAlert, Lock, Unlock, Trash2, FileText, FileX } from "lucide-react";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { type Note } from "@/lib/types";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import {
@@ -230,15 +232,16 @@ export default function NotesPage() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">{tc('loading')}</div>
+        <LoadingSkeleton variant="table" />
       ) : loadError ? (
         <div className="text-center py-12 text-destructive text-sm">
-          ⚠️ {loadError}
+          {loadError}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          {search ? t('noResults') : t('empty')}
-        </div>
+        <EmptyState
+          icon={FileX}
+          title={search ? t('noResults') : t('empty')}
+        />
       ) : (
         <div className="space-y-3">
           {filtered.map((note) => {

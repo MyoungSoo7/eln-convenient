@@ -26,7 +26,7 @@ export type SectionDto = z.infer<typeof SectionSchema>;
 
 // ─── 노트 CRUD ──────────────────────────────────
 export const CreateNoteSchema = z.object({
-  title: z.string().min(1, 'title은 필수입니다.'),
+  title: z.string().min(1),
   type: NoteTypeEnum.optional(),
   content: z.string().optional(),
   sections: z.array(SectionSchema).optional(),
@@ -51,24 +51,22 @@ export const ChangeStatusSchema = z.object({
 export type ChangeStatusDto = z.infer<typeof ChangeStatusSchema>;
 
 export const AdminUnlockSchema = z.object({
-  adminPassword: z.string().min(1, '관리자 비밀번호를 입력해주세요.'),
+  adminPassword: z.string().min(1),
   reason: z.string().optional(),
 });
 export type AdminUnlockDto = z.infer<typeof AdminUnlockSchema>;
 
 // ─── 링크 ────────────────────────────────────────
 export const AddLinkSchema = z.object({
-  targetType: z.enum(['inventory', 'equipment', 'template', 'note'], {
-    message: 'targetType과 targetId는 필수입니다.',
-  }),
-  targetId: z.string().min(1, 'targetType과 targetId는 필수입니다.'),
+  targetType: z.enum(['inventory', 'equipment', 'template', 'note']),
+  targetId: z.string().min(1),
   label: z.string().optional(),
 });
 export type AddLinkDto = z.infer<typeof AddLinkSchema>;
 
 // ─── 템플릿 ──────────────────────────────────────
 export const CreateTemplateSchema = z.object({
-  title: z.string().min(1, 'title은 필수입니다.'),
+  title: z.string().min(1),
   category: z.string().optional(),
   description: z.string().optional(),
   content: z.string().optional(),
@@ -95,7 +93,7 @@ export const NoteIdParamsSchema = z.object({
 });
 
 export const NotesBatchBodySchema = z.object({
-  ids: z.array(z.string()).min(1, 'ids는 문자열 배열이어야 합니다.').max(500, 'ids는 최대 500개까지 허용됩니다.'),
+  ids: z.array(z.string()).min(1).max(500),
 });
 
 export const NoteStatsQuerySchema = z.object({

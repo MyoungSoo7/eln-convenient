@@ -26,6 +26,8 @@ import koSearchPage from './locales/ko/searchPage.json';
 import enSearchPage from './locales/en/searchPage.json';
 import koAdmin from './locales/ko/admin.json';
 import enAdmin from './locales/en/admin.json';
+import koErrors from './locales/ko/errors.json';
+import enErrors from './locales/en/errors.json';
 
 i18n
   .use(LanguageDetector)
@@ -45,6 +47,7 @@ i18n
         protocols: koProtocols,
         searchPage: koSearchPage,
         admin: koAdmin,
+        errors: koErrors,
       },
       en: {
         common: enCommon,
@@ -59,6 +62,7 @@ i18n
         protocols: enProtocols,
         searchPage: enSearchPage,
         admin: enAdmin,
+        errors: enErrors,
       },
     },
     fallbackLng: 'ko',

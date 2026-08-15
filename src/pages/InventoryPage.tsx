@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Package } from "lucide-react";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 import {
   listItems, createItem, updateItem, deleteItem,
@@ -632,7 +634,7 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{tc('loading')}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="p-0"><LoadingSkeleton variant="table" /></TableCell></TableRow>
               ) : error ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8">
@@ -642,9 +644,12 @@ export default function InventoryPage() {
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <p className="text-muted-foreground mb-2">{t('empty')}</p>
-                    <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>{t('addItem')}</Button>
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState
+                      icon={Package}
+                      title={t('empty')}
+                      action={{ label: t('addItem'), onClick: () => setAddOpen(true) }}
+                    />
                   </TableCell>
                 </TableRow>
               ) : (

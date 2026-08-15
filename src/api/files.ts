@@ -35,12 +35,13 @@ export interface FileMetadata {
   url: string;
 }
 
-/** POST /api/files — multipart/form-data 업로드 */
+/** POST /api/files — multipart/form-data 업로드 (XHR for progress tracking) */
 export async function uploadFile(
   file: File,
   linkedEntity?: { type: string; id: string },
+  onProgress?: (percent: number) => void,
 ): Promise<ApiResponse<UploadedFile>> {
-  try {
+  return new Promise((resolve) => {
     const formData = new FormData();
     formData.append('file', file);
     if (linkedEntity) {
@@ -48,20 +49,38 @@ export async function uploadFile(
       formData.append('linkedEntityId', linkedEntity.id);
     }
     const token = getToken();
-    const response = await fetch(`${API_BASE_URL}/files`, {
-      method: 'POST',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: formData,
-    });
-    if (response.status === 401) {
-      clearToken();
-      window.location.href = '/login';
-      throw new Error('401');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}/files`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      });
     }
-    return await response.json();
-  } catch (err) {
-    return { ok: false, data: null as unknown as UploadedFile, error: (err as Error).message || '파일 업로드에 실패했습니다.' };
-  }
+
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        clearToken();
+        window.location.href = '/login';
+        resolve({ ok: false, data: null as unknown as UploadedFile, error: '401' });
+        return;
+      }
+      try {
+        resolve(JSON.parse(xhr.responseText));
+      } catch {
+        resolve({ ok: false, data: null as unknown as UploadedFile, error: 'Invalid response' });
+      }
+    };
+
+    xhr.onerror = () => {
+      resolve({ ok: false, data: null as unknown as UploadedFile, error: 'Network error' });
+    };
+
+    xhr.send(formData);
+  });
 }
 
 export async function getFile(id: string): Promise<ApiResponse<FileMetadata>> {

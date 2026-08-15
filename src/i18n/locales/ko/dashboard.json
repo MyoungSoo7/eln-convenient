@@ -32,5 +32,7 @@
   "isExpired": "만료됨",
   "daysLeft": "{{count}}일 남음",
   "viewAll": "전체 보기",
-  "noActivity": "최근 활동이 없습니다"
+  "noActivity": "최근 활동이 없습니다",
+  "cardError": "데이터를 불러올 수 없습니다",
+  "cardRetry": "다시 시도"
 }

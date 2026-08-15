@@ -8,6 +8,7 @@ import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -24,6 +25,7 @@ const OrgTeamUserPage = lazy(() => import("./pages/admin/OrgTeamUserPage"));
 const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
 const CodeManagePage = lazy(() => import("./pages/admin/CodeManagePage"));
+const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -39,6 +41,7 @@ const queryClient = new QueryClient({
 });
 
 const App = () => (
+  <ErrorBoundary>
   <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -68,6 +71,7 @@ const App = () => (
                       <Route path="/admin/roles" element={<AdminRoute><RolesPage /></AdminRoute>} />
                       <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
                       <Route path="/admin/codes" element={<AdminRoute><CodeManagePage /></AdminRoute>} />
+                      <Route path="/forbidden" element={<ForbiddenPage />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                     </Suspense>
@@ -80,6 +84,7 @@ const App = () => (
       </TooltipProvider>
     </QueryClientProvider>
   </ThemeProvider>
+  </ErrorBoundary>
 );
 
 export default App;

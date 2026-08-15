@@ -7,7 +7,7 @@ export const SignNoteParamsSchema = z.object({
 });
 
 export const SignNoteBodySchema = z.object({
-  password: z.string().min(1, '서명 시 비밀번호는 필수입니다.'),
+  password: z.string().min(1),
   comment: z.string().optional(),
 });
 

@@ -82,11 +82,48 @@
     "hoursAgo": "{{count}}h ago",
     "daysAgo": "{{count}}d ago"
   },
+  "password": {
+    "change": "Change Password",
+    "changeTitle": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "currentPlaceholder": "Enter current password",
+    "newPlaceholder": "Enter new password (min 4 chars)",
+    "confirmPlaceholder": "Re-enter new password",
+    "mismatch": "New passwords do not match.",
+    "changed": "Password has been changed.",
+    "changeFailed": "Failed to change password.",
+    "changing": "Changing...",
+    "strength": {
+      "weak": "Weak",
+      "medium": "Medium",
+      "strong": "Strong"
+    }
+  },
+  "session": {
+    "expiryWarning": {
+      "title": "Session Expiring",
+      "message": "You will be logged out in {{minutes}}m {{seconds}}s.",
+      "extend": "Extend",
+      "logout": "Logout"
+    }
+  },
   "error": {
     "serverError": "Failed to connect to server.",
     "serverFallback": "Server connection failed — showing temporary data.",
     "unauthorized": "Authentication required.",
     "forbidden": "Insufficient permissions.",
-    "notFound": "Not found."
+    "notFound": "Not found.",
+    "boundary": {
+      "title": "Something went wrong",
+      "message": "An unexpected error occurred. Please refresh the page. If the problem persists, contact your administrator.",
+      "refresh": "Refresh"
+    },
+    "forbiddenPage": {
+      "title": "Access Denied",
+      "message": "You do not have permission to access this page. Please contact your administrator.",
+      "home": "Go to Home"
+    }
   }
 }

@@ -23,7 +23,7 @@ export const SuggestQuerySchema = z.object({
 
 // ─── 색인 관리 ───────────────────────────────────
 export const IndexDocBodySchema = z.object({
-  id: z.string().min(1, 'id, doc 필드가 필요합니다.'),
+  id: z.string().min(1),
   doc: z.object({
     domainType: DomainTypeEnum,
   }).passthrough(),
@@ -33,19 +33,19 @@ export const BulkIndexBodySchema = z.object({
   docs: z.array(z.object({
     id: z.string().min(1),
     doc: z.record(z.string(), z.unknown()),
-  })).min(1, 'docs(배열) 필드가 필요합니다.'),
+  })).min(1),
 });
 
 // ─── 검색 히스토리 ───────────────────────────────
 export const SaveHistoryBodySchema = z.object({
-  query: z.string().min(1, 'query는 필수입니다.'),
+  query: z.string().min(1),
 });
 
 // ─── 즐겨찾기 ────────────────────────────────────
 export const AddFavoriteBodySchema = z.object({
   docType: DocTypeEnum,
-  docId: z.string().min(1, 'docType, docId, title은 필수입니다.'),
-  title: z.string().min(1, 'docType, docId, title은 필수입니다.'),
+  docId: z.string().min(1),
+  title: z.string().min(1),
 });
 
 export const GetFavoritesQuerySchema = z.object({
@@ -54,7 +54,7 @@ export const GetFavoritesQuerySchema = z.object({
 
 // ─── 검색어 즐겨찾기 ────────────────────────────
 export const AddKeywordFavoriteBodySchema = z.object({
-  keyword: z.string().min(1, 'keyword는 필수입니다.'),
+  keyword: z.string().min(1),
 });
 
 // ─── 공통 파라미터 ──────────────────────────────

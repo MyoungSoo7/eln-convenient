@@ -13,8 +13,10 @@ const logger = createLogger('eln-service');
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
+type VerifyResult = { verified: true } | { verified: false; reason: 'wrong_password' | 'service_error' };
+
 /** auth-service에 비밀번호 검증 요청 */
-async function verifyAdminPassword(userId: string, password: string): Promise<boolean> {
+async function verifyAdminPassword(userId: string, password: string): Promise<VerifyResult> {
   return new Promise((resolve) => {
     const body = JSON.stringify({ userId, password });
     const url = new URL(`${AUTH_SERVICE_URL}/api/auth/internal/verify-password`);
@@ -37,14 +39,18 @@ async function verifyAdminPassword(userId: string, password: string): Promise<bo
         res.on('end', () => {
           try {
             const json = JSON.parse(data);
-            resolve(json.verified === true);
+            if (json.verified === true) {
+              resolve({ verified: true });
+            } else {
+              resolve({ verified: false, reason: 'wrong_password' });
+            }
           } catch {
-            resolve(false);
+            resolve({ verified: false, reason: 'service_error' });
           }
         });
       },
     );
-    req.on('error', () => resolve(false));
+    req.on('error', () => resolve({ verified: false, reason: 'service_error' }));
     req.write(body);
     req.end();
   });
@@ -432,8 +438,11 @@ export async function adminUnlockNote(request: FastifyRequest, reply: FastifyRep
   const { adminPassword, reason } = request.body as AdminUnlockDto;
 
   const adminId = request.headers['x-user-id'] as string;
-  const verified = await verifyAdminPassword(adminId, adminPassword);
-  if (!verified) {
+  const result = await verifyAdminPassword(adminId, adminPassword);
+  if (!result.verified) {
+    if (result.reason === 'service_error') {
+      throw new AppError(503, '인증 서비스에 연결할 수 없습니다.', ErrorCode.SERVICE_UNAVAILABLE);
+    }
     throw new AppError(400, '관리자 비밀번호가 올바르지 않습니다.', ErrorCode.NOTE_ADMIN_PASSWORD_INVALID);
   }
 

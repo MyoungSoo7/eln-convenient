@@ -2,7 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, BookOpen, Copy, Plus, FileText, Loader2, Pencil, Trash2, ArrowRight } from "lucide-react";
+import { Search, BookOpen, Copy, Plus, FileText, Loader2, Pencil, Trash2, ArrowRight, FileX } from "lucide-react";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -122,16 +124,15 @@ export default function ProtocolsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" /> {tc('loading')}
-        </div>
+        <LoadingSkeleton variant="card-grid" />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={FileX}
+          title={protocols.length === 0 ? t('empty') : t('noResults')}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.length === 0 ? (
-            <p className="col-span-full text-center text-muted-foreground py-12">
-              {protocols.length === 0 ? t('empty') : t('noResults')}
-            </p>
-          ) : (
+          {(
             filtered.map((p) => (
               <Card key={p.id} className="shadow-card hover:shadow-elevated transition-all cursor-pointer group">
                 <CardHeader className="pb-3">

@@ -19,5 +19,11 @@
   "removeFavorite": "Remove from favorites",
   "isFavoriteHint": "This search is in your favorites. Click the star to remove.",
   "notFavoriteHint": "Click the star to add to favorites.",
-  "tab": { "notes": "Notes", "protocols": "Protocols", "inventory": "Inventory" }
+  "tab": { "notes": "Notes", "protocols": "Protocols", "inventory": "Inventory" },
+  "searchTips": {
+    "title": "Search Tips",
+    "tip1": "Try using different keywords",
+    "tip2": "Check the spelling of your search terms",
+    "tip3": "Try shorter search terms"
+  }
 }

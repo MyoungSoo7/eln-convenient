@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2, User, Users, Building2 } from "lucide-react";
+import { FileText, FlaskConical, Package, CalendarDays, Clock, AlertTriangle, Loader2, User, Users, Building2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useTranslation } from "react-i18next";
@@ -28,6 +29,18 @@ function getUserRole(): string {
   } catch { return 'viewer'; }
 }
 
+/** 섹션별 에러 카드 */
+function SectionErrorCard({ message, retryLabel, onRetry }: { message: string; retryLabel: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-6 text-center">
+      <p className="text-sm text-destructive">{message}</p>
+      <Button variant="outline" size="sm" className="mt-2 gap-1.5" onClick={onRetry}>
+        <RefreshCw className="h-3.5 w-3.5" /> {retryLabel}
+      </Button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { t } = useTranslation('dashboard');
   const { t: tc } = useTranslation('common');
@@ -37,7 +50,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('personal');
 
   // 개인 대시보드
-  const { data: personalRes, isLoading: personalLoading } = useQuery({
+  const { data: personalRes, isLoading: personalLoading, refetch: refetchPersonal } = useQuery({
     queryKey: ['dashboard', 'personal'],
     queryFn: getPersonalDashboard,
     refetchInterval: 60_000,
@@ -46,7 +59,7 @@ export default function Dashboard() {
   });
 
   // 조직 대시보드 (admin만)
-  const { data: orgRes, isLoading: orgLoading } = useQuery({
+  const { data: orgRes, isLoading: orgLoading, refetch: refetchOrg } = useQuery({
     queryKey: ['dashboard', 'org'],
     queryFn: getOrgDashboard,
     refetchInterval: 60_000,
@@ -55,12 +68,18 @@ export default function Dashboard() {
   });
 
   // 기존 호환 대시보드 (개인 탭에서 폴백)
-  const { data: dashboardRes, isLoading, isError } = useQuery({
+  const { data: dashboardRes, isLoading, isError, refetch: refetchMain } = useQuery({
     queryKey: ['dashboard'],
     queryFn: getDashboardData,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+
+  const handleRefetch = () => {
+    refetchMain();
+    if (activeTab === 'personal') refetchPersonal();
+    if (activeTab === 'org') refetchOrg();
+  };
 
   const apiData = activeTab === 'org' && orgRes?.ok
     ? orgRes.data
@@ -82,11 +101,20 @@ export default function Dashboard() {
 
   const currentLoading = activeTab === 'personal' ? personalLoading : (activeTab === 'org' ? orgLoading : isLoading);
 
+  // 섹션별 에러 감지 (gateway가 실패한 서비스 필드를 null로 반환)
+  const notesError = !currentLoading && apiData !== null && apiData?.notes === null && (activeTab !== 'personal' || personalData?.myNotes === undefined);
+  const inventoryError = !currentLoading && apiData !== null && apiData?.inventory === null;
+  const schedulerError = !currentLoading && apiData !== null && apiData?.scheduler === null;
+  const recentNotesError = !currentLoading && apiData !== null && apiData?.recentNotes === null;
+  const bookingsError = !currentLoading && apiData !== null && apiData?.upcomingBookings === null;
+  const activityError = !currentLoading && apiData !== null && apiData?.recentActivity === null;
+  const alertsError = !currentLoading && apiData !== null && (apiData?.lowStockItems === null && apiData?.expiringItems === null);
+
   const stats = [
-    { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip') },
-    { label: t('stats.experiments'), value: String(noteInProgress), change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: t('stats.experimentsTooltip') },
-    { label: t('stats.inventory'), value: String(invTotal), change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: t('stats.inventoryTooltip') },
-    { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip') },
+    { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip'), hasError: notesError },
+    { label: t('stats.experiments'), value: String(noteInProgress), change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: t('stats.experimentsTooltip'), hasError: notesError },
+    { label: t('stats.inventory'), value: String(invTotal), change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: t('stats.inventoryTooltip'), hasError: inventoryError },
+    { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip'), hasError: schedulerError },
   ];
 
   // 최근 노트
@@ -149,21 +177,33 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((s) => (
-          <Card key={s.label} className="shadow-card hover:shadow-elevated transition-shadow">
+          <Card key={s.label} className={`shadow-card hover:shadow-elevated transition-shadow ${s.hasError ? 'border-destructive' : ''}`}>
             <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              {s.hasError ? (
+                <div className="flex flex-col items-center justify-center text-center py-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1 mb-2">
                     {s.label}
-                    <HelpTooltip text={s.help} side="right" />
                   </p>
-                  <p className="text-2xl font-bold mt-1">{s.value}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{s.change}</p>
+                  <p className="text-sm text-destructive">{t('cardError')}</p>
+                  <Button variant="outline" size="sm" className="mt-2 gap-1.5 text-xs" onClick={handleRefetch}>
+                    <RefreshCw className="h-3 w-3" /> {t('cardRetry')}
+                  </Button>
                 </div>
-                <div className={`p-2 rounded-lg bg-muted ${s.color}`}>
-                  <s.icon className="h-5 w-5" />
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                      {s.label}
+                      <HelpTooltip text={s.help} side="right" />
+                    </p>
+                    <p className="text-2xl font-bold mt-1">{s.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{s.change}</p>
+                  </div>
+                  <div className={`p-2 rounded-lg bg-muted ${s.color}`}>
+                    <s.icon className="h-5 w-5" />
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -171,7 +211,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Notes */}
-        <Card className="shadow-card">
+        <Card className={`shadow-card ${recentNotesError ? 'border-destructive' : ''}`}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -182,7 +222,9 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentNotes.length > 0 ? recentNotes.map((note) => (
+            {recentNotesError ? (
+              <SectionErrorCard message={t('cardError')} retryLabel={t('cardRetry')} onRetry={handleRefetch} />
+            ) : recentNotes.length > 0 ? recentNotes.map((note) => (
               <Link key={note.id} to={`/notes/${note.id}`} className="flex items-start justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors group">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{note.title}</p>
@@ -203,7 +245,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Upcoming Bookings */}
-        <Card className="shadow-card">
+        <Card className={`shadow-card ${bookingsError ? 'border-destructive' : ''}`}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -214,7 +256,9 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {upcomingBookings.length > 0 ? upcomingBookings.map((b) => {
+            {bookingsError ? (
+              <SectionErrorCard message={t('cardError')} retryLabel={t('cardRetry')} onRetry={handleRefetch} />
+            ) : upcomingBookings.length > 0 ? upcomingBookings.map((b) => {
               const startDate = new Date(b.startAt);
               const endDate = new Date(b.endAt);
               const dateStr = startDate.toLocaleDateString('ko-KR');
@@ -242,7 +286,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Audit Activity */}
-        <Card className="shadow-card">
+        <Card className={`shadow-card ${activityError ? 'border-destructive' : ''}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               {t('recentActivity')}
@@ -250,7 +294,9 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {auditLogs.length > 0 ? auditLogs.map((a) => (
+            {activityError ? (
+              <SectionErrorCard message={t('cardError')} retryLabel={t('cardRetry')} onRetry={handleRefetch} />
+            ) : auditLogs.length > 0 ? auditLogs.map((a) => (
               <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                 <div className="p-2 rounded-lg bg-muted">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -268,7 +314,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Low Stock / Expiring Alerts */}
-        <Card className="shadow-card">
+        <Card className={`shadow-card ${alertsError ? 'border-destructive' : ''}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               {t('alerts')}
@@ -276,7 +322,9 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {alertItems.length > 0 ? alertItems.slice(0, 5).map((item) => (
+            {alertsError ? (
+              <SectionErrorCard message={t('cardError')} retryLabel={t('cardRetry')} onRetry={handleRefetch} />
+            ) : alertItems.length > 0 ? alertItems.slice(0, 5).map((item) => (
               <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1 min-w-0">
