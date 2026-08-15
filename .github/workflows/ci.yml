@@ -73,7 +73,6 @@ jobs:
       - name: TypeScript compile check
         working-directory: services/${{ matrix.service }}
         run: npx tsc --noEmit
-        continue-on-error: true
 
   frontend-build:
     name: Frontend Build
@@ -100,8 +99,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 컨텍스트는 도커파일마다 다르다. api-gateway 는 COPY package*.json ./ 로
+      # **자기 디렉터리**를 기대하므로 services/ 를 주면 /app/package.json 이 없어
+      # npm install 이 ENOENT 로 죽는다. auth/eln 은 COPY shared/ 를 하므로 services/ 가 맞다.
       - name: Build api-gateway
-        run: docker build -f services/api-gateway/Dockerfile -t eln-gateway:ci services/
+        run: docker build -f services/api-gateway/Dockerfile -t eln-gateway:ci services/api-gateway
 
       - name: Build auth-service
         run: docker build -f services/auth-service/Dockerfile -t eln-auth:ci services/
