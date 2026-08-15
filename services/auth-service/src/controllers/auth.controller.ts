@@ -1003,13 +1003,23 @@ export async function changeMyPassword(request: FastifyRequest, reply: FastifyRe
 export async function adminResetPassword(request: FastifyRequest, reply: FastifyReply) {
   const { id: targetUserId } = request.params as { id: string };
   const adminId = request.headers['x-user-id'] as string;
+  const orgId = getOrgId(request.headers);
 
-  const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+  // 형제 라우트인 updateUser / deleteUser 는 둘 다 findFirst({ id, orgId }) 로
+  // 조직을 좁힌다. 이 라우트만 findUnique({ id }) 였다 — requireRole(ADMIN) 은
+  // '관리자인가' 만 보고 '어느 조직 관리자인가' 는 안 보므로, A 조직 관리자가
+  // B 조직 사용자의 비밀번호를 초기화하고 그 계정으로 로그인할 수 있었다.
+  const user = await prisma.user.findFirst({ where: { id: targetUserId, orgId } });
   if (!user) {
     throw new AppError(404, '사용자를 찾을 수 없습니다.', ErrorCode.AUTH_USER_NOT_FOUND);
   }
 
-  const defaultPassword = process.env.DEFAULT_RESET_PASSWORD || 'eln0330';
+  // 기본값을 코드에 박아 두면 환경변수를 안 넣은 배포에서 초기화 비밀번호가
+  // 공개 상수가 된다. 이 브랜치는 2ac32fa 에서 이미 그 방향을 정리했다.
+  const defaultPassword = process.env.DEFAULT_RESET_PASSWORD;
+  if (!defaultPassword) {
+    throw new AppError(500, '비밀번호 초기화 기본값이 설정되지 않았습니다.', ErrorCode.INTERNAL_ERROR);
+  }
   const passwordHash = await bcrypt.hash(defaultPassword, 10);
   await prisma.user.update({ where: { id: targetUserId }, data: { passwordHash } });
 

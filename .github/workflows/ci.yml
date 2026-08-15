@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # main = AI 스택 포함 라인, eln-without-ai = AI 뺀 라인. 두 갈래 다 게이트를 받는다.
   push:
-    branches: [eln-without-ai]
+    branches: [main, eln-without-ai]
   pull_request:
-    branches: [eln-without-ai]
+    branches: [main, eln-without-ai]
 
 jobs:
   shared-build:
