@@ -28,8 +28,13 @@ function canDecrease(item: InventoryItem, quantity: number): boolean {
 }
 
 describe('Inventory Domain Logic', () => {
+  // minQuantity 는 5 여야 한다. quantity 는 아래 '수량 감소 가능 여부' 가
+  // canDecrease(item, 5) === true / canDecrease(item, 6) === false 로 정확히 5 에
+  // 고정해 두었으므로 건드릴 수 없고, isLowStock 은 quantity <= minQuantity 이므로
+  // minQuantity 가 5 미만이면 '재고 부족 판별' 이 성립하지 않는다. 5 로 두면 경계값
+  // (같을 때도 부족으로 본다) 을 검사하게 되어 <= 와 < 의 차이까지 잡힌다.
   const item: InventoryItem = {
-    id: '1', name: '에탄올', quantity: 5, minQuantity: 3, status: 'active',
+    id: '1', name: '에탄올', quantity: 5, minQuantity: 5, status: 'active',
   };
 
   it('재고 부족 판별', () => {

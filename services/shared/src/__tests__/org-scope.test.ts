@@ -7,9 +7,12 @@ describe('org-scope', () => {
       expect(getOrgId(headers)).toBe('org-123');
     });
 
-    it('헤더가 없으면 빈 문자열을 반환한다', () => {
+    // 구현은 org 헤더가 없으면 403 으로 막는다(fail-closed). 빈 문자열을 돌려주면
+    // org 스코프가 빈 채로 질의가 나가 테넌트 격리가 뚫린다. 코드가 맞고 이 테스트가
+    // 옛 규약에 머물러 있었다 — 한 번도 실행된 적이 없어 드러나지 않았다.
+    it('헤더가 없으면 403 으로 막는다', () => {
       const headers = {} as any;
-      expect(getOrgId(headers)).toBe('');
+      expect(() => getOrgId(headers)).toThrow('조직 정보가 없습니다.');
     });
   });
 

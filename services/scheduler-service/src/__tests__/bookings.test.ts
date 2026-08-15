@@ -12,7 +12,9 @@ import { Permission } from '@lab/shared';
 vi.mock('../lib/prisma', () => ({
   default: {
     resource: {
-      findUnique: vi.fn(),
+      // 라우트는 org 스코핑 이후 findFirst({ where: { id, orgId } }) 를 쓴다.
+      // findUnique 는 orgId 를 복합키로 받지 못해 테넌트 격리가 불가능하므로 폐기됐다.
+      findFirst:  vi.fn(),
       findMany:   vi.fn(),
       count:      vi.fn(),
       create:     vi.fn(),
@@ -35,6 +37,7 @@ vi.mock('../lib/prisma', () => ({
 // ─── 픽스처 ───────────────────────────────────────────────────
 const RESOURCE = {
   id: 'res-001',
+  orgId: 'org-001',
   name: '전자현미경',
   type: 'EQUIPMENT',
   location: 'A동 101호',
@@ -47,6 +50,10 @@ const RESOURCE = {
 
 const BOOKING_PENDING = {
   id: 'booking-001',
+  // 승인/반려/취소 라우트는 트랜잭션 안에서 current.orgId 를 요청 헤더의 orgId 와
+  // 대조해 다른 조직 예약을 404 로 숨긴다. 픽스처에 이 필드가 없으면 undefined 와
+  // 비교돼 정상 케이스까지 전부 404 가 된다.
+  orgId: 'org-001',
   resourceId: 'res-001',
   userId: 'user-001',
   title: '시료 분석',
@@ -70,6 +77,7 @@ function adminHeaders() {
     'x-user-id':          'user-admin-001',
     'x-user-role':        'admin',
     'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
+    'x-user-org-id':      'org-001',
     'content-type':       'application/json',
   };
 }
@@ -80,6 +88,7 @@ function adminHeadersNoBody() {
     'x-user-id':   'user-admin-001',
     'x-user-role': 'admin',
     'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
+    'x-user-org-id':      'org-001',
   };
 }
 
@@ -88,6 +97,7 @@ function userHeaders(userId = 'user-001') {
     'x-user-id':          userId,
     'x-user-role':        'researcher',
     'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
+    'x-user-org-id':      'org-001',
     'content-type':       'application/json',
   };
 }
@@ -97,6 +107,7 @@ function userHeadersNoBody(userId = 'user-001') {
     'x-user-id':   userId,
     'x-user-role': 'researcher',
     'x-user-permissions': JSON.stringify([Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE]),
+    'x-user-org-id':      'org-001',
   };
 }
 
@@ -112,7 +123,7 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
 
   it('정상 예약 생성 → 201', async () => {
     const prisma = (await import('../lib/prisma')).default as any;
-    prisma.resource.findUnique.mockResolvedValue(RESOURCE);
+    prisma.resource.findFirst.mockResolvedValue(RESOURCE);
     prisma.booking.findFirst.mockResolvedValue(null);  // 충돌 없음
     prisma.booking.create.mockResolvedValue({ ...BOOKING_PENDING });
 
@@ -136,7 +147,7 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
 
   it('시간 충돌 시 → 409', async () => {
     const prisma = (await import('../lib/prisma')).default as any;
-    prisma.resource.findUnique.mockResolvedValue(RESOURCE);
+    prisma.resource.findFirst.mockResolvedValue(RESOURCE);
     prisma.booking.findFirst.mockResolvedValue({
       id: 'conflict-booking',
       startAt: new Date('2026-03-20T08:30:00Z'),
@@ -182,7 +193,7 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
 
   it('비활성 자원 예약 시 → 400', async () => {
     const prisma = (await import('../lib/prisma')).default as any;
-    prisma.resource.findUnique.mockResolvedValue({ ...RESOURCE, isActive: false });
+    prisma.resource.findFirst.mockResolvedValue({ ...RESOURCE, isActive: false });
 
     const res = await app.inject({
       method: 'POST',

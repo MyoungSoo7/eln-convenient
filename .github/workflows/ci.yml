@@ -24,6 +24,12 @@ jobs:
         working-directory: services/shared
         run: npm ci && npm run build
 
+      # shared 의 테스트는 여기서 돈다. 아래 매트릭스는 shared 를 dist 아티팩트로만
+      # 받으므로 shared 자신은 그 매트릭스에 없다.
+      - name: Test shared
+        working-directory: services/shared
+        run: npm test
+
       - name: Upload shared artifact
         uses: actions/upload-artifact@v4
         with:
@@ -32,7 +38,7 @@ jobs:
           retention-days: 1
 
   backend-typecheck:
-    name: TypeScript Check (Services)
+    name: Typecheck & Test (Services)
     runs-on: ubuntu-latest
     needs: shared-build
     strategy:
@@ -73,6 +79,15 @@ jobs:
       - name: TypeScript compile check
         working-directory: services/${{ matrix.service }}
         run: npx tsc --noEmit
+
+      # 이 리포에는 2026-03-30 부터 테스트 파일이 17개 있었지만 워크플로가 한 번도
+      # 실행한 적이 없다. 그 사이 org 스코핑 리팩터(findUnique→findFirst,
+      # x-user-org-id 필수)가 들어가며 목과 픽스처가 통째로 낡았는데 아무도 몰랐다.
+      # 게이트가 없으면 테스트는 조용히 썩는다. continue-on-error 를 붙이지 않는다 —
+      # 붙이는 순간 이 잡도 방금 걷어낸 빈 게이트가 된다.
+      - name: Test
+        working-directory: services/${{ matrix.service }}
+        run: npm test
 
   frontend-build:
     name: Frontend Build

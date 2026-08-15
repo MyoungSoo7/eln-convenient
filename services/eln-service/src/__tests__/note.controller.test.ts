@@ -1,19 +1,33 @@
 /**
  * note.controller 단위 테스트
  *
+ * 이 파일은 원래 express 기준으로 작성돼 있었다. 컨트롤러가 fastify 로 이관되면서
+ * 세 가지가 동시에 바뀌었고, 테스트는 한 번도 실행된 적이 없어 드러나지 않았다.
+ *
+ *   1. 시그니처: (req: Request, res: Response) → (request: FastifyRequest, reply: FastifyReply)
+ *   2. 오류 반환: res.status(n).json(...) → AppError 를 throw (fastify 에러 핸들러가 변환)
+ *      성공 반환: res.json(x) → 값을 return (fastify 가 직렬화)
+ *   3. org 스코핑: note.findUnique({ id }) → note.findFirst({ id, orgId })
+ *      + 요청에 x-user-org-id 헤더 필수 (없으면 getOrgId 가 403)
+ *
+ * 입력 검증(ids 개수·type 열거)은 컨트롤러에서 라우트의 validate() preHandler 로
+ * 옮겨갔다. 그래서 그 부분은 컨트롤러가 아니라 zod 스키마에 대고 검증한다 —
+ * 로직이 있는 곳에서 재야 의미가 있다.
+ *
  * jest.mock의 변수 호이스팅 규칙:
  *   factory 내에서 참조하는 변수는 반드시 'mock' 접두사여야 한다.
  */
 
 // ── mock 변수 선언 (jest.mock 호이스팅 전 단계에서 허용) ──────────────────
 const mockNoteDb = {
+  findFirst: jest.fn(),
   findUnique: jest.fn(),
   findMany: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   count: jest.fn(),
-  groupBy: jest.fn(),   // ← add
+  groupBy: jest.fn(),
 };
 
 const mockNoteStatusHistoryDb = {
@@ -26,9 +40,28 @@ const mockNoteRevisionDb = {
 };
 
 const mockAuditLog = jest.fn().mockResolvedValue(undefined);
+const mockNotification = jest.fn().mockResolvedValue(undefined);
 
 const mockAttachmentDb = { create: jest.fn() };
 const mockQueryRaw = jest.fn();
+const mockExecuteRaw = jest.fn();
+const mockTransaction = jest.fn();
+
+/** verifyAdminPassword 가 내부적으로 때리는 auth-service 응답을 조작한다 */
+let mockVerifiedResponse = '{"verified":true}';
+const mockHttpRequest = jest.fn((_opts: unknown, cb?: (res: unknown) => void) => {
+  const listeners: Record<string, Function[]> = {};
+  const res = {
+    on(ev: string, fn: Function) { (listeners[ev] ||= []).push(fn); return res; },
+  };
+  // cb 를 동기로 부르면 res.on 등록 전에 emit 되므로 다음 틱에 흘린다.
+  process.nextTick(() => {
+    cb?.(res);
+    listeners['data']?.forEach((fn) => fn(mockVerifiedResponse));
+    listeners['end']?.forEach((fn) => fn());
+  });
+  return { on: jest.fn(), write: jest.fn(), end: jest.fn() };
+});
 
 // ── 모듈 모킹 ──────────────────────────────────────────────────────────────
 jest.mock('../lib/prisma', () => ({
@@ -41,6 +74,8 @@ jest.mock('../lib/prisma', () => ({
     attachment: mockAttachmentDb,
     template: { update: jest.fn() },
     $queryRaw: mockQueryRaw,
+    $executeRaw: mockExecuteRaw,
+    $transaction: mockTransaction,
   },
 }));
 
@@ -48,19 +83,32 @@ jest.mock('../lib/audit', () => ({
   callAuditLog: mockAuditLog,
 }));
 
+jest.mock('../lib/notification', () => ({
+  callNotification: mockNotification,
+}));
+
 jest.mock('../lib/searchClient', () => ({
   searchClient: { index: jest.fn(), delete: jest.fn() },
 }));
 
+jest.mock('http', () => ({
+  __esModule: true,
+  default: { request: mockHttpRequest },
+  request: mockHttpRequest,
+}));
+
 // ── 컨트롤러 import (모킹 이후) ────────────────────────────────────────────
-import type { Request, Response } from 'express';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   deleteNote, changeNoteStatus, adminUnlockNote,
   getNoteStats, getNotesBatch,
   getAttachments, addAttachment, getTags,
 } from '../controllers/note.controller';
+import { NoteStatsQuerySchema, NotesBatchBodySchema } from '../dtos/note.dto';
 
 // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+const ORG = 'org-001';
 
 function makeReq(overrides: Partial<{
   params: Record<string, string>;
@@ -68,71 +116,109 @@ function makeReq(overrides: Partial<{
   headers: Record<string, string>;
   query: Record<string, string>;
   ip: string;
-}> = {}): Request {
+}> = {}): FastifyRequest {
+  const { headers, ...rest } = overrides;
   return {
     params: {},
     body: {},
-    headers: { 'x-user-id': 'user-001', 'x-user-role': 'researcher' },
     query: {},
     ip: '127.0.0.1',
-    ...overrides,
-  } as unknown as Request;
+    ...rest,
+    headers: {
+      'x-user-id': 'user-001',
+      'x-user-role': 'researcher',
+      'x-user-org-id': ORG,
+      ...headers,
+    },
+  } as unknown as FastifyRequest;
 }
 
-function makeRes() {
-  const json = jest.fn();
-  const status = jest.fn().mockReturnValue({ json });
-  return { res: { json, status } as unknown as Response, json, status };
+/** fastify 의 reply 는 code() 가 자기 자신을 돌려주는 체이너블 객체다 */
+function makeReply() {
+  const code = jest.fn(function (this: unknown) { return reply; });
+  const send = jest.fn(function (this: unknown) { return reply; });
+  const reply = { code, send } as unknown as FastifyReply;
+  return { reply, code, send };
 }
+
+/** AppError 를 throw 하는 컨트롤러의 상태코드를 검사한다 */
+async function expectStatus(promise: Promise<unknown>, statusCode: number) {
+  await expect(promise).rejects.toMatchObject({ statusCode });
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockVerifiedResponse = '{"verified":true}';
+  // 트랜잭션은 같은 목 객체를 tx 로 넘겨 라우트가 tx.note.* 를 써도 잡히게 한다.
+  mockTransaction.mockImplementation(async (fn: Function) => fn({
+    $executeRaw: mockExecuteRaw,
+    note: mockNoteDb,
+    noteStatusHistory: mockNoteStatusHistoryDb,
+  }));
+});
 
 // ── Issue 1: locked 노트 삭제 보호 ─────────────────────────────────────────
 
 describe('deleteNote — 상태별 삭제 보호', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test('locked 노트를 삭제하면 403을 반환하고 delete를 호출하지 않는다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({
+  test('locked 노트를 삭제하면 403이고 delete를 호출하지 않는다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-001', title: '테스트 노트', status: 'locked', authorId: 'user-001',
     });
 
-    const { res, status, json } = makeRes();
-    await deleteNote(makeReq({ params: { id: 'note-001' } }), res);
+    const { reply } = makeReply();
+    await expectStatus(deleteNote(makeReq({ params: { id: 'note-001' } }), reply), 403);
 
-    expect(status).toHaveBeenCalledWith(403);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
     expect(mockNoteDb.delete).not.toHaveBeenCalled();
     expect(mockNoteDb.update).not.toHaveBeenCalled();
   });
 
-  test('signed 노트를 삭제하면 403을 반환한다 (기존 동작 유지)', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({
+  test('signed 노트를 삭제하면 403이다 (기존 동작 유지)', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-002', title: '서명완료 노트', status: 'signed', authorId: 'user-001',
     });
 
-    const { res, status } = makeRes();
-    await deleteNote(makeReq({ params: { id: 'note-002' } }), res);
+    const { reply } = makeReply();
+    await expectStatus(deleteNote(makeReq({ params: { id: 'note-002' } }), reply), 403);
 
-    expect(status).toHaveBeenCalledWith(403);
     expect(mockNoteDb.delete).not.toHaveBeenCalled();
     expect(mockNoteDb.update).not.toHaveBeenCalled();
+  });
+
+  test('다른 조직의 노트는 조회되지 않아 404다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue(null);
+
+    const { reply } = makeReply();
+    await expectStatus(deleteNote(makeReq({ params: { id: 'note-001' } }), reply), 404);
+
+    expect(mockNoteDb.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'note-001', orgId: ORG } }),
+    );
+  });
+
+  test('org 헤더가 없으면 DB 조회 전에 403으로 막는다', async () => {
+    const req = makeReq({ params: { id: 'note-001' } });
+    (req.headers as Record<string, unknown>)['x-user-org-id'] = undefined;
+
+    const { reply } = makeReply();
+    await expectStatus(deleteNote(req, reply), 403);
+
+    expect(mockNoteDb.findFirst).not.toHaveBeenCalled();
   });
 });
 
 // ── Issue 2: note_status_history INSERT ────────────────────────────────────
 
 describe('changeNoteStatus — note_status_history 기록', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('상태 변경 성공 시 note_status_history에 INSERT한다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({ id: 'note-001', status: 'draft', authorId: 'user-001' });
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'draft', authorId: 'user-001' });
     mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'in_progress', updatedAt: new Date() });
     mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
     const req = makeReq({ params: { id: 'note-001' }, body: { status: 'in_progress' } });
-    const { res, json } = makeRes();
-    await changeNoteStatus(req, res);
+    const { reply } = makeReply();
 
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    await expect(changeNoteStatus(req, reply)).resolves.toMatchObject({ ok: true });
+
     expect(mockNoteStatusHistoryDb.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -145,70 +231,95 @@ describe('changeNoteStatus — note_status_history 기록', () => {
     );
   });
 
-  test('허용되지 않은 전환 시 note_status_history에 INSERT하지 않는다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({ id: 'note-001', status: 'signed', authorId: 'user-001' });
+  test('허용되지 않은 전환 시 400이고 note_status_history에 INSERT하지 않는다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'signed', authorId: 'user-001' });
 
     const req = makeReq({ params: { id: 'note-001' }, body: { status: 'draft' } });
-    const { res, status } = makeRes();
-    await changeNoteStatus(req, res);
+    const { reply } = makeReply();
 
-    expect(status).toHaveBeenCalledWith(400);
+    await expectStatus(changeNoteStatus(req, reply), 400);
     expect(mockNoteStatusHistoryDb.create).not.toHaveBeenCalled();
+  });
+
+  test('잠금 전환은 reviewer/admin이 아니면 403이고 트랜잭션에 진입하지 않는다', async () => {
+    const req = makeReq({ params: { id: 'note-001' }, body: { status: 'locked' } });
+    const { reply } = makeReply();
+
+    await expectStatus(changeNoteStatus(req, reply), 403);
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
 
 describe('adminUnlockNote — note_status_history 기록', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('잠금 해제 성공 시 is_admin_action=true로 note_status_history INSERT한다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({ id: 'note-001', status: 'locked', authorId: 'user-001' });
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'locked', authorId: 'user-001' });
     mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'draft', updatedAt: new Date() });
     mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
-    // http 내부 verifyAdminPassword 우회: AUTH_SERVICE_URL env를 설정하지 않으면
-    // http.request가 실제 호출됨. 여기선 환경에 따라 실패할 수 있으므로
-    // 비밀번호 검증 함수 자체를 모킹하는 방법 대신,
-    // AUTH_SERVICE_URL을 로컬호스트 invalid로 설정해 에러 처리 후 resolve(false)되는 경우를 피하고
-    // 실제 verify 결과에 무관하게 history INSERT 여부만 테스트한다.
-    // → 이 테스트는 GREEN 단계에서 verifyAdminPassword를 injectable하게 리팩터링 후 완전히 검증.
     const req = makeReq({
       params: { id: 'note-001' },
       body: { adminPassword: 'secret', reason: '테스트 수정' },
       headers: { 'x-user-id': 'admin-001', 'x-user-role': 'admin' },
     });
-    const { res } = makeRes();
+    const { reply } = makeReply();
 
-    // 실행 (내부 http 요청은 실패하거나 timeout될 수 있음, 그래도 note.update가 호출됐다면 history도 호출되어야 함)
-    await adminUnlockNote(req, res);
+    await expect(adminUnlockNote(req, reply)).resolves.toMatchObject({ ok: true });
 
-    if (mockNoteDb.update.mock.calls.length > 0) {
-      expect(mockNoteStatusHistoryDb.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            fromStatus: 'locked',
-            toStatus: 'draft',
-            isAdminAction: true,
-            changedBy: 'admin-001',
-          }),
+    expect(mockNoteStatusHistoryDb.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fromStatus: 'locked',
+          toStatus: 'draft',
+          isAdminAction: true,
+          changedBy: 'admin-001',
         }),
-      );
-    }
+      }),
+    );
+  });
+
+  test('관리자 비밀번호가 틀리면 400이고 상태를 바꾸지 않는다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'locked', authorId: 'user-001' });
+    mockVerifiedResponse = '{"verified":false}';
+
+    const req = makeReq({
+      params: { id: 'note-001' },
+      body: { adminPassword: 'wrong', reason: '테스트' },
+      headers: { 'x-user-id': 'admin-001', 'x-user-role': 'admin' },
+    });
+    const { reply } = makeReply();
+
+    await expectStatus(adminUnlockNote(req, reply), 400);
+    expect(mockNoteDb.update).not.toHaveBeenCalled();
+    expect(mockNoteStatusHistoryDb.create).not.toHaveBeenCalled();
+  });
+
+  test('잠기지 않은 노트는 400이다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'draft', authorId: 'user-001' });
+
+    const req = makeReq({
+      params: { id: 'note-001' },
+      body: { adminPassword: 'secret' },
+      headers: { 'x-user-id': 'admin-001', 'x-user-role': 'admin' },
+    });
+    const { reply } = makeReply();
+
+    await expectStatus(adminUnlockNote(req, reply), 400);
+    expect(mockNoteDb.update).not.toHaveBeenCalled();
   });
 });
 
 // ── Issue 3: 소프트 삭제 ───────────────────────────────────────────────────
 
 describe('deleteNote — 소프트 삭제', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('draft 노트 삭제 시 delete 대신 update({ deletedAt })를 호출한다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({
+    mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-001', title: '초안 노트', status: 'draft', authorId: 'user-001',
     });
     mockNoteDb.update.mockResolvedValue({ id: 'note-001' });
 
-    const { res, json } = makeRes();
-    await deleteNote(makeReq({ params: { id: 'note-001' } }), res);
+    const { reply } = makeReply();
+    await expect(deleteNote(makeReq({ params: { id: 'note-001' } }), reply))
+      .resolves.toMatchObject({ ok: true });
 
     expect(mockNoteDb.delete).not.toHaveBeenCalled();
     expect(mockNoteDb.update).toHaveBeenCalledWith(
@@ -217,17 +328,16 @@ describe('deleteNote — 소프트 삭제', () => {
         data: expect.objectContaining({ deletedAt: expect.any(Date) }),
       }),
     );
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
   test('in_progress 노트도 소프트 삭제된다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue({
+    mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-002', title: '진행중 노트', status: 'in_progress', authorId: 'user-001',
     });
     mockNoteDb.update.mockResolvedValue({ id: 'note-002' });
 
-    const { res } = makeRes();
-    await deleteNote(makeReq({ params: { id: 'note-002' } }), res);
+    const { reply } = makeReply();
+    await deleteNote(makeReq({ params: { id: 'note-002' } }), reply);
 
     expect(mockNoteDb.delete).not.toHaveBeenCalled();
     expect(mockNoteDb.update).toHaveBeenCalledWith(
@@ -239,36 +349,33 @@ describe('deleteNote — 소프트 삭제', () => {
 });
 
 describe('adminUnlockNote — 역할 검사가 컨트롤러 밖으로 이동됨', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test('x-user-role이 admin이 아니어도 컨트롤러는 비밀번호 검증 단계로 진입한다', async () => {
-    // 역할 검사가 컨트롤러에 남아있으면 이 테스트는 FAIL (403 즉시 반환)
-    // 역할 검사를 미들웨어로 이동하면 PASS (노트 조회 단계로 진입)
-    mockNoteDb.findUnique.mockResolvedValue({
+  test('x-user-role이 admin이 아니어도 컨트롤러는 노트 조회 단계로 진입한다', async () => {
+    // 역할 검사가 컨트롤러에 남아있으면 이 테스트는 FAIL (조회 전에 403)
+    // 라우트의 requireRole(ADMIN) preHandler 로 이동했으면 PASS
+    mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-001', status: 'locked', authorId: 'user-001',
     });
+    mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'draft' });
+    mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
     const req = makeReq({
       params: { id: 'note-001' },
       body: { adminPassword: 'pw', reason: '테스트' },
       headers: { 'x-user-id': 'user-001', 'x-user-role': 'researcher' }, // admin 아님
     });
-    const { res } = makeRes();
+    const { reply } = makeReply();
 
-    await adminUnlockNote(req, res);
+    await adminUnlockNote(req, reply);
 
-    // 컨트롤러가 403을 즉시 반환하지 않고 prisma.note.findUnique를 호출했어야 함
-    expect(mockNoteDb.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'note-001' } }),
+    expect(mockNoteDb.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'note-001', orgId: ORG } }),
     );
   });
 });
 
 // ── getNoteStats ─────────────────────────────────────────────────────
 describe('getNoteStats', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('상태별 카운트를 groupBy로 조합해 반환한다', async () => {
+  test('상태별 카운트를 groupBy로 조합해 반환한다', async () => {
     mockNoteDb.groupBy.mockResolvedValue([
       { status: 'draft',       _count: { _all: 5 } },
       { status: 'in_progress', _count: { _all: 3 } },
@@ -276,91 +383,98 @@ describe('getNoteStats', () => {
       // 'locked'는 없음 → 기본값 0으로 채워져야 함
     ]);
     const req = makeReq({ query: { type: 'note' } });
-    const { res, json } = makeRes();
-    await getNoteStats(req, res);
-    expect(json).toHaveBeenCalledWith({
+    const { reply } = makeReply();
+
+    await expect(getNoteStats(req, reply)).resolves.toEqual({
       ok: true,
       data: { draft: 5, in_progress: 3, locked: 0, signed: 8, total: 16 },
     });
   });
 
-  it('type이 잘못되면 400을 반환한다', async () => {
-    const req = makeReq({ query: { type: 'invalid' } });
-    const { res, status, json } = makeRes();
-    await getNoteStats(req, res);
-    expect(status).toHaveBeenCalledWith(400);
-    expect(json).toHaveBeenCalledWith({ ok: false, error: 'type은 note 또는 protocol이어야 합니다.' });
+  test('집계는 요청자의 org로 스코핑된다', async () => {
+    mockNoteDb.groupBy.mockResolvedValue([]);
+    await getNoteStats(makeReq({ query: { type: 'note' } }), makeReply().reply);
+
+    expect(mockNoteDb.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orgId: ORG }) }),
+    );
   });
 });
 
 // ── getNotesBatch ─────────────────────────────────────────────────────
 describe('getNotesBatch', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('ID 배열로 노트 목록을 반환한다', async () => {
+  test('ID 배열로 노트 목록을 반환한다', async () => {
     const notes = [{ id: 'a' }, { id: 'b' }];
     mockNoteDb.findMany.mockResolvedValue(notes);
     const req = makeReq({ body: { ids: ['a', 'b'] } });
-    const { res, json } = makeRes();
-    await getNotesBatch(req, res);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: notes });
+    const { reply } = makeReply();
+
+    await expect(getNotesBatch(req, reply)).resolves.toEqual({ ok: true, data: notes });
   });
 
-  it('ids가 빈 배열이면 DB 호출 없이 빈 배열을 반환한다', async () => {
-    const req = makeReq({ body: { ids: [] } });
-    const { res, json } = makeRes();
-    await getNotesBatch(req, res);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: [] });
-    expect(mockNoteDb.findMany).not.toHaveBeenCalled();
+  test('조회는 요청자의 org와 미삭제 노트로 제한된다', async () => {
+    mockNoteDb.findMany.mockResolvedValue([]);
+    await getNotesBatch(makeReq({ body: { ids: ['a'] } }), makeReply().reply);
+
+    expect(mockNoteDb.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['a'] }, deletedAt: null, orgId: ORG },
+    });
+  });
+});
+
+/**
+ * ids 개수·타입 검증은 컨트롤러에서 라우트의 validate({ body: NotesBatchBodySchema })
+ * 로 이동했다. 예전 테스트는 컨트롤러에 대고 이걸 검사했는데, 이제 컨트롤러까지
+ * 오면 이미 통과한 입력이라 그 자리에선 검증할 수 없다. 로직이 있는 스키마에 댄다.
+ */
+describe('입력 검증 스키마 (컨트롤러에서 라우트로 이동한 계약)', () => {
+  test('ids가 빈 배열이면 거부한다', () => {
+    const r = NotesBatchBodySchema.safeParse({ ids: [] });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r)).toContain('ids는 문자열 배열이어야 합니다.');
   });
 
-  it('ids가 없으면 400을 반환한다', async () => {
-    const req = makeReq({ body: {} });
-    const { res, status, json } = makeRes();
-    await getNotesBatch(req, res);
-    expect(status).toHaveBeenCalledWith(400);
-    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
+  test('ids 요소가 문자열이 아니면 거부한다', () => {
+    expect(NotesBatchBodySchema.safeParse({ ids: [1, null, 'valid'] }).success).toBe(false);
   });
 
-  it('ids 요소가 문자열이 아니면 400을 반환한다', async () => {
-    const req = makeReq({ body: { ids: [1, null, 'valid'] } });
-    const { res, status, json } = makeRes();
-    await getNotesBatch(req, res);
-    expect(status).toHaveBeenCalledWith(400);
-    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 문자열 배열이어야 합니다.' });
+  test('ids가 500개 초과면 거부한다', () => {
+    const r = NotesBatchBodySchema.safeParse({ ids: Array(501).fill('uuid') });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r)).toContain('ids는 최대 500개까지 허용됩니다.');
   });
 
-  it('ids가 500개 초과면 400을 반환한다', async () => {
-    const req = makeReq({ body: { ids: Array(501).fill('uuid') } });
-    const { res, status, json } = makeRes();
-    await getNotesBatch(req, res);
-    expect(status).toHaveBeenCalledWith(400);
-    expect(json).toHaveBeenCalledWith({ ok: false, error: 'ids는 최대 500개까지 허용됩니다.' });
+  test('ids가 정확히 500개면 통과한다 (경계값)', () => {
+    expect(NotesBatchBodySchema.safeParse({ ids: Array(500).fill('uuid') }).success).toBe(true);
+  });
+
+  test('stats의 type이 열거값이 아니면 거부한다', () => {
+    expect(NoteStatsQuerySchema.safeParse({ type: 'invalid' }).success).toBe(false);
+  });
+
+  test('stats의 type을 생략하면 note로 기본값이 채워진다', () => {
+    expect(NoteStatsQuerySchema.parse({})).toEqual({ type: 'note' });
   });
 });
 
 // ── getAttachments ─────────────────────────────────────────────────
 describe('getAttachments', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('노트가 없으면 404를 반환한다', async () => {
-    mockNoteDb.findUnique.mockResolvedValue(null);
-    const req = makeReq({ params: { id: 'note-1' } });
-    const { res, status, json } = makeRes();
-    await getAttachments(req, res);
-    expect(status).toHaveBeenCalledWith(404);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+  test('노트가 없으면 404다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue(null);
+    const { reply } = makeReply();
+    await expectStatus(getAttachments(makeReq({ params: { id: 'note-1' } }), reply), 404);
   });
 
-  it('include로 첨부파일을 단일 쿼리로 반환한다', async () => {
+  test('include로 첨부파일을 단일 쿼리로 반환한다', async () => {
     const attachments = [{ id: 'att-1', fileName: 'a.pdf' }];
-    mockNoteDb.findUnique.mockResolvedValue({ id: 'note-1', attachments });
-    const req = makeReq({ params: { id: 'note-1' } });
-    const { res, json } = makeRes();
-    await getAttachments(req, res);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: attachments });
-    expect(mockNoteDb.findUnique).toHaveBeenCalledTimes(1);
-    expect(mockNoteDb.findUnique).toHaveBeenCalledWith(
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-1', attachments });
+    const { reply } = makeReply();
+
+    await expect(getAttachments(makeReq({ params: { id: 'note-1' } }), reply))
+      .resolves.toEqual({ ok: true, data: attachments });
+
+    expect(mockNoteDb.findFirst).toHaveBeenCalledTimes(1);
+    expect(mockNoteDb.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ include: expect.objectContaining({ attachments: expect.anything() }) }),
     );
   });
@@ -368,68 +482,82 @@ describe('getAttachments', () => {
 
 // ── addAttachment ──────────────────────────────────────────────────
 describe('addAttachment', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('첨부파일을 201로 생성한다', async () => {
+  test('첨부파일을 201로 생성한다', async () => {
     const created = { id: 'att-1', noteId: 'note-1', fileName: 'a.pdf' };
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-1' });
     mockAttachmentDb.create.mockResolvedValue(created);
+
     const req = makeReq({
       params: { id: 'note-1' },
       body: { fileId: 'f1', fileName: 'a.pdf' },
-      headers: { 'x-user-id': 'u1', 'x-user-role': 'researcher' },
+      headers: { 'x-user-id': 'u1' },
     });
-    const { res, status, json } = makeRes();
-    await addAttachment(req, res);
-    expect(status).toHaveBeenCalledWith(201);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: created });
-    expect(mockNoteDb.findUnique).not.toHaveBeenCalled();
+    const { reply, code } = makeReply();
+
+    await expect(addAttachment(req, reply)).resolves.toEqual({ ok: true, data: created });
+    expect(code).toHaveBeenCalledWith(201);
   });
 
-  it('noteId FK 위반(P2003)이면 404를 반환한다', async () => {
-    const fkErr = Object.assign(new Error('FK violation'), { code: 'P2003' });
-    mockAttachmentDb.create.mockRejectedValue(fkErr);
+  test('org 스코프 밖의 노트면 create를 시도하지 않고 404다', async () => {
+    // 예전에는 FK 위반(P2003)을 받아 404로 바꿨다. org 스코핑이 들어오면서
+    // 선조회가 생겼다 — 다른 조직 노트에 첨부를 붙이는 것 자체를 막아야 하는데
+    // FK는 조직을 구분하지 못하기 때문이다.
+    mockNoteDb.findFirst.mockResolvedValue(null);
+
     const req = makeReq({
       params: { id: 'ghost-note' },
       body: { fileId: 'f1', fileName: 'a.pdf' },
-      headers: { 'x-user-id': 'u1', 'x-user-role': 'researcher' },
+      headers: { 'x-user-id': 'u1' },
     });
-    const { res, status, json } = makeRes();
-    await addAttachment(req, res);
-    expect(status).toHaveBeenCalledWith(404);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
-    expect(mockNoteDb.findUnique).not.toHaveBeenCalled();
+    const { reply } = makeReply();
+
+    await expectStatus(addAttachment(req, reply), 404);
+    expect(mockAttachmentDb.create).not.toHaveBeenCalled();
+  });
+
+  test('noteId FK 위반(P2003)이면 404를 반환한다', async () => {
+    mockNoteDb.findFirst.mockResolvedValue({ id: 'note-1' });
+    mockAttachmentDb.create.mockRejectedValue(Object.assign(new Error('FK violation'), { code: 'P2003' }));
+
+    const req = makeReq({
+      params: { id: 'note-1' },
+      body: { fileId: 'f1', fileName: 'a.pdf' },
+      headers: { 'x-user-id': 'u1' },
+    });
+    const { reply } = makeReply();
+
+    await expectStatus(addAttachment(req, reply), 404);
   });
 });
 
 // ── getTags ───────────────────────────────────────────────────────
 describe('getTags', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('$queryRaw UNNEST로 중복 없는 태그 목록을 반환한다', async () => {
+  test('$queryRaw UNNEST로 중복 없는 태그 목록을 반환한다', async () => {
     mockQueryRaw.mockResolvedValue([{ tag: 'alpha' }, { tag: 'beta' }]);
-    const req = makeReq({ query: { type: 'note' } });
-    const { res, json } = makeRes();
-    await getTags(req, res);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: ['alpha', 'beta'] });
+    const { reply } = makeReply();
+
+    await expect(getTags(makeReq({ query: { type: 'note' } }), reply))
+      .resolves.toEqual({ ok: true, data: ['alpha', 'beta'] });
+
     expect(mockNoteDb.findMany).not.toHaveBeenCalled();
     expect(mockQueryRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('DB에서 온 순서 그대로 반환한다 (ORDER BY는 SQL에서 처리됨)', async () => {
+  test('DB에서 온 순서 그대로 반환한다 (ORDER BY는 SQL에서 처리됨)', async () => {
     mockQueryRaw.mockResolvedValue([{ tag: 'zeta' }, { tag: 'alpha' }]);
-    const req = makeReq({ query: { type: 'note' } });
-    const { res, json } = makeRes();
-    await getTags(req, res);
-    expect(json).toHaveBeenCalledWith({ ok: true, data: ['zeta', 'alpha'] });
+    const { reply } = makeReply();
+
+    await expect(getTags(makeReq({ query: { type: 'note' } }), reply))
+      .resolves.toEqual({ ok: true, data: ['zeta', 'alpha'] });
   });
 
-  it('type 쿼리 파라미터를 $queryRaw에 전달한다', async () => {
+  test('type과 orgId를 $queryRaw 바인딩 파라미터로 전달한다', async () => {
     mockQueryRaw.mockResolvedValue([]);
-    const req = makeReq({ query: { type: 'template' } });
-    const { res } = makeRes();
-    await getTags(req, res);
-    // $queryRaw tagged template literal: second argument is the type variable
+    await getTags(makeReq({ query: { type: 'template' } }), makeReply().reply);
+
+    // tagged template literal: [0]=문자열 조각 배열, 이후가 보간값
     const callArgs = mockQueryRaw.mock.calls[0];
     expect(callArgs[1]).toBe('template');
+    expect(callArgs[2]).toBe(ORG);
   });
 });
