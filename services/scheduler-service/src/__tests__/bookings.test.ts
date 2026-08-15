@@ -70,6 +70,15 @@ const BOOKING_PENDING = {
   resource: RESOURCE,
 };
 
+// 라우트는 startAt <= now 를 BOOKING_PAST_DATE(400) 으로 먼저 막는다. 그래서 예약
+// 페이로드의 시각을 절대값으로 박아 두면 그 날짜가 지나는 순간 모든 케이스가 그
+// 가드에 먼저 걸려, 정작 검증하려던 201/409/비활성자원 분기까지 전부 400 으로
+// 뒤집힌다. eln 브랜치가 2026-03 기준으로 작성돼 실제로 그렇게 썩어 있었다.
+// 시각은 항상 '지금으로부터 N 시간' 으로 만들어 시계에 의존하지 않게 한다.
+function hoursFromNow(h: number): string {
+  return new Date(Date.now() + h * 60 * 60 * 1000).toISOString();
+}
+
 // ─── 헬퍼 ────────────────────────────────────────────────────
 /** body 포함 요청용 헤더 */
 function adminHeaders() {
@@ -134,8 +143,8 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
       payload: {
         resourceId: 'res-001',
         title: '시료 분석',
-        startAt: '2026-03-20T09:00:00Z',
-        endAt:   '2026-03-20T11:00:00Z',
+        startAt: hoursFromNow(24),
+        endAt:   hoursFromNow(26),
       },
     });
 
@@ -150,8 +159,8 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
     prisma.resource.findFirst.mockResolvedValue(RESOURCE);
     prisma.booking.findFirst.mockResolvedValue({
       id: 'conflict-booking',
-      startAt: new Date('2026-03-20T08:30:00Z'),
-      endAt:   new Date('2026-03-20T10:00:00Z'),
+      startAt: new Date(hoursFromNow(23.5)),
+      endAt:   new Date(hoursFromNow(25)),
       userId:  'user-002',
       status:  'PENDING',
     });
@@ -163,8 +172,8 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
       payload: {
         resourceId: 'res-001',
         title: '충돌 예약',
-        startAt: '2026-03-20T09:30:00Z',
-        endAt:   '2026-03-20T11:00:00Z',
+        startAt: hoursFromNow(24.5),
+        endAt:   hoursFromNow(26),
       },
     });
 
@@ -186,13 +195,16 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
       payload: {
         resourceId: 'res-001',
         title: '잘못된 시간',
-        startAt: '2026-03-20T11:00:00Z',
-        endAt:   '2026-03-20T09:00:00Z',  // 종료가 시작보다 앞
+        startAt: hoursFromNow(26),
+        endAt:   hoursFromNow(24),  // 종료가 시작보다 앞
       },
     });
 
     expect(res.statusCode).toBe(400);
     expect(res.json().ok).toBe(false);
+    // 400 만 보면 과거시각 가드에 걸려도 통과한다. 실제로 이 테스트는 날짜가 지난
+    // 뒤 BOOKING_PAST_DATE 로 초록이 떠 있었다. 어느 가드가 잡았는지까지 못박는다.
+    expect(res.json().code).toBe('BOOKING_INVALID_DATE');
   });
 
   it('비활성 자원 예약 시 → 400', async () => {
@@ -206,13 +218,35 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
       payload: {
         resourceId: 'res-001',
         title: '비활성 자원 예약',
-        startAt: '2026-03-20T09:00:00Z',
-        endAt:   '2026-03-20T11:00:00Z',
+        startAt: hoursFromNow(24),
+        endAt:   hoursFromNow(26),
       },
     });
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toContain('비활성화');
+  });
+
+  // 위 케이스들을 상대시각으로 바꾸면 과거시각 가드를 아무도 안 밟는다. 가드는
+  // 실재하는 계약이므로 직접 겨냥한 케이스를 따로 둔다.
+  it('과거 시각 예약 → 400', async () => {
+    const prisma = (await import('../lib/prisma')).default as any;
+    prisma.resource.findFirst.mockResolvedValue(RESOURCE);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/scheduler/bookings',
+      headers: userHeaders(),
+      payload: {
+        resourceId: 'res-001',
+        title: '과거 예약',
+        startAt: hoursFromNow(-2),
+        endAt:   hoursFromNow(-1),
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('BOOKING_PAST_DATE');
   });
 
   it('인증 헤더 없으면 → 401', async () => {
@@ -223,8 +257,8 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
       payload: {
         resourceId: 'res-001',
         title: '미인증 예약',
-        startAt: '2026-03-20T09:00:00Z',
-        endAt:   '2026-03-20T11:00:00Z',
+        startAt: hoursFromNow(24),
+        endAt:   hoursFromNow(26),
       },
     });
 

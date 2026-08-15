@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { requireAuth } from '../plugins/auth';
 import { AppError, ErrorCode } from '@lab/shared';
+import type { Prisma } from '@prisma/client';
 
 const experimentsRoute: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', requireAuth);
@@ -47,7 +48,12 @@ const experimentsRoute: FastifyPluginAsync = async (fastify) => {
       modelId: string;
       datasetId: string;
       promptId?: string;
-      config?: Record<string, unknown>;
+      // Prisma 의 Json 컬럼은 InputJsonValue 를 받는데, Record<string, unknown> 은
+      // 값이 직렬화 가능하다는 걸 증명하지 못해 대입이 거부된다. 이 서비스들은 CI
+      // 매트릭스에 없어서 컴파일이 깨진 채로 방치돼 있었다. 호출부에 캐스트를 박는
+      // 대신 경계(요청 body 타입)에서 못박고, 담기는 값이 항상 객체이므로 객체
+      // 변형인 InputJsonObject 로 좁힌다.
+      config?: Prisma.InputJsonObject;
     };
 
     const experiment = await fastify.prisma.experiment.create({
