@@ -30,6 +30,26 @@ const mockNoteDb = {
   groupBy: jest.fn(),
 };
 
+// prisma.note.update 는 select 절이 없으면 Note 행 전체를 돌려준다. 목이 일부
+// 필드만 담고 있으면, 컨트롤러가 나중에 다른 필드를 쓰기 시작하는 순간 실제 코드가
+// 아니라 목의 결함으로 터진다. 실제로 검색 인덱싱이 붙으면서
+// createdAt.toISOString() 에서 그렇게 깨졌다. 행 전체를 흉내내고 필요한 것만 덮는다.
+function noteRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'note-001',
+    orgId: 'org-001',
+    authorId: 'user-001',
+    title: '테스트 노트',
+    content: '내용',
+    tags: [] as string[],
+    type: 'note',
+    status: 'draft',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-02T00:00:00Z'),
+    ...overrides,
+  };
+}
+
 const mockNoteStatusHistoryDb = {
   create: jest.fn(),
 };
@@ -211,7 +231,7 @@ describe('deleteNote — 상태별 삭제 보호', () => {
 describe('changeNoteStatus — note_status_history 기록', () => {
   test('상태 변경 성공 시 note_status_history에 INSERT한다', async () => {
     mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'draft', authorId: 'user-001' });
-    mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'in_progress', updatedAt: new Date() });
+    mockNoteDb.update.mockResolvedValue(noteRow({ status: 'in_progress' }));
     mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
     const req = makeReq({ params: { id: 'note-001' }, body: { status: 'in_progress' } });
@@ -253,7 +273,7 @@ describe('changeNoteStatus — note_status_history 기록', () => {
 describe('adminUnlockNote — note_status_history 기록', () => {
   test('잠금 해제 성공 시 is_admin_action=true로 note_status_history INSERT한다', async () => {
     mockNoteDb.findFirst.mockResolvedValue({ id: 'note-001', status: 'locked', authorId: 'user-001' });
-    mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'draft', updatedAt: new Date() });
+    mockNoteDb.update.mockResolvedValue(noteRow({ status: 'draft' }));
     mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
     const req = makeReq({
@@ -315,7 +335,7 @@ describe('deleteNote — 소프트 삭제', () => {
     mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-001', title: '초안 노트', status: 'draft', authorId: 'user-001',
     });
-    mockNoteDb.update.mockResolvedValue({ id: 'note-001' });
+    mockNoteDb.update.mockResolvedValue(noteRow());
 
     const { reply } = makeReply();
     await expect(deleteNote(makeReq({ params: { id: 'note-001' } }), reply))
@@ -334,7 +354,7 @@ describe('deleteNote — 소프트 삭제', () => {
     mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-002', title: '진행중 노트', status: 'in_progress', authorId: 'user-001',
     });
-    mockNoteDb.update.mockResolvedValue({ id: 'note-002' });
+    mockNoteDb.update.mockResolvedValue(noteRow({ id: 'note-002' }));
 
     const { reply } = makeReply();
     await deleteNote(makeReq({ params: { id: 'note-002' } }), reply);
@@ -355,7 +375,7 @@ describe('adminUnlockNote — 역할 검사가 컨트롤러 밖으로 이동됨'
     mockNoteDb.findFirst.mockResolvedValue({
       id: 'note-001', status: 'locked', authorId: 'user-001',
     });
-    mockNoteDb.update.mockResolvedValue({ id: 'note-001', status: 'draft' });
+    mockNoteDb.update.mockResolvedValue(noteRow({ status: 'draft' }));
     mockNoteStatusHistoryDb.create.mockResolvedValue({});
 
     const req = makeReq({
