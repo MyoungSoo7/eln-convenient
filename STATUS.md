@@ -3,8 +3,8 @@
 > 이 파일은 `.claude/hooks/update-status.sh`에 의해 자동 생성됩니다.
 > 수동 갱신: `bash .claude/hooks/update-status.sh`
 
-- **마지막 갱신**: 2026-04-13 13:53:43
-- **현재 브랜치**: `eln`
+- **마지막 갱신**: 2026-08-16 01:06:44
+- **현재 브랜치**: `main`
 - **백엔드 서비스 수**: 16
 
 ## 서비스 목록
@@ -45,24 +45,24 @@ signature-audit-service
 ## 프론트엔드 i18n
 
 - 언어: `en ko `
-- ko/ 파일 수: 13
-- en/ 파일 수: 13
+- ko/ 파일 수:       13
+- en/ 파일 수:       13
 
 ## Claude Code 자동화 구성 (.claude/)
 
 | 항목 | 개수 |
 |------|------|
-| agents/ | 26 |
-| rules/ | 12 |
-| hooks/ | 6 |
-| commands/ | 9 |
+| agents/ |       26 |
+| rules/ |       12 |
+| hooks/ |        6 |
+| commands/ |       10 |
 
 ## 최근 커밋
 
 ```
-b38b5fe docs: OMC 운영 가이드, DB 용량 산정, ccmonitor 문서 추가 및 OMC 플러그인 활성화
-2d2ebb1 chore(harness): Claude Code 하네스 강화 — 단일 디스패처, 메타룰, deny 룰 확장
-3422330 feat(research): Gemma 4 연구 플랫폼 구축 — provider 추상화, gemma-gateway, eval-harness, MLflow
-20da3ef chore(infra): DR/감사로그/시크릿/PII 5종 인프라 강화
-82b9de5 통합검색
+c74b161 Merge branch 'prep/main-baseline'
+125f09b Merge branch 'eln' into main — AI 스택 복원
+30666d8 test: rd-team 이 바꾼 계약에 테스트를 맞춘다 (문구 → 제약조건/에러코드)
+662a89f fix(auth): 비밀번호 초기화 라우트의 조직 경계 복원 + 하드코딩 기본값 제거
+ee308e6 Merge branch 'rd-team' into eln-without-ai
 ```
