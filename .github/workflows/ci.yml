@@ -90,6 +90,59 @@ jobs:
         working-directory: services/${{ matrix.service }}
         run: npm test
 
+  # AI 스택 6개는 매트릭스 밖에 있었다. 그 사이 model-registry / fine-tune-jobs 는
+  # Prisma 의 Json 컬럼에 Record<string, unknown> 을 넘기고 있어 애초에 컴파일이
+  # 된 적이 없는데, 아무도 몰랐다. 게이트가 없는 서비스는 썩는다.
+  #
+  # 위 잡과 달리 npm test 를 돌리지 않는다. 6개 다 테스트 파일이 0개고 그중 셋은
+  # test 스크립트조차 없어서, 지금 test 를 넣으면 게이트가 아니라 그냥 빨간 잡이
+  # 된다. 타입체크만이라도 정직하게 거는 쪽을 택한다. 테스트 0개는 별개의 빚으로
+  # 남아 있다 — 이 잡이 그걸 가려주지는 않는다.
+  ai-typecheck:
+    name: Typecheck (AI Services)
+    runs-on: ubuntu-latest
+    needs: shared-build
+    strategy:
+      matrix:
+        service:
+          - ai-assistant-service
+          - gemma-gateway
+          - model-registry-service
+          - eval-harness-service
+          - experiment-tracker-service
+          - fine-tune-jobs-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download shared build
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-build
+          path: services/shared/dist
+
+      - name: Install shared deps
+        working-directory: services/shared
+        run: npm ci
+
+      - name: Install service deps
+        working-directory: services/${{ matrix.service }}
+        run: npm ci
+
+      # Prisma 클라이언트가 생성돼 있지 않으면 Prisma.InputJsonObject 같은 타입이
+      # 스텁으로 잡혀 검사가 헐거워진다. 스키마가 있는 서비스만 생성한다.
+      - name: Generate Prisma client
+        working-directory: services/${{ matrix.service }}
+        run: '[ -f prisma/schema.prisma ] && npx prisma generate || echo "prisma 스키마 없음 — 건너뜀"'
+
+      - name: TypeScript compile check
+        working-directory: services/${{ matrix.service }}
+        run: npx tsc --noEmit
+
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
