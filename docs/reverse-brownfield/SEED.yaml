@@ -1,0 +1,311 @@
+# =============================================================================
+# seed_778c4608b4c1 — ouroboros_generate_seed 출력 원문
+#
+# 출처: interview_20260815_165042 (ambiguity 0.132, 게이트 0.2 이하 통과)
+# 생성: 2026-08-15T17:46:45Z (= 2026-08-16 02:46 KST)
+#
+# [보존 사유 — 중요]
+# 이 시드는 ouroboros 가 "Seed Generated Successfully" 로 반환했지만
+# **어디에도 저장되지 않았다.** 아래 3곳 전부 확인함:
+#   1. ~/.ouroboros/seeds/            → seed_778c4608b4c1.yaml 없음
+#   2. ouroboros://seeds 레지스트리   → 시드 7개 중 이 시드 없음
+#   3. 이벤트 스토어(ouroboros.db)    → seed.* 이벤트 0건
+# 따라서 seed_id 로는 ouroboros_execute_seed 를 걸 수 없다.
+# 이 파일이 유일한 사본이다.
+#
+# [원문 대비 수정한 것 — 딱 하나, 이스케이프 해제]
+# 툴 응답에서 verify_command 안의 `2&gt;` `&amp;&amp;` 를
+# `2>` `&&` 로 되돌렸다. 나머지 자구는 원문 그대로다.
+#
+# [검증해서 틀린 것으로 확인된 부분 — 아래 원문은 손대지 않고 여기 적어둔다]
+# ontology_schema.fields[Role] 의 "researcher, reviewer, team_leader, admin" 은
+# 사실이 아니다. 기준 커밋 7012f7a 의
+#   services/auth-service/src/controllers/auth.controller.ts:822
+#   const ALLOWED_ROLE_NAMES = ['admin','researcher','reviewer','viewer'] as const;
+# 이고 `team_leader` 는 7012f7a 전체 .ts 에서 0건이다.
+# 실제 역할은 admin / researcher / reviewer / viewer 4종.
+# 같은 필드의 "서명은 reviewer, team_leader, admin 필요" 도 이 오류에 딸린 것이라
+# 시드를 실행하기 전에 반드시 코드로 다시 확인해야 한다.
+#
+# [기준 커밋 주의]
+# /Users/lms/eln-convenient 체크아웃은 현재 main(8a94dbe) 으로 옮겨가 있다.
+# 7012f7a 는 eln-without-ai 브랜치 커밋으로 여전히 존재하며 PRD.md 의 기준이다.
+# 이 시드를 실행할 때 워킹트리 브랜치를 먼저 확인할 것.
+# =============================================================================
+
+goal: Correct identified defects in the on-premises ELN (Docker Compose MSA, 8 services
+  + api-gateway) at /Users/lms/eln-convenient branch eln-without-ai commit 7012f7a
+  — enforcing note state machine immutability, signature content binding, audit tamper
+  evidence, and service boundary contracts while preserving existing strengths and
+  adding no absent functionality
+task_type: code
+brownfield_context:
+  project_type: brownfield
+  context_references:
+  - path: /Users/lms/eln-convenient
+    role: primary
+    summary: ELN monorepo — Docker Compose MSA with api-gateway + 8 services (auth,
+      eln, signature-audit, inventory, scheduler, search, file, collab), React SPA
+      frontend, Prisma 5 per-service schemas, PostgreSQL 15, Redis, MinIO, OpenSearch;
+      base commit 7012f7a on branch eln-without-ai
+  existing_patterns:
+  - Fastify 4 route/controller/service layering across all backend services
+  - Prisma 5 per-service schema with service-isolated PostgreSQL databases
+  - Redis Stream labnote:events for cross-service event publishing with Consumer Group
+    subscription and XPENDING/XCLAIM orphan recovery
+  - requireInternalSecret middleware for inter-service HTTP authentication
+  - orgId tenancy filter on all data queries across every service
+  - noteStatusHistory for state transition audit within eln-service using prisma.$transaction
+    for atomicity (except admin unlock which is the defect)
+  - lib/audit.ts fire-and-forget HTTP POST to signature-audit /audit/internal with
+    console.error on failure (to be corrected to outbox)
+  - BullMQ job queues for async processing including notifications and exports with
+    idempotencyKey deduplication
+  - patchNoteStatus via Redis Stream with HTTP PATCH fallback and graceful degradation
+    — signature authority is truth and note.status is derived projection
+  - Soft delete pattern across entities
+  - NoteRevision auto-accumulation on update with read-only GET exposure
+  - NoteLink generic typed relationship structure with targetType/targetId/label
+  existing_dependencies:
+  - Fastify 4
+  - Prisma 5
+  - PostgreSQL 15
+  - Redis (Streams, pub/sub, caching)
+  - MinIO (S3-compatible object storage)
+  - OpenSearch (full-text search)
+  - BullMQ (job queues)
+  - React (SPA frontend)
+  - Docker Compose (orchestration)
+constraints:
+- Closed-network on-premises deployment; no external API calls permitted
+- Service boundaries must not be merged — each boundary carries a regulatory invariant;
+  audit writes belong exclusively to signature-audit service
+- Do not claim compliance with any named regulatory standard
+- 'Reverse brownfield discipline: no functionality absent from the codebase at commit
+  7012f7a may be invented; addendum/correction-note is a documented gap not implemented
+  in this Seed'
+- All defect items carried from PM stage must be re-verified against commit 7012f7a
+  before correction is applied; treating unverified assumptions as confirmed facts
+  is the highest-risk failure mode
+- 'State machine: draft ↔ in_progress → locked, in_progress → signed (via signature-audit
+  only); signed is permanent terminal — no code path may mutate a signed note under
+  any circumstance; locked → draft requires admin role + password re-confirmation'
+- 4 roles, 24 permissions, orgId tenancy across all services, self-sign prohibition,
+  and password re-confirmation before signing are structural invariants
+- Future addendum must preserve signed note immutability via NoteLink to a new draft
+  note and depends on signature content binding being complete first — this dependency
+  and direction are recorded but not implemented
+- Signing creates its signature record and audit log within a single service-local
+  database transaction (both are in signature-audit DB); lock and unlock use an eln-service
+  outbox pattern for audit delivery to avoid coupling availability to signature-audit
+- Package manager unification is decided by inspecting what Dockerfiles invoke; the
+  decision procedure is fixed but the choice of manager is not pre-decided
+- Note status (note.status) is a derived projection of the signature authority; the
+  existing eventual consistency via Redis Stream and HTTP PATCH fallback is preserved,
+  not replaced with synchronous coupling
+acceptance_criteria:
+- description: No authentication bypass exists in the frontend — mock token fallback
+    and dev-login code paths are removed and all login flows require real credential
+    validation against auth-service
+  semantic_ac_key: ac_15372406eabda7d0
+  verify_command: grep -rn --include='*.ts' --include='*.tsx' -iE '(MOCK_TOKEN|mockToken|mock_token|fallbackLogin|devLogin|devAuth)'
+    frontend/src/ services/auth-service/src/ 2>/dev/null | grep -v node_modules |
+    grep -v test && exit 1 || echo CLEAN
+  output_assertion: CLEAN
+- description: Note export functionality is owned solely by signature-audit service
+    with no export generation code remaining in eln-service
+  semantic_ac_key: ac_82ccd9e1106b1e7d
+  verify_command: grep -rl --include='*.ts' -iE '(exportPdf|exportExcel|ExcelJS|generatePdf|PDFDocument)'
+    services/eln-service/src/ 2>/dev/null && exit 1 || echo CLEAN
+  output_assertion: CLEAN
+- description: Empty duplicate SPA shells and vestigial dead-code files identified
+    in the defect audit are removed from the repository
+  semantic_ac_key: ac_0ed0923bf0ba0136
+- description: CI pipeline exits non-zero on any test failure and automated tests
+    exist and pass for regulatory critical paths including state transitions, signing,
+    locking, admin unlock, signed/locked mutation rejection, and signature verification
+  semantic_ac_key: ac_1e6d138d01aac63f
+- description: Notes in signed or locked state reject all mutations to content, sections,
+    tags, attachments, and links via the REST API returning appropriate HTTP error
+    status
+  semantic_ac_key: ac_e72a38f64909906a
+- description: WebSocket collab sessions verify organization membership and user permissions
+    on connection and per-operation and refuse operations targeting notes in signed
+    or locked state
+  semantic_ac_key: ac_866a74c39b252cea
+- description: Signature hash input includes a content digest of the note being signed
+    and signature verification recomputes the hash from stored fields and compares
+    it to the recorded hash so that content or metadata divergence is detected
+  semantic_ac_key: ac_e51a37dae64cd59a
+- description: Audit log records carry a per-orgId hash chain with prevHash hash and
+    chainIndex enforced by a unique constraint on orgId plus chainIndex; the application
+    DB role for the audit table permits only INSERT and SELECT; a verification routine
+    recomputes each record hash from its stored fields and checks chain continuity;
+    hash input fields are entityType entityId action actorId orgId details ipAddress
+    createdAt and prevHash
+  semantic_ac_key: ac_74c3c95ccd8c9cb1
+- description: 'Regulatory critical transitions never silently lose audit records:
+    signing is atomic with its audit entry; lock and unlock audit is reliably delivered
+    with no silent loss even when signature-audit is temporarily unavailable; admin
+    unlock cannot succeed without its state change and history record being committed
+    in one transaction; undelivered audit count and maximum delay are exposed as queryable
+    metrics'
+  semantic_ac_key: ac_b2e3da7fcedc5c91
+- description: Note status drift from the signature authority is detectable via a
+    mechanism that identifies notes where a signature record exists but note status
+    is not signed or where note status is signed but no signature record exists
+  semantic_ac_key: ac_41d57caf9cb0fbd2
+- description: 'Search indexing failures are observable: XADD failure count and Redis
+    Stream backlog and dead-letter discard count are exposed as metrics; dead letters
+    are retained not silently ACKed and discarded; the admin bulk-reindex endpoint
+    remains callable'
+  semantic_ac_key: ac_f886b4308e9861c7
+- description: Exactly one package manager lock file format exists in the repository
+    with all other lock file formats removed and the chosen manager matching what
+    Dockerfiles invoke
+  semantic_ac_key: ac_62a9816cb1e0ae47
+  verify_command: python3 -c "import os; found=[f for f in ['bun.lock','bun.lockb','package-lock.json','yarn.lock','pnpm-lock.yaml']
+    if os.path.exists(f)]; mgrs=set(); [mgrs.add('bun') for f in found if 'bun' in
+    f]; [mgrs.add('npm') for f in found if 'package' in f]; [mgrs.add('yarn') for
+    f in found if 'yarn' in f]; [mgrs.add('pnpm') for f in found if 'pnpm' in f];
+    print('UNIFIED' if len(mgrs)==1 else 'MIXED')"
+  output_assertion: UNIFIED
+ontology_schema:
+  name: ELNRegulatoryDomain
+  description: Domain model for an on-premises Electronic Lab Notebook enforcing regulatory
+    invariants — note lifecycle state machine, cryptographic signature binding, tamper-evident
+    audit chain, and organizational tenancy
+  fields:
+  - name: Note
+    type: object
+    description: Core research note entity governed by the state machine (draft/in_progress/locked/signed)
+      with content sections, tags, attachments, links, and soft-delete — subject to
+      signed/locked immutability freeze
+    required: true
+  - name: NoteStatus
+    type: string
+    description: 'Lifecycle state enum: draft, in_progress, locked, signed — governs
+      which mutations are permitted on the note and its relations'
+    required: true
+  - name: StateTransition
+    type: object
+    description: 'Permitted state change with preconditions: role requirements, password
+      re-confirmation for locked-to-draft, signature-audit service ownership for in_progress-to-signed'
+    required: true
+  - name: Signature
+    type: object
+    description: Cryptographic binding of signer to note content forming a per-note
+      hash chain with noteId, signerId, contentDigest, hash, prevHash, chainIndex,
+      comment, and createdAt
+    required: true
+  - name: AuditLog
+    type: object
+    description: 'Tamper-evident audit record with per-orgId hash chain — fields:
+      entityType, entityId, action, actorId, orgId, details, ipAddress, hash, prevHash,
+      chainIndex, createdAt'
+    required: true
+  - name: Organization
+    type: object
+    description: Tenancy boundary — orgId scopes all data queries and audit chains
+      across every service
+    required: true
+  # [검증 결과 오류] 아래 team_leader 는 코드에 없다. 실제는 admin/researcher/reviewer/viewer.
+  - name: Role
+    type: string
+    description: One of four system roles (researcher, reviewer, team_leader, admin)
+      mapped to 24 granular permissions; signing requires reviewer, team_leader, or
+      admin
+    required: true
+  - name: NoteLink
+    type: object
+    description: Typed relationship between notes with sourceId, targetId, targetType,
+      and label — designated vehicle for future addendum/correction references without
+      modifying signed originals
+    required: true
+  - name: NoteAttachment
+    type: object
+    description: File attachment bound to a note, subject to signed/locked immutability
+      freeze alongside content and links
+    required: true
+  - name: NoteRevision
+    type: object
+    description: Read-only version snapshot auto-accumulated on note update, exposed
+      via two GET endpoints only — no mutation API exists
+    required: true
+  - name: NoteStatusHistory
+    type: object
+    description: Intra-eln-service record of each state transition, must be committed
+      atomically with the state change itself including admin unlock
+    required: true
+  - name: OutboxEntry
+    type: object
+    description: Reliable delivery buffer in eln-service for audit records destined
+      for signature-audit, ensuring no silent loss on cross-service delivery with
+      retry and metric exposure
+    required: true
+evaluation_principles:
+- name: Regulatory invariant fidelity
+  description: State machine transitions, signature immutability, signed/locked freeze
+    scope, audit chain integrity, and self-sign prohibition are correctly enforced
+    with no bypass path across REST and WebSocket interfaces
+  weight: 0.35
+- name: Service boundary preservation
+  description: No service boundary is merged or crossed in violation; audit write
+    ownership stays in signature-audit, export stays in signature-audit, state transitions
+    stay in their owning services
+  weight: 0.2
+- name: Reverse brownfield discipline
+  description: No functionality absent from the codebase at commit 7012f7a is introduced;
+    corrections address only identified and re-verified defects; known gaps are documented
+    not filled
+  weight: 0.2
+- name: Verification completeness
+  description: Every corrected defect has automated test coverage on regulatory critical
+    paths; CI configuration causes pipeline failure on any test failure; verification
+    routines recompute from stored data not just check relationships
+  weight: 0.15
+- name: Existing strength preservation
+  description: Password re-confirmation before signing, self-sign prohibition, signer
+    role restriction to reviewer/admin/team_leader, audit log ipAddress capture, soft
+    delete, event-based search indexing with consumer group recovery, and eventual
+    consistency for note status projection are preserved intact
+  weight: 0.1
+exit_conditions:
+- name: All acceptance criteria verified
+  description: Every one of the 12 acceptance criteria passes its verification check
+    or artifact existence requirement
+  criteria: All verify commands exit 0 and print expected output where specified;
+    all NONE-verify criteria confirmed by code review or test passage
+- name: PM-stage defects re-verified
+  description: Each defect item carried from the PM stage has been confirmed to still
+    exist at commit 7012f7a before any correction was applied
+  criteria: Re-verification log documents each defect with file path and line evidence
+    at 7012f7a; any defect found already resolved is skipped and documented as resolved-at-HEAD
+- name: No service boundary violation
+  description: No service has absorbed another service responsibility and no schema
+    is shared across service databases
+  criteria: Audit writes exist only in signature-audit; export generation exists only
+    in signature-audit; each service Prisma schema connects to its own database
+- name: No feature invention
+  description: The diff contains no endpoints, UI pages, or data flows that did not
+    exist at commit 7012f7a except those strictly required by the 12 accepted defect
+    corrections
+  criteria: Diff review confirms all added code is traceable to a specific acceptance
+    criterion; addendum feature is documented as a gap not implemented
+- name: Known gaps documented
+  description: Absence of addendum/correction-note functionality is recorded with
+    the prescribed NoteLink-based direction and its dependency on signature content
+    binding
+  criteria: Documentation artifact records the gap, the future direction, and the
+    ordering dependency on signature hash content binding being complete first
+metadata:
+  seed_id: seed_778c4608b4c1
+  version: 1.0.0
+  created_at: '2026-08-15T17:46:45.127838Z'
+  ambiguity_score: 0.132
+  interview_id: interview_20260815_165042
+  parent_seed_id: null
+  generation_mode: normal
+  degraded: false
+  unresolved_slots: []
+  recovery_reason: null
