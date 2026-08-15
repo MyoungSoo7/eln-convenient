@@ -426,12 +426,19 @@ describe('getNotesBatch', () => {
  * ids 개수·타입 검증은 컨트롤러에서 라우트의 validate({ body: NotesBatchBodySchema })
  * 로 이동했다. 예전 테스트는 컨트롤러에 대고 이걸 검사했는데, 이제 컨트롤러까지
  * 오면 이미 통과한 입력이라 그 자리에선 검증할 수 없다. 로직이 있는 스키마에 댄다.
+ *
+ * 메시지 문자열은 검사하지 않는다. rd-team 머지로 서비스단 Zod 한글 메시지가
+ * 전부 걷혔고(에러 문구는 프론트 errorCodeMap 이 i18n 으로 붙인다), 여기서 한글을
+ * 기대하면 번역을 고칠 때마다 테스트가 깨진다. 계약은 문구가 아니라 제약조건이므로
+ * zod issue 의 code 와 path 를 본다.
  */
 describe('입력 검증 스키마 (컨트롤러에서 라우트로 이동한 계약)', () => {
   test('ids가 빈 배열이면 거부한다', () => {
     const r = NotesBatchBodySchema.safeParse({ ids: [] });
     expect(r.success).toBe(false);
-    expect(JSON.stringify(r)).toContain('ids는 문자열 배열이어야 합니다.');
+    expect(r.error!.issues).toEqual([
+      expect.objectContaining({ code: 'too_small', minimum: 1, path: ['ids'] }),
+    ]);
   });
 
   test('ids 요소가 문자열이 아니면 거부한다', () => {
@@ -441,7 +448,9 @@ describe('입력 검증 스키마 (컨트롤러에서 라우트로 이동한 계
   test('ids가 500개 초과면 거부한다', () => {
     const r = NotesBatchBodySchema.safeParse({ ids: Array(501).fill('uuid') });
     expect(r.success).toBe(false);
-    expect(JSON.stringify(r)).toContain('ids는 최대 500개까지 허용됩니다.');
+    expect(r.error!.issues).toEqual([
+      expect.objectContaining({ code: 'too_big', maximum: 500, path: ['ids'] }),
+    ]);
   });
 
   test('ids가 정확히 500개면 통과한다 (경계값)', () => {
