@@ -2,6 +2,9 @@
  * 예약 상태 전환 테스트
  */
 
+// vitest.config.ts 가 globals: false 이므로 명시적으로 가져와야 한다.
+import { describe, it, expect } from 'vitest';
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
   PENDING:   ['APPROVED', 'REJECTED', 'CANCELLED'],
   APPROVED:  ['COMPLETED', 'CANCELLED'],
