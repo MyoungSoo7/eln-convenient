@@ -5,6 +5,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import prismaPlugin from './plugins/prisma';
 import prisma from './lib/prisma';
 import noteRoutes from './routes/note.routes';
+import noteInternalRoutes from './routes/note-internal.routes';
 import templateRoutes from './routes/template.routes';
 import codeRoutes from './routes/code.routes';
 import { buildFastifyErrorHandler, createLogger } from '@lab/shared';
@@ -58,6 +59,9 @@ export function buildApp(logger?: boolean): FastifyInstance {
   });
 
   // ── 라우트 ──────────────────────────────────────────────
+  // 내부 전용 라우트는 note.routes의 requireAuth 훅과 분리된 scope에 먼저 등록
+  // (Fastify는 먼저 등록된 정적 경로를 우선 매칭)
+  app.register(noteInternalRoutes, { prefix: '/api' });
   app.register(noteRoutes, { prefix: '/api' });
   app.register(templateRoutes, { prefix: '/api/templates' });
   app.register(codeRoutes, { prefix: '/api/codes' });

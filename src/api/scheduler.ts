@@ -45,6 +45,7 @@ export interface ListBookingsParams {
   to?: string;
   page?: number;
   limit?: number;
+  order?: 'asc' | 'desc';
 }
 
 export interface ListBookingsResponse {
@@ -63,6 +64,7 @@ export async function listBookings(params?: ListBookingsParams): Promise<ApiResp
     if (params?.to) query.to = params.to;
     if (params?.page != null) query.page = String(params.page);
     if (params?.limit != null) query.limit = String(params.limit);
+    if (params?.order) query.order = params.order;
     const res = await apiClient.get<BackendBooking[]>('/scheduler/bookings', Object.keys(query).length ? query : undefined);
     return res as ApiResponse<BackendBooking[]> & { total?: number; page?: number; limit?: number };
   } catch {

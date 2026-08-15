@@ -103,17 +103,30 @@ export function requireOwnerOrAdminFastify<T extends Record<string, unknown>>(
   };
 }
 
-/** 내부 서비스 간 호출 전용 — x-internal-secret 헤더 검증 */
+/**
+ * 내부 서비스 간 호출 전용 — x-internal-secret 헤더 검증.
+ *
+ * 무중단 시크릿 회전을 위한 dual-secret 지원:
+ *   INTERNAL_SECRET           = 신규 시크릿 (필수)
+ *   INTERNAL_SECRET_PREVIOUS  = 직전 시크릿 (선택, 회전 진행 중에만 설정)
+ *
+ * 회전 절차:
+ *   1) 모든 서비스에 INTERNAL_SECRET_PREVIOUS=<현재값>, INTERNAL_SECRET=<신규> 동시 배포
+ *   2) 일정 시간 경과(전 서비스가 신규 값으로 호출 전환됨) 후 INTERNAL_SECRET_PREVIOUS 제거
+ */
 export async function requireInternalSecretFastify(
   request: MinimalRequest,
   reply: MinimalReply,
 ): Promise<void> {
   const expected = process.env.INTERNAL_SECRET;
+  const expectedPrev = process.env.INTERNAL_SECRET_PREVIOUS;
   if (!expected) {
     reply.code(404).send({ ok: false, error: 'Not Found', code: ErrorCode.NOT_FOUND });
     return;
   }
-  if (request.headers['x-internal-secret'] !== expected) {
+  const provided = request.headers['x-internal-secret'];
+  const ok = provided === expected || (expectedPrev != null && expectedPrev !== '' && provided === expectedPrev);
+  if (!ok) {
     reply.code(401).send({ ok: false, error: '내부 요청 인증 실패', code: ErrorCode.INTERNAL_AUTH_FAILED });
     return;
   }

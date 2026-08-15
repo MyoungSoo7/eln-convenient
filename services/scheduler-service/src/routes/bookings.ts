@@ -42,6 +42,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
           to:         { type: 'string' },
           page:       { type: 'string' },
           limit:      { type: 'string' },
+          order:      { type: 'string', enum: ['asc', 'desc'] },
         },
       },
     },
@@ -51,6 +52,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
     const page  = Math.max(1, parseInt(q.page  ?? '1'));
     const limit = Math.min(100, parseInt(q.limit ?? '20'));
     const skip  = (page - 1) * limit;
+    const order: 'asc' | 'desc' = q.order === 'desc' ? 'desc' : 'asc';
 
     const where: Record<string, unknown> = { orgId };
     if (q.resourceId) where.resourceId = q.resourceId;
@@ -67,7 +69,7 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       fastify.prisma.booking.findMany({
         where,
         include: { resource: true },
-        orderBy: { startAt: 'asc' },
+        orderBy: { startAt: order },
         skip,
         take: limit,
       }),
@@ -162,6 +164,10 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
 
     const startAt = parseDate(body.startAt);
     const endAt   = parseDate(body.endAt);
+
+    if (startAt <= new Date()) {
+      throw new AppError(400, '과거 시간에는 예약할 수 없습니다.', ErrorCode.BOOKING_PAST_DATE);
+    }
 
     if (endAt <= startAt) {
       throw new AppError(400, 'endAt은 startAt보다 이후여야 합니다.', ErrorCode.BOOKING_INVALID_DATE);
@@ -308,16 +314,18 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
         });
       }, { timeout: 5000 });
 
-      // 예약 승인 알림: 예약자에게 알림
+      // 예약 승인 알림: 예약자에게 알림 (재시도 + 멱등키)
       if (booking.userId && booking.userId !== approvedBy) {
         callNotification({
           recipientId: booking.userId,
+          orgId,
           type: 'BOOKING_APPROVED',
           entityType: 'booking',
           entityId: booking.id,
           title: '장비 예약이 승인되었습니다',
           message: `'${booking.resource?.name ?? ''}' 예약이 승인되었습니다.`,
           actorId: approvedBy,
+          idempotencyKey: `booking-${booking.id}-approved`,
         }).catch((err: any) => {
           request.log.error({ err: err.message, bookingId: booking.id }, '[NOTIFICATION_WARN] 승인 알림 실패');
         });
@@ -340,7 +348,8 @@ const bookingsRoute: FastifyPluginAsync = async (fastify) => {
       tags: ['bookings'],
       body: {
         type: 'object',
-        properties: { reason: { type: 'string', maxLength: 500 } },
+        required: ['reason'],
+        properties: { reason: { type: 'string', minLength: 1, maxLength: 500 } },
       },
     },
   }, async (request, reply) => {

@@ -15,7 +15,7 @@ export type LoginDto = z.infer<typeof LoginSchema>;
 export const RegisterSchema = z.object({
   name: z.string().min(1),
   email: z.string().min(1),
-  password: z.string().min(1),
+  password: z.string().min(8, '비밀번호는 최소 8자 이상이어야 합니다.'),
   orgId: z.string().optional(),
   teamId: z.string().optional(),
 });
@@ -25,7 +25,7 @@ export type RegisterDto = z.infer<typeof RegisterSchema>;
 export const CreateUserSchema = z.object({
   email: z.string().min(1),
   name: z.string().min(1),
-  password: z.string().min(1),
+  password: z.string().min(8, '비밀번호는 최소 8자 이상이어야 합니다.'),
   orgId: z.string().optional(),
   roleId: z.string().optional(),
 });
@@ -84,7 +84,7 @@ export type UpdatePermissionsDto = z.infer<typeof UpdatePermissionsSchema>;
 // ─── 비밀번호 변경/초기화 ────────────────────────────
 export const ChangeMyPasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(4),
+  newPassword: z.string().min(8, '비밀번호는 최소 8자 이상이어야 합니다.'),
 });
 export type ChangeMyPasswordDto = z.infer<typeof ChangeMyPasswordSchema>;
 

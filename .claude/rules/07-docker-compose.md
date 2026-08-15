@@ -15,6 +15,7 @@ globs: services/docker-compose.yml, services/Dockerfile*, services/**/Dockerfile
 | inventory-service | 8004 |
 | scheduler-service | 8005 |
 | search-service | 8006 |
+| ai-assistant-service | 8007 |
 | file-service | 8008 |
 | collab-service (ws) | 8009 |
 

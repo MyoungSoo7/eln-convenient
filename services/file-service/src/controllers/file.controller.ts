@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { AppError, ErrorCode, createLogger, getOrgId } from '@lab/shared';
 import prisma from '../lib/prisma';
 import {
@@ -86,6 +87,10 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
     throw new AppError(400, `실행 파일 업로드가 차단되었습니다: ${executableType}`, ErrorCode.FILE_BLOCKED_MIME);
   }
 
+  // eln 쪽이 도입한 무결성 해시. prisma 스키마의 checksumSha256 컬럼은 양쪽 브랜치에
+  // 다 있는데 eln-without-ai 는 채우는 코드를 잃어버려 컬럼이 비어 있었다.
+  const checksum = createHash('sha256').update(buffer).digest('hex');
+
   const fileId = uuidv4();
   const ext = originalName.includes('.') ? originalName.split('.').pop() : '';
   const key = `${fileId}${ext ? '.' + ext : ''}`;
@@ -122,6 +127,7 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
         originalName,
         mimeType: mimetype,
         sizeBytes: BigInt(fileSize),
+        checksumSha256: checksum,
         uploaderId: uploadedBy,
         orgId: getOrgId(request.headers),
         refType: linkedEntityType,
@@ -146,6 +152,7 @@ export async function uploadFile(request: FastifyRequest, reply: FastifyReply) {
       originalName,
       mimeType: mimetype,
       sizeBytes: fileSize,
+      checksumSha256: checksum,
       storagePath: `${BUCKET}/${key}`,
       uploadedBy,
       refType: linkedEntityType,
@@ -164,8 +171,13 @@ export async function getPresignedUpload(request: FastifyRequest, reply: Fastify
     throw new AppError(400, `허용되지 않는 파일 형식입니다: ${mimeType}`, ErrorCode.FILE_BLOCKED_MIME);
   }
 
-  const fileId = uuidv4();
   const fn = filename as string;
+  const presignedExt = fn.includes('.') ? fn.split('.').pop()!.toLowerCase() : '';
+  if (BLOCKED_EXTENSIONS.has(presignedExt)) {
+    throw new AppError(400, `허용되지 않는 파일 확장자입니다: .${presignedExt}`, ErrorCode.FILE_BLOCKED_MIME);
+  }
+
+  const fileId = uuidv4();
   const ext = fn.includes('.') ? fn.split('.').pop() : '';
   const key = `${fileId}${ext ? '.' + ext : ''}`;
 
@@ -284,6 +296,7 @@ export async function getFileMeta(request: FastifyRequest, reply: FastifyReply) 
           originalName: file.originalName,
           mimeType: file.mimeType,
           sizeBytes: file.sizeBytes ? Number(file.sizeBytes) : null,
+          checksumSha256: file.checksumSha256 ?? null,
           storagePath: `${file.bucket}/${file.objectKey}`,
           uploadedBy: file.uploaderId,
           refType: file.refType,

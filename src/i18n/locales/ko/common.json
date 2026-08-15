@@ -70,11 +70,33 @@
   "notification": {
     "title": "알림",
     "markAllRead": "모두 읽음",
+    "markAllReadDone": "모두 읽음 처리됨",
+    "markAllReadDesc": "{{count}}건의 알림을 읽음으로 처리했습니다.",
     "empty": "알림이 없습니다",
     "noteLocked": "잠금",
     "noteSigned": "서명",
     "noteUnlocked": "잠금 해제",
-    "bookingApproved": "예약 승인"
+    "bookingApproved": "예약 승인",
+    "viewAll": "전체 보기",
+    "pageTitle": "알림 전체보기",
+    "pageTooltip": "받은 모든 알림을 확인합니다. 읽음 상태와 유형별로 필터링할 수 있습니다.",
+    "pageSubtitle": "노트 잠금, 서명, 잠금 해제, 예약 승인 알림을 한눈에 확인하세요.",
+    "filters": "필터",
+    "readStatus": "읽음 상태",
+    "typeStatus": "알림 유형",
+    "listTitle": "알림 목록",
+    "pageInfo": "페이지 {{page}} · {{count}}건 표시",
+    "filter": {
+      "all": "전체",
+      "unread": "안 읽음",
+      "read": "읽음"
+    },
+    "badge": {
+      "new": "NEW",
+      "read": "읽음"
+    },
+    "markAsRead": "읽음 처리",
+    "goToSource": "관련 페이지로 이동"
   },
   "time": {
     "justNow": "방금 전",

@@ -88,6 +88,8 @@ export const CreateNotificationInternalSchema = z.object({
   message: z.string().min(1, 'message is required'),
   actorId: z.string().min(1, 'actorId is required'),
   actorName: z.string().optional(),
+  orgId: z.string().min(1, 'orgId is required'),
+  idempotencyKey: z.string().min(1).optional(),
 });
 
 // ── Compliance schemas ──

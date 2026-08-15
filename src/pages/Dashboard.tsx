@@ -111,10 +111,10 @@ export default function Dashboard() {
   const alertsError = !currentLoading && apiData !== null && (apiData?.lowStockItems === null && apiData?.expiringItems === null);
 
   const stats = [
-    { label: t('stats.notes'), value: String(noteTotal), change: t('stats.notesChange'), icon: FileText, color: "text-primary", help: t('stats.notesTooltip'), hasError: notesError },
-    { label: t('stats.experiments'), value: String(noteInProgress), change: t('stats.experimentsChange'), icon: FlaskConical, color: "text-secondary", help: t('stats.experimentsTooltip'), hasError: notesError },
-    { label: t('stats.inventory'), value: String(invTotal), change: t('stats.inventoryChange'), icon: Package, color: "text-warning", help: t('stats.inventoryTooltip'), hasError: inventoryError },
-    { label: t('stats.bookings'), value: String(pendingBookings), change: t('stats.bookingsChange'), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip'), hasError: schedulerError },
+    { label: t('stats.notes'), value: String(noteTotal), icon: FileText, color: "text-primary", help: t('stats.notesTooltip'), hasError: notesError },
+    { label: t('stats.experiments'), value: String(noteInProgress), icon: FlaskConical, color: "text-secondary", help: t('stats.experimentsTooltip'), hasError: notesError },
+    { label: t('stats.inventory'), value: String(invTotal), icon: Package, color: "text-warning", help: t('stats.inventoryTooltip'), hasError: inventoryError },
+    { label: t('stats.bookings'), value: String(pendingBookings), icon: CalendarDays, color: "text-info", help: t('stats.bookingsTooltip'), hasError: schedulerError },
   ];
 
   // 최근 노트
@@ -197,7 +197,6 @@ export default function Dashboard() {
                       <HelpTooltip text={s.help} side="right" />
                     </p>
                     <p className="text-2xl font-bold mt-1">{s.value}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{s.change}</p>
                   </div>
                   <div className={`p-2 rounded-lg bg-muted ${s.color}`}>
                     <s.icon className="h-5 w-5" />

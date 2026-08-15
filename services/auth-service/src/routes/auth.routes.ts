@@ -13,7 +13,6 @@ import {
 const authRoutes: FastifyPluginAsync = async (app) => {
   // ─── 공개 (인증 불필요) ───────────────────────────
   app.post('/login', { preHandler: [validate({ body: LoginSchema })] }, ctrl.login);
-  app.post('/register', { preHandler: [validate({ body: RegisterSchema })] }, ctrl.register);
 
   // ─── 내부 서비스 전용 (x-internal-secret 필수) ───
   app.post('/internal/verify-password', { preHandler: [requireInternalSecret, validate({ body: VerifyPasswordSchema })] }, ctrl.verifyPassword);
@@ -49,6 +48,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
 
     // 사용자
     authed.get('/users', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.getUsers);
+    authed.post('/register', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: RegisterSchema })] }, ctrl.register);
     authed.post('/users', { preHandler: [requireRole(RoleName.ADMIN), validate({ body: CreateUserSchema })] }, ctrl.createUser);
     authed.put('/users/:id', { preHandler: [requireRole(RoleName.ADMIN), validate({ params: UuidParamsSchema, body: UpdateUserSchema })] }, ctrl.updateUser);
     authed.delete('/users/:id', { preHandler: [requireRole(RoleName.ADMIN)] }, ctrl.deleteUser);

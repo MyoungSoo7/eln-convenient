@@ -1,0 +1,53 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["research"]
+}
+
+// ─────────────────────────────────────────────────────────────
+// FineTuneJob — LoRA/QLoRA 파인튜닝 잡 상태 관리
+// ─────────────────────────────────────────────────────────────
+
+model FineTuneJob {
+  id             String    @id @default(uuid())
+  name           String    // "gemma4-26b-lora-eln-v1"
+  baseModel      String    // "google/gemma-4-26B-A4B-it"
+  method         String    // "lora" | "qlora" | "full"
+  datasetUri     String    // minio://research-datasets/eln-train-v1.jsonl
+  datasetRows    Int?
+  outputModelUri String?   // minio://research-models/... (완료 후)
+
+  // 학습 하이퍼파라미터
+  config         Json      // { rank, alpha, lr, epochs, batch_size, ... }
+
+  // GPU 리소스
+  gpuType        String?   // "L40S", "A100", "H100"
+  gpuCount       Int       @default(1)
+
+  // 상태 관리
+  status         String    @default("queued") // queued | preparing | training | uploading | completed | failed | cancelled
+  progress       Float     @default(0)        // 0.0 ~ 1.0
+  errorMsg       String?
+  bullmqJobId    String?   // BullMQ 잡 ID
+
+  // MLflow 연동
+  mlflowRunId    String?
+
+  // 타임스탬프
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdBy      String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([baseModel])
+  @@map("fine_tune_jobs")
+  @@schema("research")
+}

@@ -20,6 +20,7 @@ const PROXY_TABLE: Record<string, string> = {
   '/api/inventory':  process.env.INVENTORY_SERVICE_URL  || 'http://inventory-service:8004',
   '/api/scheduler':  process.env.SCHEDULER_SERVICE_URL  || 'http://scheduler-service:8005',
   '/api/search':     process.env.SEARCH_SERVICE_URL     || 'http://search-service:8006',
+  '/api/ai':         process.env.AI_SERVICE_URL         || 'http://ai-assistant-service:8007',
   '/api/files':      process.env.FILE_SERVICE_URL       || 'http://file-service:8008',
   '/api/exports':    process.env.FILE_SERVICE_URL       || 'http://file-service:8008',
 };
@@ -33,6 +34,7 @@ const ENDPOINT_RATE_LIMITS: Array<{ prefix: string; max: number; windowSec: numb
   { prefix: '/api/search',  max: 60,  windowSec: 60 },   // OpenSearch 부하 제한
   { prefix: '/api/auth',    max: 20,  windowSec: 60 },   // 로그인 brute-force 방지
   { prefix: '/api/files',   max: 30,  windowSec: 60 },   // 파일 업로드 제한
+  { prefix: '/api/gemma',   max: 30,  windowSec: 60 },   // LLM 호출은 GPU/토큰 비용 큼
 ];
 
 /** 엔드포인트별 세분화 Rate Limit 훅 (Redis sliding window) */
@@ -64,6 +66,16 @@ export async function registerProxies(app: FastifyInstance) {
   // 엔드포인트별 rate limit 훅 등록
   app.addHook('onRequest', endpointRateLimitHook);
 
+  // WebSocket 프록시 — collab-service (자체 JWT 검증)
+  const collabUpstream = process.env.COLLAB_SERVICE_URL || 'http://collab-service:8009';
+  await app.register(httpProxy, {
+    upstream: collabUpstream,
+    prefix: '/collab',
+    rewritePrefix: '/collab',
+    websocket: true,
+    http2: false,
+  });
+
   for (const [prefix, upstream] of Object.entries(PROXY_TABLE)) {
     await app.register(httpProxy, {
       upstream,
@@ -73,5 +85,19 @@ export async function registerProxies(app: FastifyInstance) {
     });
   }
 
-  app.log.info('프록시 라우팅 등록 완료: %o', Object.keys(PROXY_TABLE));
+  // Gemma Gateway — Gemma 4 연구 라우터 (OpenAI 호환 /v1)
+  // /api/gemma/v1/chat/completions → http://gemma-gateway:8010/v1/chat/completions
+  // prefix를 떼어내서 백엔드에 그대로 /v1, /health, /_routing 노출.
+  if (process.env.ENABLE_GEMMA_GATEWAY === 'true') {
+    const gemmaUpstream = process.env.GEMMA_GATEWAY_URL || 'http://gemma-gateway:8010';
+    await app.register(httpProxy, {
+      upstream: gemmaUpstream,
+      prefix: '/api/gemma',
+      rewritePrefix: '', // 핵심: prefix 제거 → 백엔드는 /v1/... 형태로 받음
+      http2: false,
+    });
+    app.log.info({ upstream: gemmaUpstream }, '[gemma-gateway] 프록시 등록 완료');
+  }
+
+  app.log.info('프록시 라우팅 등록 완료: %o', ['/collab (ws)', ...Object.keys(PROXY_TABLE)]);
 }

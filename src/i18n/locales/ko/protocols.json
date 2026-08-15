@@ -21,6 +21,13 @@
   "deleteDesc": "\"{{title}}\" 템플릿을 삭제합니다. 삭제 후 복구할 수 없으며, 이 템플릿으로 만든 노트는 유지됩니다.",
   "deleteSuccess": "\"{{title}}\" 템플릿이 삭제되었습니다.",
   "deleteFailed": "템플릿 삭제에 실패했습니다.",
+  "allCategories": "전체",
+  "sortLatest": "최신순",
+  "sortPopular": "인기순",
+  "sortName": "이름순",
+  "pageInfo": "{{total}}개 중 {{from}}-{{to}}",
+  "prevPage": "이전",
+  "nextPage": "다음",
   "dialog": {
     "createTitle": "새 템플릿 생성",
     "editTitle": "템플릿 수정",

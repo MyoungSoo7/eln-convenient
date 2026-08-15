@@ -7,7 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { AdminRoute } from "@/components/AdminRoute";
+import { AdminRoute, RoleRoute } from "@/components/AdminRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 
@@ -21,6 +21,7 @@ const SearchPage = lazy(() => import("./pages/SearchPage"));
 const SignaturesPage = lazy(() => import("./pages/SignaturesPage"));
 const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
 const ExportsPage = lazy(() => import("./pages/ExportsPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const OrgTeamUserPage = lazy(() => import("./pages/admin/OrgTeamUserPage"));
 const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
@@ -64,9 +65,10 @@ const App = () => (
                       <Route path="/inventory" element={<InventoryPage />} />
                       <Route path="/scheduler" element={<SchedulerPage />} />
                       <Route path="/search" element={<SearchPage />} />
-                      <Route path="/signatures" element={<SignaturesPage />} />
-                      <Route path="/audit-logs" element={<AuditLogsPage />} />
-                      <Route path="/exports" element={<ExportsPage />} />
+                      <Route path="/signatures" element={<RoleRoute roles={['admin', 'reviewer']}><SignaturesPage /></RoleRoute>} />
+                      <Route path="/audit-logs" element={<AdminRoute><AuditLogsPage /></AdminRoute>} />
+                      <Route path="/exports" element={<RoleRoute roles={['admin', 'reviewer']}><ExportsPage /></RoleRoute>} />
+                      <Route path="/notifications" element={<NotificationsPage />} />
                       <Route path="/admin/users" element={<AdminRoute><OrgTeamUserPage /></AdminRoute>} />
                       <Route path="/admin/roles" element={<AdminRoute><RolesPage /></AdminRoute>} />
                       <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />

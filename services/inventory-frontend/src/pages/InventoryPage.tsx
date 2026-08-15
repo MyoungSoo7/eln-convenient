@@ -95,7 +95,7 @@ export default function InventoryPage() {
       <header className="page-header">
         <div className="page-header-left">
           <h1>인벤토리 관리</h1>
-          <span className="page-subtitle">시약 · 샘플 · 장비 · 소모품</span>
+          <span className="page-subtitle">자원 · 장비 · 자산 · 소모품</span>
         </div>
         <button className="btn-add" onClick={() => setShowModal(true)}>
           <span>+</span> 항목 추가

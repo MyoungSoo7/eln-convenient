@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 import redis from '../lib/redis';
 
 // 공개 경로 (인증 불필요)
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/session'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/session', '/collab'];
 
 // 내부 전용 경로 (외부 접근 차단 — 서비스 간 직접 통신으로만 접근 가능)
 // URL 경로에 /internal 세그먼트가 포함되면 일괄 차단 → 새 internal 엔드포인트 추가 시 수정 불필요
@@ -62,11 +62,14 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply) {
 
   const authHeader = request.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  // SSE 등 EventSource는 커스텀 헤더를 보낼 수 없으므로 쿼리파라미터 토큰도 허용
+  const queryToken = path.startsWith('/api/events/') ? (request.query as any)?.token as string | undefined : undefined;
+
+  if (!authHeader?.startsWith('Bearer ') && !queryToken) {
     return reply.status(401).send({ ok: false, error: '인증이 필요합니다.' });
   }
 
-  const token = authHeader.replace('Bearer ', '');
+  const token = queryToken || authHeader!.replace('Bearer ', '');
 
   // Redis 블랙리스트 확인
   if (redis) {

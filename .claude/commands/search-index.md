@@ -13,7 +13,7 @@ OpenSearch 인덱스를 관리하고 검색 품질을 점검한다.
 | 인덱스 | 용도 | 주요 필드 |
 |--------|------|----------|
 | notes | 연구노트/프로토콜 검색 | title, content, author, orgId, type, status, tags |
-| inventory | 시약/장비 검색 | name, category, location, orgId, barcode |
+| inventory | 자원/장비/자산 검색 | name, category, location, orgId, barcode |
 
 ### 분석기 설정
 - `nori_analyzer`: 한국어 형태소 분석 (nori 플러그인)

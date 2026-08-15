@@ -215,6 +215,23 @@ export async function copyTemplate(request: FastifyRequest, reply: FastifyReply)
     }),
   ]);
 
+  // 복사본도 검색 인덱스에 등록 (기존 createTemplate와 동일 payload)
+  searchClient.index({
+    id: copied.id,
+    doc: {
+      domainType: 'TEMPLATE',
+      title: copied.title,
+      content: copied.content,
+      summary: copied.description,
+      tags: copied.tags,
+      ownerId: copied.createdBy,
+      visibility: copied.isPublic ? 'public' : 'private',
+      docStatus: 'active',
+      createdAt: copied.createdAt.toISOString(),
+      updatedAt: copied.updatedAt.toISOString(),
+    },
+  });
+
   reply.code(201);
   return { ok: true, data: copied, originalId: original.id };
 }

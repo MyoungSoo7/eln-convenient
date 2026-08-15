@@ -21,7 +21,11 @@ export async function listNotifications(request: FastifyRequest, reply: FastifyR
 
   const skip = (page - 1) * limit;
   const orgId = getOrgId(request.headers);
-  const where: Record<string, unknown> = { recipientId, orgId };
+  // orgId 매칭 OR 빈 orgId(legacy 호환)
+  const where: Record<string, unknown> = {
+    recipientId,
+    OR: [{ orgId }, { orgId: '' }],
+  };
   if (isRead === 'true') where.isRead = true;
   if (isRead === 'false') where.isRead = false;
 
@@ -52,7 +56,11 @@ export async function getUnreadCount(request: FastifyRequest, reply: FastifyRepl
   } catch { /* Redis 오류 무시 → DB 폴백 */ }
 
   const count = await prisma.notification.count({
-    where: { recipientId, isRead: false, orgId },
+    where: {
+      recipientId,
+      isRead: false,
+      OR: [{ orgId }, { orgId: '' }],
+    },
   });
 
   // Redis에 캐싱 (5분 TTL)
@@ -66,8 +74,15 @@ export async function markAsRead(request: FastifyRequest, reply: FastifyReply) {
   const recipientId = request.headers['x-user-id'] as string;
   const orgId = getOrgId(request.headers);
   const { id } = request.params as { id: string };
-  const notification = await prisma.notification.findFirst({ where: { id, orgId } });
-  if (!notification || notification.recipientId !== recipientId) {
+  // id + recipientId 매칭 (orgId는 legacy 데이터 호환 — recipientId로 이미 범위 제한됨)
+  const notification = await prisma.notification.findFirst({
+    where: {
+      id,
+      recipientId,
+      OR: [{ orgId }, { orgId: '' }],
+    },
+  });
+  if (!notification) {
     throw new AppError(404, '알림을 찾을 수 없습니다.', ErrorCode.NOTIFICATION_NOT_FOUND);
   }
   const updated = await prisma.notification.update({
@@ -90,8 +105,13 @@ export async function markAsRead(request: FastifyRequest, reply: FastifyReply) {
 export async function markAllAsRead(request: FastifyRequest, reply: FastifyReply) {
   const recipientId = request.headers['x-user-id'] as string;
   const orgId = getOrgId(request.headers);
+  // orgId 매칭 OR 빈 orgId(legacy/regression 데이터 호환) — 같은 recipient 범위이므로 안전
   const result = await prisma.notification.updateMany({
-    where: { recipientId, isRead: false, orgId },
+    where: {
+      recipientId,
+      isRead: false,
+      OR: [{ orgId }, { orgId: '' }],
+    },
     data: { isRead: true },
   });
 
@@ -107,7 +127,16 @@ export async function markAllAsRead(request: FastifyRequest, reply: FastifyReply
 
 /** POST /api/notifications/internal — 알림 생성 (requireInternalSecret 미들웨어로 보호) */
 export async function createNotificationInternal(request: FastifyRequest, reply: FastifyReply) {
-  const { recipientId, type, entityType, entityId, title, message, actorId, actorName, orgId } = request.body as any;
+  const { recipientId, type, entityType, entityId, title, message, actorId, actorName, orgId, idempotencyKey } = request.body as any;
+
+  // 멱등성: idempotencyKey가 주어진 경우 이미 존재하면 기존 레코드 반환 (재시도 중복 방지)
+  if (idempotencyKey) {
+    const existing = await prisma.notification.findUnique({ where: { idempotencyKey } });
+    if (existing) {
+      reply.code(200);
+      return { ok: true, data: { id: existing.id, duplicated: true } };
+    }
+  }
 
   const notification = await prisma.notification.create({
     data: {
@@ -121,7 +150,15 @@ export async function createNotificationInternal(request: FastifyRequest, reply:
       message,
       actorId,
       actorName: actorName ?? '',
+      idempotencyKey: idempotencyKey ?? null,
     },
+  }).catch(async (err: any) => {
+    // 동시 경쟁에서 같은 idempotencyKey로 INSERT 충돌 시 기존 레코드 반환
+    if (idempotencyKey && err?.code === 'P2002') {
+      const existing = await prisma.notification.findUnique({ where: { idempotencyKey } });
+      if (existing) return existing;
+    }
+    throw err;
   });
 
   // Redis: 미읽음 카운트 증가 (키가 존재하면 INCR, 없으면 무시 — 다음 조회 시 DB에서 재설정)
@@ -134,6 +171,7 @@ export async function createNotificationInternal(request: FastifyRequest, reply:
   try {
     redisConnection.publish(`notifications:${recipientId}`, JSON.stringify({
       id: notification.id, type, entityType, entityId, title, message, actorName: actorName ?? '',
+      orgId: orgId || '',
       createdAt: notification.createdAt,
     }));
   } catch { /* 무시 */ }

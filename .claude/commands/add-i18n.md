@@ -16,7 +16,7 @@ src/i18n/locales/
 │   ├── common.json        # 공통 (버튼, 라벨, 상태)
 │   ├── dashboard.json     # 대시보드
 │   ├── notes.json         # 연구노트
-│   ├── inventory.json     # 시약/장비
+│   ├── inventory.json     # 인벤토리(자원/장비/자산)
 │   ├── scheduler.json     # 예약
 │   ├── search.json        # 검색
 │   ├── settings.json      # 설정

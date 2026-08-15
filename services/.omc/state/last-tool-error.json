@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"npm run dev 2>&1 &; sleep 3 && echo \\\"Vite dev server started\\\"\",\"timeout\":15000,\"description\":\"Start Vite frontend dev server in background\"}",
+  "error": "Exit code 2\n/usr/bin/bash: eval: line 1: syntax error near unexpected token `;'\n/usr/bin/bash: eval: line 1: `npm run dev 2>&1 &; sleep 3 && echo \"Vite dev server started\"'",
+  "timestamp": "2026-04-13T05:03:13.554Z",
+  "retry_count": 1
+}

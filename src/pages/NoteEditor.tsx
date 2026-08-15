@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { getToken } from "@/lib/authToken";
+import { getToken, getStoredUser } from "@/lib/authToken";
 import {
   createNote, updateNote, getNote, changeNoteStatus,
   listAttachments, addAttachment, deleteAttachmentRecord,
@@ -72,12 +72,20 @@ export default function NoteEditor() {
   } | null;
 
   const isNew = id === "new";
+  const storedUser = getStoredUser();
+  const userRole = (storedUser?.role as string) ?? "";
 
   const buildProtocolContent = () => {
     if (!protocolState?.fromProtocol) return sectionTemplate;
     const category = protocolState.category || "";
     const title = protocolState.title || "";
     return t('sectionTemplateFromProtocol', { category, title });
+  };
+
+  const buildSectionsContent = (sections: Array<{ title?: string; content?: string; order?: number }>, tmplTitle: string) => {
+    const sorted = [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const body = sorted.map((s) => `## ${s.title || ''}\n${s.content || ''}`).join('\n\n');
+    return `${body}\n\n---\n> 📋 템플릿 "${tmplTitle}" 기반으로 생성됨`;
   };
 
   const [content, setContent] = useState(buildProtocolContent());
@@ -100,7 +108,7 @@ export default function NoteEditor() {
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
   const BLOCKED_EXTENSIONS = ['exe', 'sh', 'bat'];
 
-  // 시약/장비 연결
+  // 인벤토리 항목 연결
   const [links, setLinks] = useState<NoteLink[]>([]);
   const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
   const [inventorySearch, setInventorySearch] = useState("");
@@ -129,6 +137,21 @@ export default function NoteEditor() {
   const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'reconnecting' | 'failed'>('disconnected');
 
   const isLocked = noteStatus === "signed" || noteStatus === "locked";
+
+  // 새 노트 생성 시 템플릿 sections 로드
+  useEffect(() => {
+    if (!isNew || !protocolState?.fromProtocol || !protocolState?.protocolId) return;
+    getTemplate(protocolState.protocolId).then((res) => {
+      if (res.ok) {
+        const tmpl = res.data;
+        setTemplateTitle(tmpl.title);
+        const sections = tmpl.sections as Array<{ title?: string; content?: string; order?: number }> | undefined;
+        if (sections && sections.length > 0) {
+          setContent(buildSectionsContent(sections, tmpl.title));
+        }
+      }
+    });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 기존 노트 데이터 로드 (제목·내용·상태·첨부파일·링크 병렬)
   useEffect(() => {
@@ -163,8 +186,8 @@ export default function NoteEditor() {
     const MAX_RETRIES = 5;
 
     function connectWs() {
-      const base = (import.meta.env.VITE_COLLAB_URL as string | undefined) ?? 'ws://localhost:8009';
-      const ws = new WebSocket(`${base}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
+      const wsBase = `ws://${window.location.host}`;
+      const ws = new WebSocket(`${wsBase}/collab/notes/${id}?token=${encodeURIComponent(token)}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -460,7 +483,7 @@ export default function NoteEditor() {
                 {t('editor.startProgress')}
               </Button>
             )}
-            {!isNew && noteStatus === "in_progress" && (
+            {!isNew && noteStatus === "in_progress" && userRole !== "researcher" && (
               <Dialog open={signDialogOpen} onOpenChange={(open) => { setSignDialogOpen(open); if (!open) setSignPassword(""); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 gradient-primary text-primary-foreground">

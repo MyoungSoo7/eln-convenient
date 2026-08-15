@@ -690,7 +690,11 @@ export async function deleteTeam(request: FastifyRequest, reply: FastifyReply) {
     const actorId = request.headers['x-user-id'] as string;
     const target = await prisma.team.findUnique({ where: { id } });
 
-    await prisma.teamMember.deleteMany({ where: { teamId: id } });
+    const memberCount = await prisma.teamMember.count({ where: { teamId: id } });
+    if (memberCount > 0) {
+      throw new AppError(400, `팀에 소속된 멤버(${memberCount}명)가 있어 삭제할 수 없습니다. 먼저 멤버를 제거해 주세요.`, ErrorCode.AUTH_TEAM_HAS_MEMBERS);
+    }
+
     await prisma.team.delete({ where: { id } });
 
     if (target) {

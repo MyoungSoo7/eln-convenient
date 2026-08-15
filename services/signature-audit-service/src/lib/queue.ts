@@ -29,6 +29,36 @@ export interface ExportJobPayload {
   orgId: string;    // 워커→ELN 호출 시 x-user-org-id 헤더용
 }
 
+// ── 알림 큐 (at-least-once 보장) ──
+
+/**
+ * 알림 발송 큐.
+ * 서명 완료 같은 중요 알림은 DB 쓰기 + Redis pub/sub을 워커로 넘겨
+ * 일시적 장애 시 자동 재시도(3회, 지수 백오프)로 유실 방지.
+ */
+export const notificationQueue = new Queue('labnote-notification', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 2000 }, // 2s → 4s → 8s
+    removeOnComplete: 200,
+    removeOnFail: 100,
+  },
+});
+
+export interface NotificationJobPayload {
+  recipientId: string;
+  orgId: string;
+  type: 'NOTE_LOCKED' | 'NOTE_SIGNED' | 'NOTE_UNLOCKED' | 'BOOKING_APPROVED';
+  entityType: string;
+  entityId: string;
+  title: string;
+  message: string;
+  actorId: string;
+  actorName?: string;
+  idempotencyKey?: string; // 중복 INSERT 방지용
+}
+
 // ── 이벤트 버스 (Redis Streams) ──
 
 /** 이벤트 스트림 이름 */

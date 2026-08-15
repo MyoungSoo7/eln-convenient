@@ -1,23 +1,27 @@
 # CLAUDE.md — LabNote ELN 프로젝트 지시서
 
+> **프로젝트 현황은 [STATUS.md](./STATUS.md)를 참고** — 서비스 목록, 포트, 컨테이너 상태, 최근 커밋 등이 자동 갱신됨.
+> STATUS.md는 `.claude/hooks/update-status.sh`가 `docker-compose.yml`, `package.json`, `schema.prisma` 변경 시 PostToolUse 훅으로 자동 갱신한다. 수동 실행: `bash .claude/hooks/update-status.sh`
+
 ## 프로젝트 개요
 
 사내 구축형 전자연구노트(ELN) 협업 플랫폼. 온프레미스 Docker Compose 배포 기반 MSA 아키텍처.
 
 ```
-┌──────────────────────────────────────────────────┐
-│              api-gateway (Fastify :8000)          │
-└──┬──────┬──────┬──────┬──────┬──────┬──────┬─────┘
-   │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  file  collab
- :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009(ws)
+┌───────────────────────────────────────────────────────────┐
+│                 api-gateway (Fastify :8000)                │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬───────┘
+   │      │      │      │      │      │      │      │
+ auth   eln   sig/aud  inv   sched  search   ai   file  collab
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008  :8009(ws)
 ```
 
 ## 기술 스택
 
 - **프론트엔드**: React + Vite + TypeScript, shadcn/ui, TanStack Query, react-i18next (ko/en)
-- **백엔드**: Fastify (전 서비스 통일), Prisma ORM, TypeScript
-- **인프라**: PostgreSQL 15, Redis 7, MinIO (S3 호환), OpenSearch 2, Keycloak 24 (선택)
+- **백엔드**: Fastify (전 서비스 통일), Prisma ORM, TypeScript — 단, ai-assistant-service만 Express
+- **인프라**: PostgreSQL 15, Redis 7, MinIO (S3 호환), OpenSearch 2, Qdrant (벡터 DB), Keycloak 24 (선택, 현재 미배포)
+- **AI**: OpenAI API (gpt-4o-mini), Qdrant 벡터 임베딩, RAG 파이프라인
 - **공용 패키지**: `@lab/shared` (services/shared/) — 에러, 로거(Pino), 권한, Zod 검증, 미들웨어
 - **모니터링**: Jaeger (OpenTelemetry 트레이싱), Dozzle (로그 뷰어)
 
@@ -38,13 +42,13 @@ services/
 ├── auth-service/             # Fastify — 조직/팀/사용자 CRUD, RBAC, JWT 발급, SSO 훅
 ├── eln-service/              # Fastify — 연구노트/프로토콜/템플릿 CRUD, 버전관리, 상태 흐름
 ├── signature-audit-service/  # Fastify — 전자서명(해시체인), 감사로그, PDF/ZIP 변환(Puppeteer+BullMQ), 알림
-├── inventory-service/        # Fastify — 시약/샘플/장비 CRUD, 바코드, 수량관리, 알림
+├── inventory-service/        # Fastify — 자원/장비/자산 CRUD, 바코드, 수량관리, 알림
 ├── scheduler-service/        # Fastify — 장비/회의실 예약, 승인/거절/취소/완료
 ├── search-service/           # Fastify — 통합검색(OpenSearch), 자동완성, 히스토리, 즐겨찾기
+├── ai-assistant-service/     # Express — AI 템플릿 추천, 초안 생성, RAG 질의 (OpenAI + Qdrant)
 ├── file-service/             # Fastify — 파일 업/다운로드(MinIO), presigned URL, 내보내기
 ├── collab-service/           # ws — WebSocket 실시간 협업 편집, Redis pub/sub
 ├── inventory-frontend/       # React SPA (인벤토리/프로토콜 전용, Nginx :80 → localhost:3000)
-├── keycloak/                 # Keycloak realm 설정 (realm-labnote.json)
 └── docker-compose.yml
 ```
 
@@ -78,11 +82,12 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 | MinIO 콘솔 | http://localhost:9001 |
 | Keycloak 관리 | http://localhost:8080 |
 | OpenSearch | http://localhost:9200 |
+| Qdrant (벡터 DB) | http://localhost:6333 |
 
 ## 인증/권한 흐름
 
 1. api-gateway가 JWT 검증 (jose JWKS + 로컬 JWT 듀얼 모드)
-2. 검증 후 내부 서비스로 헤더 주입: `x-user-id`, `x-user-role`, `x-user-permissions`, `x-user-org-id`
+2. 검증 후 내부 서비스로 헤더 주입: `x-user-id`, `x-user-role`, `x-user-email`, `x-user-permissions`, `x-user-org-id`, `x-user-team-ids`, `x-user-team-roles`
 3. 각 서비스는 `requireAuth` → `requirePermission(Permission.*)` 미들웨어로 접근 제어
 4. 모든 데이터 쿼리는 `getOrgId(req)`로 조직 스코프 필터링 (멀티테넌시)
 5. 내부 서비스 간 통신: `x-internal-secret` 헤더 인증
@@ -91,7 +96,7 @@ docker exec <컨테이너명> npx prisma studio             # DB GUI (포트 포
 
 하나의 PostgreSQL 인스턴스, 서비스별 Prisma 스키마 분리:
 - `auth` — Organization, Role, User, Team, TeamMember
-- `eln` — Note(type: note|protocol), NoteRevision, NoteLink, Attachment, Template, NoteStatusHistory
+- `eln` — Note(type: note|protocol), NoteRevision, NoteLink, Attachment, Template, NoteStatusHistory, Code
 - `signature` — Signature(해시체인), AuditLog, ExportJob, Notification
 - `inventory` — InventoryItem, InventoryHistory, Category
 - `scheduler` — Resource(EQUIPMENT|ROOM), Booking(PENDING→APPROVED/REJECTED→COMPLETED)
@@ -166,17 +171,25 @@ SYSTEM_STATUS_TRANSITIONS = {
 - DB 트리거 `check_note_status_transition()`이 잘못된 전환을 DB 레벨에서 차단
 - 모든 상태 변경은 `NoteStatusHistory` + `AuditLog` 이중 기록
 
-## 서비스 간 이벤트
+## 서비스 간 통신
+
+### Redis Stream 이벤트
 
 | 이벤트 | 발행자 | 구독자 | 설명 |
 |--------|--------|--------|------|
-| note.created/updated | eln-service | search-service | 검색 인덱스 갱신 |
-| note.signed | signature-audit | eln-service | 노트 status → signed |
-| note.locked | eln-service | signature-audit | 잠금 알림 발송 |
-| inventory.updated | inventory-service | search-service | 인덱스 갱신 |
-| export.completed | signature-audit | (알림) | PDF/ZIP 생성 완료 |
+| NOTE_SIGNED | signature-audit | eln-service (eventConsumer) | 노트 status → signed (HTTP PATCH 폴백) |
 
-이벤트는 Redis Stream 기반 비동기 처리 (HTTP 콜백 폴백).
+### HTTP 직접 호출 (서비스 간)
+
+| 호출 | 발신 | 수신 | 설명 |
+|------|------|------|------|
+| POST /api/search/index | eln-service, inventory-service | search-service | 검색 인덱스 갱신 (fire-and-forget) |
+| POST /api/audit/internal | eln-service, auth-service | signature-audit | 감사로그 기록 |
+| POST /api/notifications/internal | eln-service, scheduler-service | signature-audit | 알림 발송 (잠금/서명/해제/예약) |
+| POST /api/auth/internal/verify-password | signature-audit, eln-service | auth-service | 비밀번호 검증 (서명/잠금해제) |
+| GET /api/notes/:id | file-service, collab-service | eln-service | 노트 데이터 조회 (내보내기/상태확인) |
+| POST /api/exports/internal/upload | signature-audit (worker) | file-service | 내보내기 파일 업로드 |
+| POST /api/ai/index | eln-service | ai-assistant-service | AI 벡터 인덱싱 (문서 임베딩) |
 
 ## Claude Code 자동화 (.claude/)
 
@@ -186,7 +199,9 @@ SYSTEM_STATUS_TRANSITIONS = {
 .claude/
 ├── settings.json          # 팀 공유 설정 (deny 룰, hooks) — 커밋 대상
 ├── settings.local.json    # 개인 설정 (allow 권한) — gitignore 대상
+├── HARNESS.md             # 하네스 운영 매뉴얼 (why/how) — .claude/HARNESS.md 참고
 ├── rules/                 # 파일별 자동 로드 규칙 (globs 기반)
+│   ├── 00-meta.md                      # 에이전트 작업 프로토콜 (메타룰)
 │   ├── 01-backend-service-pattern.md   # 서비스 구조, 에러처리, 미들웨어
 │   ├── 02-route-definition.md          # 라우트 정의 패턴
 │   ├── 03-dto-validation.md            # Zod 스키마 컨벤션
@@ -196,24 +211,29 @@ SYSTEM_STATUS_TRANSITIONS = {
 │   ├── 07-docker-compose.md            # 인프라 설정 규칙
 │   ├── 08-shared-package.md            # @lab/shared 수정 규칙
 │   ├── 09-prisma-schema.md             # Prisma 스키마 규칙
-│   └── 10-security.md                  # 보안 체크리스트
+│   ├── 10-security.md                  # 보안 체크리스트
+│   └── 11-pii.md                       # PII/민감정보 처리
 ├── hooks/                 # PostToolUse 자동 실행 스크립트
+│   ├── dispatch.sh                    # 단일 디스패처 — file_path 기반 라우팅
 │   ├── check-i18n-sync.sh             # ko/en 키 누락 감지
 │   ├── rebuild-reminder.sh            # 백엔드 수정 시 빌드 리마인더
 │   ├── prisma-migration-reminder.sh   # 스키마 변경 시 마이그레이션 안내
-│   └── check-compose-env.sh           # docker-compose 환경변수/포트 검증
-├── agents/                # 특화 에이전트 (25개)
+│   ├── check-compose-env.sh           # docker-compose 환경변수/포트 검증
+│   └── update-status.sh               # STATUS.md 자동 갱신
+├── agents/                # 특화 에이전트 (25개) + README.md 카탈로그
 └── commands/              # 슬래시 커맨드 (/review, /rebuild 등)
 ```
 
+> 하네스 동작의 **why/how** 는 [.claude/HARNESS.md](./.claude/HARNESS.md) 를 읽을 것. 훅은 `Write|Edit` 발생 시 `dispatch.sh`가 단일 진입점으로 발화하고, 파일 경로에 해당하는 하위 훅만 병렬 실행한다.
+
 ### 팀 공유 deny 룰 (settings.json)
 - `rm -rf` 명령 차단
-- GitHub push 차단 (GitLab만 허용)
+- GitLab(origin) push 차단 (GitHub만 허용)
 - `DROP TABLE/DATABASE` 차단
 
 ## 작업 규칙
 
-- **Git push는 GitLab origin만 허용** — GitHub에 push 금지
+- **Git push는 GitHub만 허용** — GitLab(origin)에 push 금지
 - 백엔드 서비스 코드 수정 후에는 `docker compose up -d --build <서비스명>`으로 반영
 - 프론트엔드 코드는 Vite HMR로 자동 반영 (빌드 불필요)
 - 다국어: 텍스트 추가 시 `src/i18n/locales/ko/`, `en/` 두 곳 모두 반영

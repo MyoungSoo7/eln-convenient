@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, CalendarX, Check, ChevronLeft, ChevronRight, Edit2, MapPin, Plus, RefreshCw, Settings, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, CalendarX, Check, ChevronLeft, ChevronRight, Clock, Edit2, MapPin, Plus, RefreshCw, Settings, Trash2, Users, X } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,32 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "@/hooks/use-toast";
-import { listResources, listBookings, createBooking, approveBooking, rejectBooking, createResource, updateResource, deleteResource, type Resource, type BackendBooking, type CreateResourceData } from "@/api/scheduler";
+import { listResources, listBookings as fetchBookings, createBooking, approveBooking, rejectBooking, createResource, updateResource, deleteResource, type Resource, type BackendBooking, type CreateResourceData } from "@/api/scheduler";
 import { getStoredUser } from "@/lib/authToken";
 
 const APPROVE_ROLES = ["admin", "reviewer"];
 
-const hours = Array.from({ length: 10 }, (_, i) => `${(i + 8).toString().padStart(2, "0")}:00`);
+// 업무 시간대 상수 — 캘린더 그리드와 예약 폼이 공유
+const BUSINESS_HOUR_START = 8;   // 08:00
+const BUSINESS_HOUR_END = 18;    // 18:00
+const SLOT_MINUTES = 30;         // 예약 폼 시간 슬롯 단위
+
+const hours = Array.from(
+  { length: BUSINESS_HOUR_END - BUSINESS_HOUR_START },
+  (_, i) => `${(i + BUSINESS_HOUR_START).toString().padStart(2, "0")}:00`,
+);
+
+// 예약 폼용 시간 슬롯 (08:00, 08:30, ..., 18:00) — 종료 시간 포함
+const TIME_SLOTS: string[] = (() => {
+  const slots: string[] = [];
+  const totalMinutes = (BUSINESS_HOUR_END - BUSINESS_HOUR_START) * 60;
+  for (let m = 0; m <= totalMinutes; m += SLOT_MINUTES) {
+    const h = BUSINESS_HOUR_START + Math.floor(m / 60);
+    const min = m % 60;
+    slots.push(`${h.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`);
+  }
+  return slots;
+})();
 
 const statusColors: Record<string, string> = {
   PENDING: "bg-warning/10 text-warning border-warning/30",
@@ -29,6 +49,44 @@ const statusColors: Record<string, string> = {
   CANCELLED: "bg-muted text-muted-foreground",
   COMPLETED: "bg-muted text-muted-foreground",
 };
+
+// 캘린더 카드 좌측 보더 — 상태 표시 (자원 색 배경 위에 얹힘)
+const statusBorderClass: Record<string, string> = {
+  PENDING: "border-l-[3px] border-l-amber-500",
+  APPROVED: "border-l-[3px] border-l-emerald-500",
+  REJECTED: "border-l-[3px] border-l-red-500",
+  CANCELLED: "border-l-[3px] border-l-gray-400",
+  COMPLETED: "border-l-[3px] border-l-gray-400",
+};
+
+// 상태별 아이콘
+const statusIcons: Record<string, typeof Clock> = {
+  PENDING: Clock,
+  APPROVED: Check,
+  REJECTED: X,
+  CANCELLED: X,
+  COMPLETED: Check,
+};
+
+// 자원 ID 해시 → 파스텔 색상 (HSL). 같은 자원은 항상 같은 색
+function resourceColor(id: string): { bg: string; text: string } {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  const hue = h % 360;
+  return {
+    bg: `hsl(${hue} 70% 92%)`,
+    text: `hsl(${hue} 60% 22%)`,
+  };
+}
+
+// 주말 여부 (토/일)
+function isWeekend(d: Date): boolean {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
 
 // ISO datetime → "YYYY-MM-DD" (로컬 시간 기준)
 function toLocalDate(iso: string): string {
@@ -59,7 +117,38 @@ function formatDate(d: Date): string {
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 }
 
-type StatusFilter = "all" | "PENDING" | "APPROVED";
+// 현재 시각 기준으로 "다음 예약 가능 슬롯"을 반환.
+// 영업시간 이전 → 오늘 08:00 / 이후 → 내일 08:00 / 영업중 → 다음 30분 경계로 올림.
+function getNextAvailableSlot(now: Date = new Date()): { date: string; start: string; end: string } {
+  const cur = new Date(now);
+  // 30분 경계로 올림
+  const min = cur.getMinutes();
+  if (min === 0 || min === 30) {
+    cur.setSeconds(0, 0);
+  } else if (min < 30) {
+    cur.setMinutes(30, 0, 0);
+  } else {
+    cur.setHours(cur.getHours() + 1, 0, 0, 0);
+  }
+
+  // 영업시간 밖 보정
+  if (cur.getHours() < BUSINESS_HOUR_START) {
+    cur.setHours(BUSINESS_HOUR_START, 0, 0, 0);
+  }
+  // 마지막 시작 가능 슬롯은 (BUSINESS_HOUR_END - 0:30). 그 이후면 다음날 08:00로.
+  const lastStartMinutes = BUSINESS_HOUR_END * 60 - SLOT_MINUTES;
+  if (cur.getHours() * 60 + cur.getMinutes() > lastStartMinutes) {
+    cur.setDate(cur.getDate() + 1);
+    cur.setHours(BUSINESS_HOUR_START, 0, 0, 0);
+  }
+
+  const start = `${cur.getHours().toString().padStart(2, "0")}:${cur.getMinutes().toString().padStart(2, "0")}`;
+  const startIdx = TIME_SLOTS.indexOf(start);
+  const end = TIME_SLOTS[startIdx + 1] ?? TIME_SLOTS[TIME_SLOTS.length - 1];
+  return { date: formatDate(cur), start, end };
+}
+
+type StatusFilter = "all" | "PENDING" | "APPROVED" | "REJECTED";
 
 export default function SchedulerPage() {
   const { t } = useTranslation('scheduler');
@@ -77,8 +166,31 @@ export default function SchedulerPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const [resources, setResources] = useState<Resource[]>([]);
-  const [bookings, setBookings] = useState<BackendBooking[]>([]);
+  // 캘린더 그리드용: 현재 표시 중인 주(weekDates) 범위만 로드
+  const [calendarBookings, setCalendarBookings] = useState<BackendBooking[]>([]);
+  // 예약 목록용: 기간 필터 + 페이지네이션 적용
+  const [listBookings, setListBookings] = useState<BackendBooking[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+  const [listPage, setListPage] = useState(1);
+  const LIST_PAGE_SIZE = 20;
+  const [periodFilter, setPeriodFilter] = useState<"1w" | "1m" | "3m" | "1y" | "all">("1m");
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
+  // 자원 검색
+  const [resourceSearch, setResourceSearch] = useState("");
+
+  // 현재 시각 (캘린더 위 빨간 가로선용) — 1분마다 갱신
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  // 캘린더 시간 영역(8:00~18:00) 내에서의 픽셀 위치 — 범위 밖이면 null
+  const currentTimeTopPx = useMemo(() => {
+    const minutesFromStart = (now.getHours() - 8) * 60 + now.getMinutes();
+    if (minutesFromStart < 0 || minutesFromStart > 600) return null;
+    return (minutesFromStart / 60) * 48; // 행 높이 48px
+  }, [now]);
 
   // 승인/반려 권한 확인
   const storedUser = getStoredUser();
@@ -108,31 +220,32 @@ export default function SchedulerPage() {
   // 예약 폼
   const [formResourceId, setFormResourceId] = useState("");
   const [formTitle, setFormTitle] = useState("");
-  const [formDate, setFormDate] = useState(formatDate(new Date()));
-  const [formStartTime, setFormStartTime] = useState("09:00");
-  const [formEndTime, setFormEndTime] = useState("12:00");
+  const initialSlot = getNextAvailableSlot();
+  const [formDate, setFormDate] = useState(initialSlot.date);
+  const [formStartTime, setFormStartTime] = useState(initialSlot.start);
+  const [formEndTime, setFormEndTime] = useState(initialSlot.end);
 
   const weekDates = getWeekDates(weekOffset);
   const isToday = (d: Date) => formatDate(d) === formatDate(new Date());
 
-  // 예약 시간 충돌 감지
+  // 예약 시간 충돌 감지 — 캘린더용 fetch(현재 주 범위)에서 검사
   const conflictingBooking = useMemo(() => {
     if (!formResourceId || !formDate || !formStartTime || !formEndTime || formStartTime >= formEndTime) return null;
     const newStart = new Date(`${formDate}T${formStartTime}:00`).getTime();
     const newEnd = new Date(`${formDate}T${formEndTime}:00`).getTime();
-    return bookings.find((b) => {
+    return calendarBookings.find((b) => {
       if (b.resourceId !== formResourceId) return false;
       if (!["PENDING", "APPROVED"].includes(b.status)) return false;
       const bStart = new Date(b.startAt).getTime();
       const bEnd = new Date(b.endAt).getTime();
       return newStart < bEnd && newEnd > bStart;
     }) ?? null;
-  }, [bookings, formResourceId, formDate, formStartTime, formEndTime]);
+  }, [calendarBookings, formResourceId, formDate, formStartTime, formEndTime]);
 
   // 캘린더 그리드용 booking 인덱스 (O(n) 사전 구성 → O(1) 룩업)
   const bookingIndex = useMemo(() => {
     const map = new Map<string, BackendBooking>();
-    for (const b of bookings) {
+    for (const b of calendarBookings) {
       if (!["PENDING", "APPROVED"].includes(b.status)) continue;
       const bDate = toLocalDate(b.startAt);
       const bStart = toLocalHHMM(b.startAt);
@@ -144,33 +257,84 @@ export default function SchedulerPage() {
       }
     }
     return map;
-  }, [bookings]);
+  }, [calendarBookings]);
 
-  // 자원 + 예약 목록 로드 (상태 필터: 전체/대기/승인)
-  const loadData = useCallback(async () => {
+  // ─── 데이터 로딩: 캘린더 / 목록 / 자원을 분리해서 호출 ───────
+
+  // 자원 + 캘린더(현재 주 범위) 로드
+  const loadResourcesAndCalendar = useCallback(async () => {
     setLoading(true);
-    const [resRes, bookRes] = await Promise.all([
+    // 주의 시작/끝 (월요일 00:00 ~ 일요일 23:59:59)
+    const weekStart = new Date(weekDates[0]);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekDates[6]);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const [resRes, calRes] = await Promise.all([
       listResources(),
-      listBookings({
-        ...(statusFilter !== "all" ? { status: statusFilter } : {}),
-        limit: 200,
+      fetchBookings({
+        from: weekStart.toISOString(),
+        to: weekEnd.toISOString(),
+        limit: 100,
+        order: 'asc',
       }),
     ]);
     if (resRes.ok) setResources(resRes.data ?? []);
-    if (bookRes.ok) setBookings(bookRes.data ?? []);
+    if (calRes.ok) setCalendarBookings(calRes.data ?? []);
     setLoading(false);
-  }, [statusFilter]);
+  // weekDates는 weekOffset에서 파생되므로 weekOffset만 의존성에 둠
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset]);
+
+  // 예약 목록 로드 (기간/상태 필터 + 페이지네이션)
+  const loadBookingList = useCallback(async () => {
+    setListLoading(true);
+    const params: Parameters<typeof fetchBookings>[0] = {
+      page: listPage,
+      limit: LIST_PAGE_SIZE,
+      order: 'desc',
+    };
+    if (statusFilter !== "all") params.status = statusFilter;
+    if (periodFilter !== "all") {
+      const days = { '1w': 7, '1m': 30, '3m': 90, '1y': 365 }[periodFilter];
+      const from = new Date();
+      from.setDate(from.getDate() - days);
+      from.setHours(0, 0, 0, 0);
+      params.from = from.toISOString();
+    }
+    const res = await fetchBookings(params);
+    if (res.ok) {
+      setListBookings(res.data ?? []);
+      setListTotal(res.total ?? 0);
+    }
+    setListLoading(false);
+  }, [statusFilter, periodFilter, listPage]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadResourcesAndCalendar();
+  }, [loadResourcesAndCalendar]);
+
+  useEffect(() => {
+    loadBookingList();
+  }, [loadBookingList]);
+
+  // 필터가 바뀌면 페이지를 1로 리셋
+  useEffect(() => {
+    setListPage(1);
+  }, [statusFilter, periodFilter]);
+
+  // 기존 코드 호환용 — 양쪽 다 새로고침
+  const loadData = useCallback(async () => {
+    await Promise.all([loadResourcesAndCalendar(), loadBookingList()]);
+  }, [loadResourcesAndCalendar, loadBookingList]);
 
   const resetForm = () => {
+    const slot = getNextAvailableSlot();
     setFormResourceId("");
     setFormTitle("");
-    setFormDate(formatDate(new Date()));
-    setFormStartTime("09:00");
-    setFormEndTime("12:00");
+    setFormDate(slot.date);
+    setFormStartTime(slot.start);
+    setFormEndTime(slot.end);
   };
 
   const handleCreate = async () => {
@@ -187,8 +351,14 @@ export default function SchedulerPage() {
       return;
     }
 
-    const startTime = new Date(`${formDate}T${formStartTime}:00`).toISOString();
-    const endTime = new Date(`${formDate}T${formEndTime}:00`).toISOString();
+    const startDate = new Date(`${formDate}T${formStartTime}:00`);
+    const endDate = new Date(`${formDate}T${formEndTime}:00`);
+    if (startDate.getTime() <= Date.now()) {
+      toast({ title: t('form.invalidTime'), variant: "destructive" });
+      return;
+    }
+    const startTime = startDate.toISOString();
+    const endTime = endDate.toISOString();
 
     setSubmitting(true);
     const res = await createBooking({ resourceId: formResourceId, title: formTitle, startTime, endTime });
@@ -196,10 +366,11 @@ export default function SchedulerPage() {
 
     if (res.ok && res.data) {
       const newBooking = res.data as BackendBooking;
-      setBookings((prev) => [newBooking, ...prev]);
       toast({ title: t('createSuccess'), description: t('createSuccessDesc', { name: newBooking.resource?.name || formResourceId }) });
       setNewBookingOpen(false);
       resetForm();
+      // 캘린더(현재 주 범위)와 목록(필터/페이지네이션) 모두 새로고침
+      loadData();
     } else {
       toast({ title: t('createFailed'), description: res.error || t('createFailedDesc'), variant: "destructive" });
     }
@@ -274,9 +445,15 @@ export default function SchedulerPage() {
     }
   };
 
-  const filteredResources = resources.filter((r) =>
-    resourceTypeFilter === "all" ? true : r.type === resourceTypeFilter
-  );
+  const filteredResources = resources.filter((r) => {
+    if (resourceTypeFilter !== "all" && r.type !== resourceTypeFilter) return false;
+    if (resourceSearch.trim()) {
+      const q = resourceSearch.trim().toLowerCase();
+      const hay = `${r.name} ${r.location ?? ''} ${r.description ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
 
   const handleApprove = async (id: string) => {
     const res = await approveBooking(id);
@@ -368,27 +545,61 @@ export default function SchedulerPage() {
                     type="date"
                     value={formDate}
                     min={formatDate(new Date())}
-                    onChange={(e) => setFormDate(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormDate(next);
+                      // 오늘로 바꿨고 현재 선택된 시작시간이 과거라면 자동 보정
+                      if (next === formatDate(new Date())) {
+                        const slot = getNextAvailableSlot();
+                        if (slot.date === next && formStartTime < slot.start) {
+                          setFormStartTime(slot.start);
+                          if (formEndTime <= slot.start) setFormEndTime(slot.end);
+                        }
+                      }
+                    }}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>{t('form.startTime')}</Label>
-                    <Input
-                      type="time"
+                    <Select
                       value={formStartTime}
-                      step="600"
-                      onChange={(e) => setFormStartTime(e.target.value)}
-                    />
+                      onValueChange={(v) => {
+                        setFormStartTime(v);
+                        // 종료 시간이 시작 시간 이하라면 한 슬롯 뒤로 자동 보정
+                        if (formEndTime <= v) {
+                          const idx = TIME_SLOTS.indexOf(v);
+                          const next = TIME_SLOTS[idx + 1] ?? TIME_SLOTS[TIME_SLOTS.length - 1];
+                          setFormEndTime(next);
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[280px]">
+                        {/* 종료 슬롯(마지막)은 시작 시간으로 선택 불가. 오늘이면 과거 슬롯 숨김 */}
+                        {TIME_SLOTS.slice(0, -1)
+                          .filter((slot) => formDate !== formatDate(new Date()) || slot >= getNextAvailableSlot().start)
+                          .map((slot) => (
+                            <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>{t('form.endTime')}</Label>
-                    <Input
-                      type="time"
-                      value={formEndTime}
-                      step="600"
-                      onChange={(e) => setFormEndTime(e.target.value)}
-                    />
+                    <Select value={formEndTime} onValueChange={setFormEndTime}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[280px]">
+                        {/* 시작 시간 이후 슬롯만 표시 */}
+                        {TIME_SLOTS.filter((slot) => slot > formStartTime).map((slot) => (
+                          <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 {conflictingBooking && (
@@ -458,72 +669,159 @@ export default function SchedulerPage() {
       {/* 캘린더 그리드 */}
       <Card className="shadow-card overflow-hidden">
         <CardContent className="p-0">
-          <div className="grid grid-cols-8 border-b">
+          <div className="grid grid-cols-8 border-b bg-muted/20">
             <div className="p-3 text-xs text-muted-foreground border-r" />
-            {weekDates.map((d, i) => (
-              <div key={i} className={`p-3 text-center border-r last:border-r-0 ${isToday(d) ? "bg-primary/5" : ""}`}>
-                <p className="text-xs text-muted-foreground">{days[i]}</p>
-                <p className={`text-sm font-semibold mt-0.5 ${isToday(d) ? "text-primary" : ""}`}>{d.getDate()}</p>
-              </div>
-            ))}
+            {weekDates.map((d, i) => {
+              const today = isToday(d);
+              const weekend = isWeekend(d);
+              return (
+                <div
+                  key={i}
+                  className={`p-3 text-center border-r last:border-r-0 ${
+                    today ? "bg-primary/10" : weekend ? "bg-muted/40" : ""
+                  }`}
+                >
+                  <p className={`text-xs ${weekend && !today ? "text-muted-foreground/70" : "text-muted-foreground"}`}>
+                    {days[i]}
+                  </p>
+                  <p className={`text-sm font-semibold mt-0.5 ${today ? "text-primary" : ""}`}>
+                    {d.getDate()}
+                  </p>
+                </div>
+              );
+            })}
           </div>
-          {hours.map((hour) => (
-            <div key={hour} className="grid grid-cols-8 border-b last:border-b-0 min-h-[48px]">
-              <div className="p-2 text-xs text-muted-foreground border-r flex items-start justify-end pr-3 pt-1">
-                {hour}
-              </div>
-              {weekDates.map((d, i) => {
-                const dateStr = formatDate(d);
-                const booking = bookingIndex.get(`${dateStr}_${hour}`);
-                return (
-                  <div key={i} className={`border-r last:border-r-0 p-0.5 ${isToday(d) ? "bg-primary/5" : ""}`}>
-                    {booking && toLocalHHMM(booking.startAt) === hour && (
-                      <div className={`rounded p-1.5 text-[10px] border ${statusColors[booking.status]}`}>
-                        <p className="font-medium truncate">
-                          {booking.resource?.name || booking.resourceId}
-                        </p>
-                        <p className="opacity-70 truncate">{booking.title}</p>
-                      </div>
-                    )}
+          {/* 시간 행 영역 — 현재 시각 인디케이터를 absolute로 띄우기 위해 relative */}
+          <div className="relative">
+            {hours.map((hour) => {
+              const isLunch = hour === "12:00";
+              return (
+                <div
+                  key={hour}
+                  className={`grid grid-cols-8 border-b last:border-b-0 min-h-[48px] ${
+                    isLunch ? "border-t border-t-muted-foreground/20" : ""
+                  }`}
+                >
+                  <div className="p-2 text-xs text-muted-foreground border-r flex items-start justify-end pr-3 pt-1 bg-muted/10">
+                    {hour}
                   </div>
-                );
-              })}
-            </div>
-          ))}
+                  {weekDates.map((d, i) => {
+                    const dateStr = formatDate(d);
+                    const booking = bookingIndex.get(`${dateStr}_${hour}`);
+                    const isBookingStart = booking && toLocalHHMM(booking.startAt) === hour;
+                    const today = isToday(d);
+                    const weekend = isWeekend(d);
+                    // 예약 지속 시간(시간 단위) — 행 높이(48px) × 지속시간 만큼 카드 높이 확장
+                    const durationHours = isBookingStart
+                      ? (new Date(booking!.endAt).getTime() - new Date(booking!.startAt).getTime()) / (1000 * 60 * 60)
+                      : 0;
+                    const rc = isBookingStart ? resourceColor(booking!.resourceId) : null;
+                    const StatusIcon = isBookingStart ? statusIcons[booking!.status] ?? Clock : null;
+                    return (
+                      <div
+                        key={i}
+                        className={`relative border-r last:border-r-0 p-0.5 ${
+                          today ? "bg-primary/5" : weekend ? "bg-muted/20" : ""
+                        }`}
+                      >
+                        {isBookingStart && rc && StatusIcon && (
+                          <div
+                            className={`absolute inset-x-0.5 top-0.5 z-10 rounded ${statusBorderClass[booking!.status]} overflow-hidden shadow-sm hover:shadow-md hover:z-20 transition-shadow cursor-pointer`}
+                            style={{
+                              height: `calc(${durationHours * 48}px - 4px)`,
+                              backgroundColor: rc.bg,
+                              color: rc.text,
+                            }}
+                            title={`${booking!.resource?.name || booking!.resourceId}\n${booking!.title}\n${toLocalHHMM(booking!.startAt)}–${toLocalHHMM(booking!.endAt)} (${statusLabels[booking!.status]})`}
+                          >
+                            <div className="flex items-start justify-between gap-1 px-1.5 pt-1">
+                              <p className="font-semibold text-[10px] truncate flex-1 leading-tight">
+                                {booking!.resource?.name || booking!.resourceId}
+                              </p>
+                              <StatusIcon className="h-3 w-3 shrink-0 opacity-70" />
+                            </div>
+                            <p className="opacity-80 truncate text-[10px] px-1.5 leading-tight">
+                              {booking!.title}
+                            </p>
+                            <p className="opacity-60 truncate text-[9px] px-1.5 leading-tight">
+                              {toLocalHHMM(booking!.startAt)}–{toLocalHHMM(booking!.endAt)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {/* 현재 시각 인디케이터 — 오늘 컬럼에만 빨간 가로선 */}
+            {currentTimeTopPx !== null && weekDates.some(isToday) && (() => {
+              const todayIndex = weekDates.findIndex(isToday);
+              return (
+                <div
+                  className="absolute pointer-events-none z-30"
+                  style={{
+                    top: `${currentTimeTopPx}px`,
+                    left: `calc(100% / 8 * ${1 + todayIndex})`,
+                    width: `calc(100% / 8)`,
+                  }}
+                >
+                  <div className="relative h-0.5 bg-red-500">
+                    <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-red-500" />
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </CardContent>
       </Card>
 
-      {/* 예약 목록 (승인/대기 상태 필터) */}
+      {/* 예약 목록 (기간 + 상태 필터 + 페이지네이션) */}
       <Card className="shadow-card">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="text-base flex items-center gap-2">
               {t('bookingList')}
               <HelpTooltip text={t('bookingListTooltip')} />
-              {bookings.length > 0 && (
-                <span className="text-xs text-muted-foreground font-normal ml-1">({bookings.length}건)</span>
+              {listTotal > 0 && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">({listTotal}건)</span>
               )}
             </CardTitle>
-            <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-auto">
-              <TabsList className="h-9">
-                <TabsTrigger value="all" className="text-xs px-3">{tc('all')}</TabsTrigger>
-                <TabsTrigger value="PENDING" className="text-xs px-3">{t('status.PENDING')}</TabsTrigger>
-                <TabsTrigger value="APPROVED" className="text-xs px-3">{t('status.APPROVED')}</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as typeof periodFilter)}>
+                <SelectTrigger className="h-9 w-[130px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1w">{t('period.1w')}</SelectItem>
+                  <SelectItem value="1m">{t('period.1m')}</SelectItem>
+                  <SelectItem value="3m">{t('period.3m')}</SelectItem>
+                  <SelectItem value="1y">{t('period.1y')}</SelectItem>
+                  <SelectItem value="all">{t('period.all')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-auto">
+                <TabsList className="h-9">
+                  <TabsTrigger value="all" className="text-xs px-3">{tc('all')}</TabsTrigger>
+                  <TabsTrigger value="PENDING" className="text-xs px-3">{t('status.PENDING')}</TabsTrigger>
+                  <TabsTrigger value="APPROVED" className="text-xs px-3">{t('status.APPROVED')}</TabsTrigger>
+                  <TabsTrigger value="REJECTED" className="text-xs px-3">{t('status.REJECTED')}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {listLoading ? (
             <p className="text-sm text-muted-foreground text-center py-6">{tc('loading')}</p>
-          ) : bookings.length === 0 ? (
+          ) : listBookings.length === 0 ? (
             <EmptyState
               icon={CalendarX}
               title={statusFilter === "all" ? t('emptyAll') : t('emptyFiltered', { status: statusLabels[statusFilter] })}
             />
           ) : (
             <div className="space-y-3">
-              {bookings.map((b) => (
+              {listBookings.map((b) => (
                 <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                   <div className={`p-2 rounded-lg ${statusColors[b.status]}`}>
                     <CalendarDays className="h-4 w-4" />
@@ -571,6 +869,44 @@ export default function SchedulerPage() {
               ))}
             </div>
           )}
+          {/* 페이지네이션 */}
+          {!listLoading && listTotal > LIST_PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t">
+              <span className="text-xs text-muted-foreground">
+                {t('pagination.summary', {
+                  from: (listPage - 1) * LIST_PAGE_SIZE + 1,
+                  to: Math.min(listPage * LIST_PAGE_SIZE, listTotal),
+                  total: listTotal,
+                })}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={listPage <= 1}
+                  onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-3 w-3 mr-1" /> {t('pagination.prev')}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {t('pagination.pageOf', {
+                    page: listPage,
+                    total: Math.max(1, Math.ceil(listTotal / LIST_PAGE_SIZE)),
+                  })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={listPage >= Math.ceil(listTotal / LIST_PAGE_SIZE)}
+                  onClick={() => setListPage((p) => p + 1)}
+                >
+                  {t('pagination.next')} <ChevronRight className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -588,13 +924,22 @@ export default function SchedulerPage() {
                   <span className="text-xs text-muted-foreground font-normal ml-1">({filteredResources.length}건)</span>
                 )}
               </CardTitle>
-              <Tabs value={resourceTypeFilter} onValueChange={(v) => setResourceTypeFilter(v as "all" | "EQUIPMENT" | "ROOM")} className="w-auto">
-                <TabsList className="h-9">
-                  <TabsTrigger value="all" className="text-xs px-3">{t('resource.filterAll')}</TabsTrigger>
-                  <TabsTrigger value="EQUIPMENT" className="text-xs px-3">{t('type.EQUIPMENT')}</TabsTrigger>
-                  <TabsTrigger value="ROOM" className="text-xs px-3">{t('type.ROOM')}</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="search"
+                  value={resourceSearch}
+                  onChange={(e) => setResourceSearch(e.target.value)}
+                  placeholder={t('resource.searchPlaceholder')}
+                  className="h-9 w-[200px] text-xs"
+                />
+                <Tabs value={resourceTypeFilter} onValueChange={(v) => setResourceTypeFilter(v as "all" | "EQUIPMENT" | "ROOM")} className="w-auto">
+                  <TabsList className="h-9">
+                    <TabsTrigger value="all" className="text-xs px-3">{t('resource.filterAll')}</TabsTrigger>
+                    <TabsTrigger value="EQUIPMENT" className="text-xs px-3">{t('type.EQUIPMENT')}</TabsTrigger>
+                    <TabsTrigger value="ROOM" className="text-xs px-3">{t('type.ROOM')}</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

@@ -1,38 +1,68 @@
-# STATUS — LabNote ELN
+# 프로젝트 현황 (STATUS.md)
 
-> 사내 구축형 전자연구노트(ELN) 협업 플랫폼 · 온프레미스 MSA (Docker Compose)
+> 이 파일은 `.claude/hooks/update-status.sh`에 의해 자동 생성됩니다.
+> 수동 갱신: `bash .claude/hooks/update-status.sh`
 
-**Last updated:** 2026-04-09
+- **마지막 갱신**: 2026-04-13 13:53:43
+- **현재 브랜치**: `eln`
+- **백엔드 서비스 수**: 16
 
-## 현재 상태
-- **활성 브랜치:** `eln-without-ai`
-- **아키텍처:** API Gateway 뒤로 8개 마이크로서비스 (auth/eln/sig-aud/inv/sched/search/file/collab)
-- **최근 커밋:** `8276a28` docs: add on-premises AI assistant service architecture design
+## 서비스 목록
 
-## 최근 진척
-- 온프레미스 AI 어시스턴트 서비스 아키텍처 설계 문서
-- ai-dev-team 커맨드 + 17개 에이전트 프롬프트
-- README 노출 비밀번호 제거 (Keycloak/MinIO/계정)
-- 서비스 간 통신 프로토콜 문서
-- `findNoteInOrg` 보안 헬퍼 (orgId 스코프 누락 방지)
-- `auth.test.ts` 더미 → 실제 단위 테스트 교체
-- 화면설계서/프로세스 정의서 (Mermaid), 사용자 매뉴얼
+```
+ai-assistant-service
+api-gateway
+auth-service
+collab-service
+eln-service
+eval-harness-service
+experiment-tracker-service
+file-service
+fine-tune-jobs-service
+gemma-gateway
+inventory-frontend
+inventory-service
+model-registry-service
+scheduler-service
+search-service
+signature-audit-service
+```
 
-## 진행 중
-- AI 없는 코어 브랜치(`eln-without-ai`) 안정화
-- 단위 테스트 커버리지 확대
-- 보안 하네스 정비 (hooks, rules 적용)
+## 사용 포트 (docker-compose.yml)
 
-## 다음 할 일
-- [ ] `eln-without-ai` 코어 머지 후 AI 어시스턴트 서비스 본격 착수
-- [ ] MSA 간 트랜잭션 경계 재검토 (SAGA 패턴 적용 검토)
-- [ ] 파일 서비스 대용량 업로드 성능 튜닝
+`8000 8001 8002 8003 8004 8005 8006 8007 8008 8009 8010 8011 8012 8013 8014 `
 
-## 주요 위험/메모
-- 온프레미스 전제이므로 외부 의존성 버전 고정과 오프라인 번들링 중요
-- 멀티 서비스 간 환경변수 드리프트 방지 (`.env`, `docker-compose.yml` 단일 출처 유지)
+## Prisma 스키마 보유 서비스
 
-## 참고 문서
-- `README.md` — MSA 설계 문서
-- `CLAUDE.md` — 에이전트 운용 가이드
-- `HARNESS.md` — Claude Code 개발 하네스 구성 (agents/commands/hooks/rules)
+`auth-service eln-service file-service fine-tune-jobs-service inventory-service model-registry-service scheduler-service search-service signature-audit-service `
+
+## Docker 컨테이너 상태
+
+```
+
+```
+
+## 프론트엔드 i18n
+
+- 언어: `en ko `
+- ko/ 파일 수: 13
+- en/ 파일 수: 13
+
+## Claude Code 자동화 구성 (.claude/)
+
+| 항목 | 개수 |
+|------|------|
+| agents/ | 26 |
+| rules/ | 12 |
+| hooks/ | 6 |
+| commands/ | 9 |
+
+## 최근 커밋
+
+```
+b38b5fe docs: OMC 운영 가이드, DB 용량 산정, ccmonitor 문서 추가 및 OMC 플러그인 활성화
+2d2ebb1 chore(harness): Claude Code 하네스 강화 — 단일 디스패처, 메타룰, deny 룰 확장
+3422330 feat(research): Gemma 4 연구 플랫폼 구축 — provider 추상화, gemma-gateway, eval-harness, MLflow
+20da3ef chore(infra): DR/감사로그/시크릿/PII 5종 인프라 강화
+82b9de5 통합검색
+```

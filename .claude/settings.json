@@ -1,11 +1,37 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "LAB_COMPOSE_DIR": "services",
+    "LAB_FRONTEND_DEV_URL": "http://localhost:5173",
+    "LAB_API_GATEWAY_URL": "http://localhost:8000"
+  },
   "permissions": {
     "deny": [
-      "Bash(rm -rf *)",
-      "Bash(rm -rf/*)",
-      "Bash(git push*github*)",
-      "Bash(drop database:*)",
-      "Bash(DROP TABLE:*)"
+      "Bash(rm *)",
+      "Bash(find * -delete*)",
+      "Bash(find * -exec rm*)",
+      "Bash(git push origin*)",
+      "Bash(git push gitlab*)",
+      "Bash(git -C * push origin*)",
+      "Bash(git -C * push gitlab*)",
+      "Bash(psql *DROP*)",
+      "Bash(psql *TRUNCATE*)",
+      "Bash(psql *drop database*)",
+      "Bash(docker exec *psql*DROP*)",
+      "Bash(docker exec *psql*TRUNCATE*)",
+      "Bash(docker exec *psql*drop database*)",
+      "Bash(prisma migrate reset*)",
+      "Bash(npx prisma migrate reset*)",
+      "Bash(docker exec *prisma migrate reset*)",
+      "Bash(docker volume rm *)",
+      "Bash(docker compose down *-v*)",
+      "Bash(docker compose down * -v*)",
+      "Bash(docker-compose down *-v*)",
+      "Bash(docker-compose down * -v*)"
+    ],
+    "additionalDirectories": [
+      "./docs",
+      "./services/shared"
     ]
   },
   "hooks": {
@@ -15,30 +41,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/check-i18n-sync.sh",
-            "timeout": 15,
-            "statusMessage": "i18n 키 동기화 확인 중..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/rebuild-reminder.sh",
-            "timeout": 5,
-            "statusMessage": "빌드 리마인더 확인 중..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/prisma-migration-reminder.sh",
-            "timeout": 5,
-            "statusMessage": "Prisma 마이그레이션 확인 중..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/check-compose-env.sh",
-            "timeout": 10,
-            "statusMessage": "Docker Compose 환경변수 확인 중..."
+            "command": "bash .claude/hooks/dispatch.sh",
+            "timeout": 30,
+            "statusMessage": "하네스 훅 확인 중..."
           }
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "echo \"$(git branch --show-current 2>/dev/null || echo '-') | $(timeout 1 docker ps --filter 'name=labnote' --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ') containers\""
+  },
+  "enabledPlugins": {
+    "oh-my-claudecode@omc": true
   }
 }

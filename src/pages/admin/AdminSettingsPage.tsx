@@ -1,14 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { listOrgs } from "@/api/admin";
+import { listOrgs, adminReindexAll, type ReindexResult } from "@/api/admin";
+import { toast } from "@/hooks/use-toast";
 import apiClient from "@/api/client";
 
 export default function AdminSettingsPage() {
   const { t, i18n } = useTranslation('admin');
+  const { t: tc } = useTranslation('common');
 
   const orgsQuery = useQuery({
     queryKey: ['admin', 'orgs'],
@@ -38,6 +47,35 @@ export default function AdminSettingsPage() {
     i18n.changeLanguage(lang);
   };
 
+  // ── 통합검색 일괄 재색인 ──
+  const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
+  const reindexMutation = useMutation<ReindexResult, Error, void>({
+    mutationFn: async () => {
+      const res = await adminReindexAll();
+      if (!res.ok) throw new Error(res.error ?? t('reindex.errorTitle'));
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: t('reindex.successTitle'),
+        description: t('reindex.successDesc', {
+          note: data.noteCount,
+          template: data.templateCount,
+          item: data.itemCount,
+          total: data.total,
+        }),
+      });
+      setReindexDialogOpen(false);
+    },
+    onError: (err) => {
+      toast({
+        title: t('reindex.errorTitle'),
+        description: err.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
@@ -54,6 +92,16 @@ export default function AdminSettingsPage() {
           <CardTitle className="text-base">{t('settings.systemSettings')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {(orgsQuery.isLoading || storageQuery.isLoading) && (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          )}
+          {(orgsQuery.isError || storageQuery.isError) && (
+            <div className="p-4 text-sm text-destructive">
+              {(orgsQuery.error as Error)?.message ?? (storageQuery.error as Error)?.message}
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => { orgsQuery.refetch(); storageQuery.refetch(); }}>{tc('retry')}</Button>
+            </div>
+          )}
+          {!orgsQuery.isLoading && !storageQuery.isLoading && !orgsQuery.isError && !storageQuery.isError && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('settings.orgName')}</label>
@@ -79,8 +127,66 @@ export default function AdminSettingsPage() {
               )}
             </div>
           </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* 통합검색 일괄 재색인 */}
+      <Card className="shadow-card">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            {t('reindex.title')}
+            <HelpTooltip text={t('reindex.titleTooltip')} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('reindex.description')}</p>
+          <Button
+            variant="default"
+            onClick={() => setReindexDialogOpen(true)}
+            disabled={reindexMutation.isPending}
+          >
+            {reindexMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {t('reindex.running')}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                {t('reindex.button')}
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={reindexDialogOpen} onOpenChange={setReindexDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('reindex.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('reindex.confirmDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reindexMutation.isPending}>
+              {t('reindex.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                reindexMutation.mutate();
+              }}
+              disabled={reindexMutation.isPending}
+            >
+              {reindexMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                t('reindex.confirm')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

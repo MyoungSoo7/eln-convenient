@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Bell, Lock, Unlock, FileSignature, CalendarCheck, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { getToken } from "@/lib/authToken";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +23,7 @@ const POLL_INTERVAL = 30_000;
 export function NotificationBell() {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
+  const queryClient = useQueryClient();
 
   const typeConfig: Record<Notification["type"], { icon: typeof Bell; label: string }> = {
     NOTE_LOCKED:      { icon: Lock,           label: t('notification.noteLocked') },
@@ -39,18 +42,38 @@ export function NotificationBell() {
     const days = Math.floor(hours / 24);
     return t('time.daysAgo', { count: days });
   }
-  const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
+  // unreadCount를 TanStack Query로 관리 — NotificationsPage와 자동 동기화
+  const { data: unreadCountData } = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: async () => {
       const res = await getUnreadCount();
-      if (res.ok) setUnreadCount(res.data.count);
-    } catch {
-      // 조용히 실패
-    }
-  }, []);
+      if (!res.ok) throw new Error(res.error ?? "Failed to load unread count");
+      return res.data;
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const unreadCount = unreadCountData?.count ?? 0;
+
+  const setUnreadCount = useCallback(
+    (updater: number | ((c: number) => number)) => {
+      queryClient.setQueryData<{ count: number }>(["notifications-unread-count"], (old) => {
+        const current = old?.count ?? 0;
+        const next = typeof updater === "function" ? updater(current) : updater;
+        return { count: Math.max(0, next) };
+      });
+    },
+    [queryClient],
+  );
+
+  const fetchUnreadCount = useCallback(async () => {
+    // TanStack Query가 자동 refetch — 명시적 invalidate로 트리거
+    await queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+  }, [queryClient]);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -61,16 +84,20 @@ export function NotificationBell() {
     }
   }, []);
 
-  // SSE: 실시간 알림 수신 + 폴링 폴백
+  // SSE: 실시간 알림 수신 (자동 재연결 내장) + 폴링 폴백
   useEffect(() => {
     fetchUnreadCount();
 
     const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
     let es: EventSource | null = null;
-    let useSse = false;
+    let sseConnected = false;
+    let errorCount = 0;
+    const token = getToken();
 
-    try {
-      es = new EventSource(`${apiBase}/events/notifications`);
+    function connectSSE() {
+      if (!token) return;
+      es = new EventSource(`${apiBase}/events/notifications?token=${encodeURIComponent(token)}`);
+
       es.addEventListener('notification', (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -81,14 +108,22 @@ export function NotificationBell() {
           ]);
         } catch { /* 무시 */ }
       });
-      es.onopen = () => { useSse = true; };
-      es.onerror = () => { es?.close(); useSse = false; };
-    } catch { /* SSE 미지원 */ }
 
-    // SSE가 안되면 폴링 폴백
+      es.onopen = () => { sseConnected = true; errorCount = 0; };
+      es.onerror = () => {
+        sseConnected = false;
+        errorCount++;
+        // 연속 실패 5회 이상이면 SSE 포기 → 폴링으로 전환
+        if (errorCount >= 5) { es?.close(); es = null; }
+      };
+    }
+
+    connectSSE();
+
+    // SSE 실패 시 폴링 폴백 (10초 간격)
     const interval = setInterval(() => {
-      if (!useSse) fetchUnreadCount();
-    }, POLL_INTERVAL);
+      if (!sseConnected) fetchUnreadCount();
+    }, 10_000);
 
     return () => {
       clearInterval(interval);
@@ -103,6 +138,19 @@ export function NotificationBell() {
     }
   }, [open, fetchNotifications]);
 
+  /** 캐시된 ["notifications", ...] 쿼리 데이터를 직접 변형 */
+  const patchNotificationCache = (patcher: (n: Notification) => Notification) => {
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ["notifications"] })
+      .forEach((query) => {
+        const oldData = query.state.data as Notification[] | undefined;
+        if (Array.isArray(oldData)) {
+          queryClient.setQueryData(query.queryKey, oldData.map(patcher));
+        }
+      });
+  };
+
   const handleItemClick = async (notification: Notification) => {
     if (!notification.isRead) {
       try {
@@ -111,6 +159,8 @@ export function NotificationBell() {
         setNotifications((prev) =>
           prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)),
         );
+        // NotificationsPage 쿼리 캐시 직접 업데이트 — 즉시 리렌더 유발
+        patchNotificationCache((n) => (n.id === notification.id ? { ...n, isRead: true } : n));
       } catch {
         // 조용히 실패
       }
@@ -129,6 +179,8 @@ export function NotificationBell() {
       await markAllAsRead();
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      // NotificationsPage 쿼리 캐시 전체 읽음 처리 — 즉시 리렌더 유발
+      patchNotificationCache((n) => ({ ...n, isRead: true }));
     } catch {
       // 조용히 실패
     }
@@ -193,6 +245,17 @@ export function NotificationBell() {
               </button>
             );
           })
+        )}
+        {notifications.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <button
+              onClick={() => { setOpen(false); navigate('/notifications'); }}
+              className="w-full px-3 py-2 text-center text-xs text-primary hover:bg-muted transition-colors"
+            >
+              {t('notification.viewAll')}
+            </button>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

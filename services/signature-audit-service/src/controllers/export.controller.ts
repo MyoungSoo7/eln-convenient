@@ -7,6 +7,34 @@ import { getExportPresignedUrl } from '../lib/fileServiceClient';
 
 const logger = createLogger('signature-audit-service');
 
+const ELN_SERVICE_URL = process.env.ELN_SERVICE_URL || 'http://eln-service:8002';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+async function validateNoteExportable(noteId: string, orgId: string): Promise<void> {
+  if (noteId === 'bulk' || noteId === 'report') return;
+  try {
+    const res = await fetch(`${ELN_SERVICE_URL}/api/notes/${noteId}`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET, 'x-user-org-id': orgId },
+    });
+    if (!res.ok) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.EXPORT_NOT_FOUND);
+    const data = await res.json();
+    const status = data?.data?.status;
+    if (status !== 'signed' && status !== 'locked') {
+      throw new AppError(400, '서명 완료 또는 잠금 상태의 노트만 내보내기할 수 있습니다.', ErrorCode.EXPORT_NOT_ALLOWED);
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error({ err, noteId }, '노트 상태 확인 실패');
+    throw new AppError(502, '노트 상태 확인에 실패했습니다.', ErrorCode.EXPORT_NOT_FOUND);
+  }
+}
+
+async function validateNotesExportable(noteIds: string[], orgId: string): Promise<void> {
+  for (const noteId of noteIds) {
+    await validateNoteExportable(noteId, orgId);
+  }
+}
+
 async function recordAuditLog(
   action: string,
   actorId: string,
@@ -35,6 +63,8 @@ export async function exportPdf(request: FastifyRequest, reply: FastifyReply) {
   const { noteId } = request.params as { noteId: string };
 
   const orgId = getOrgId(request.headers);
+
+  await validateNoteExportable(noteId, orgId);
 
   const job = await prisma.exportJob.create({
     data: {
@@ -117,6 +147,8 @@ export async function exportZip(request: FastifyRequest, reply: FastifyReply) {
   const requestedBy = (request.headers['x-user-id'] as string) || 'anonymous';
   const noteIds: string[] = (request.body as any).noteIds;
   const orgId = getOrgId(request.headers);
+
+  await validateNotesExportable(noteIds, orgId);
 
   const job = await prisma.exportJob.create({
     data: {

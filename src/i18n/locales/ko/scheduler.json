@@ -45,6 +45,20 @@
   "approve": "승인",
   "emptyAll": "예약이 없습니다. 새 예약을 생성해보세요.",
   "emptyFiltered": "'{{status}}' 상태 예약이 없습니다.",
+  "period": {
+    "label": "기간",
+    "1w": "최근 1주",
+    "1m": "최근 1개월",
+    "3m": "최근 3개월",
+    "1y": "최근 1년",
+    "all": "전체"
+  },
+  "pagination": {
+    "prev": "이전",
+    "next": "다음",
+    "pageOf": "{{page}} / {{total}}",
+    "summary": "총 {{total}}건 중 {{from}}–{{to}}"
+  },
   "booking": {
     "conflict": "해당 시간은 이미 예약되어 있습니다",
     "conflictWith": "\"{{name}}\" 예약과 시간이 겹칩니다"
@@ -79,6 +93,7 @@
     "saveFailed": "저장 실패",
     "empty": "등록된 자원이 없습니다.",
     "filterAll": "전체",
-    "persons": "{{count}}인"
+    "persons": "{{count}}인",
+    "searchPlaceholder": "자원명 검색"
   }
 }

@@ -45,6 +45,20 @@
   "approve": "Approve",
   "emptyAll": "No bookings. Create a new booking to get started.",
   "emptyFiltered": "No '{{status}}' bookings found.",
+  "period": {
+    "label": "Period",
+    "1w": "Last week",
+    "1m": "Last month",
+    "3m": "Last 3 months",
+    "1y": "Last year",
+    "all": "All time"
+  },
+  "pagination": {
+    "prev": "Prev",
+    "next": "Next",
+    "pageOf": "{{page}} / {{total}}",
+    "summary": "{{from}}–{{to}} of {{total}}"
+  },
   "booking": {
     "conflict": "This time slot is already booked",
     "conflictWith": "Conflicts with \"{{name}}\" booking"
@@ -79,6 +93,7 @@
     "saveFailed": "Save Failed",
     "empty": "No resources registered.",
     "filterAll": "All",
-    "persons": "{{count}} persons"
+    "persons": "{{count}} persons",
+    "searchPlaceholder": "Search resources"
   }
 }

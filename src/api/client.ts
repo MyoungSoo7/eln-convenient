@@ -58,17 +58,20 @@ class ApiClient {
 
     const token = getToken();
     const url = `${this.baseURL}${path}`;
+    const hasBody = body !== undefined && body !== null && method !== 'GET';
     const config: RequestInit = {
       method,
       credentials: 'include',
       headers: {
-        'Content-Type': 'application/json; charset=utf-8',
+        // Content-Type은 실제 body가 있을 때만 — 빈 body에 application/json을 보내면
+        // Fastify가 FST_ERR_CTP_EMPTY_JSON_BODY(400)로 거부한다.
+        ...(hasBody ? { 'Content-Type': 'application/json; charset=utf-8' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...extraHeaders,
       },
     };
 
-    if (body && method !== 'GET') {
+    if (hasBody) {
       config.body = JSON.stringify(body);
     }
 

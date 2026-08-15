@@ -1,0 +1,107 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["research"]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Model — 베이스/LoRA/양자화 모델 메타데이터
+// ─────────────────────────────────────────────────────────────
+
+model Model {
+  id          String   @id @default(uuid())
+  name        String   // "gemma4-26b-lora-eln-v1"
+  baseModel   String   // "google/gemma-4-26B-A4B-it"
+  kind        String   // "base" | "lora" | "full-ft" | "quantized"
+  format      String   // "gguf" | "safetensors" | "awq"
+  artifactUri String?  // minio://research-models/...
+  sizeBytes   BigInt?
+  description String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  experiments Experiment[]
+
+  @@index([kind])
+  @@index([baseModel])
+  @@map("models")
+  @@schema("research")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PromptTemplate — 프롬프트 버전 관리
+// ─────────────────────────────────────────────────────────────
+
+model PromptTemplate {
+  id        String   @id @default(uuid())
+  name      String   // "rag-answer-ko-v3"
+  template  String   // Jinja2 또는 간단 템플릿
+  version   Int
+  createdBy String
+  createdAt DateTime @default(now())
+
+  experiments Experiment[]
+
+  @@unique([name, version])
+  @@map("prompt_templates")
+  @@schema("research")
+}
+
+// ─────────────────────────────────────────────────────────────
+// EvalDataset — 평가셋 메타데이터
+// ─────────────────────────────────────────────────────────────
+
+model EvalDataset {
+  id         String   @id @default(uuid())
+  name       String   // "eln-qa-v1", "kmmlu-subset"
+  version    Int
+  sizeRows   Int
+  sourceUri  String   // minio://research-datasets/...
+  schemaJson Json?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  experiments Experiment[]
+
+  @@unique([name, version])
+  @@map("eval_datasets")
+  @@schema("research")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Experiment — 실험 실행 기록
+// ─────────────────────────────────────────────────────────────
+
+model Experiment {
+  id          String    @id @default(uuid())
+  name        String
+  modelId     String
+  datasetId   String
+  promptId    String?
+  mlflowRunId String?
+  status      String    @default("queued") // "queued" | "running" | "completed" | "failed"
+  config      Json?     // 하이퍼파라미터, 추론 설정
+  metrics     Json?     // { win_rate: 0.63, bleu: 0.41, ... }
+  errorMsg    String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  model   Model        @relation(fields: [modelId], references: [id])
+  dataset EvalDataset  @relation(fields: [datasetId], references: [id])
+  prompt  PromptTemplate? @relation(fields: [promptId], references: [id])
+
+  @@index([status])
+  @@index([modelId])
+  @@index([datasetId])
+  @@index([createdBy])
+  @@map("experiments")
+  @@schema("research")
+}

@@ -66,7 +66,7 @@ export const RolePermissions: Record<RoleNameValue, readonly string[]> = {
   [RoleName.ADMIN]: ['*'],
 
   [RoleName.RESEARCHER]: [
-    Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_STATUS,
+    Permission.NOTE_READ, Permission.NOTE_WRITE, Permission.NOTE_DELETE, Permission.NOTE_STATUS,
     Permission.TEMPLATE_READ, Permission.TEMPLATE_WRITE,
     Permission.INVENTORY_READ, Permission.INVENTORY_WRITE,
     Permission.SCHEDULER_READ, Permission.SCHEDULER_WRITE,

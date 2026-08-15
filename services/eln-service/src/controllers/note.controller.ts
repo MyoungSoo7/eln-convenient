@@ -408,10 +408,28 @@ export async function changeNoteStatus(request: FastifyRequest, reply: FastifyRe
     logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.status_changed audit 기록 실패 (상태변경은 완료)');
   });
 
+  // 검색 인덱스 동기화 (상태 변경 반영)
+  searchClient.index({
+    id: updated.id,
+    doc: {
+      domainType: updated.type === 'template' ? 'TEMPLATE' : 'NOTE',
+      title: updated.title,
+      content: updated.content,
+      tags: updated.tags,
+      ownerId: updated.authorId,
+      orgId: updated.orgId,
+      visibility: 'private',
+      docStatus: 'active',
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
+
   // 잠금 알림: 노트 작성자에게 알림
   if (newStatus === 'locked' && updated.authorId && updated.authorId !== actorId) {
     callNotification({
       recipientId: updated.authorId,
+      orgId: getOrgId(request.headers),
       type: 'NOTE_LOCKED',
       entityType: 'note',
       entityId: id,
@@ -476,10 +494,28 @@ export async function adminUnlockNote(request: FastifyRequest, reply: FastifyRep
     logger.warn({ noteId: id, err: auditErr instanceof Error ? auditErr.message : auditErr }, '[AUDIT_WARN] note.admin_unlocked audit 기록 실패 (잠금해제는 완료)');
   });
 
+  // 검색 인덱스 동기화 (locked → draft 반영)
+  searchClient.index({
+    id: updated.id,
+    doc: {
+      domainType: updated.type === 'template' ? 'TEMPLATE' : 'NOTE',
+      title: updated.title,
+      content: updated.content,
+      tags: updated.tags,
+      ownerId: updated.authorId,
+      orgId: updated.orgId,
+      visibility: 'private',
+      docStatus: 'active',
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
+
   // 잠금 해제 알림: 노트 작성자에게 알림
   if (note.authorId && note.authorId !== adminId) {
     callNotification({
       recipientId: note.authorId,
+      orgId: getOrgId(request.headers),
       type: 'NOTE_UNLOCKED',
       entityType: 'note',
       entityId: id,
@@ -585,6 +621,13 @@ export async function addAttachment(request: FastifyRequest, reply: FastifyReply
 export async function deleteAttachment(request: FastifyRequest, reply: FastifyReply) {
   // 소유권 검증은 라우트의 requireOwnerOrAdmin preHandler에서 수행됨
   // request.routeResource에 attachment가 담겨 있음
+  const { id } = request.params as { id: string };
+  const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
+  if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 첨부파일을 삭제할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
+
   const attachment = (request as any).routeResource;
   await prisma.attachment.delete({ where: { id: attachment.id } });
   return { ok: true, message: '첨부파일이 삭제되었습니다.' };
@@ -611,7 +654,17 @@ export async function createNoteLink(request: FastifyRequest, reply: FastifyRepl
   const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
 
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 연결을 추가할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
+
   const { targetType, targetId, label } = body;
+
+  const existing = await prisma.noteLink.findFirst({ where: { noteId: id, targetType, targetId } });
+  if (existing) {
+    throw new AppError(409, '이미 연결된 항목입니다.', ErrorCode.LINK_DUPLICATE);
+  }
+
   const link = await prisma.noteLink.create({
     data: {
       id: uuidv4(),
@@ -631,6 +684,10 @@ export async function deleteNoteLink(request: FastifyRequest, reply: FastifyRepl
   const { id, linkId } = request.params as { id: string; linkId: string };
   const note = await prisma.note.findFirst({ where: { id, orgId: getOrgId(request.headers) } });
   if (!note) throw new AppError(404, '노트를 찾을 수 없습니다.', ErrorCode.NOTE_NOT_FOUND);
+
+  if (note.status === 'signed' || note.status === 'locked') {
+    throw new AppError(403, '서명 완료 또는 잠금 상태의 노트에서는 연결을 해제할 수 없습니다.', ErrorCode.NOTE_IMMUTABLE);
+  }
 
   const link = await prisma.noteLink.findUnique({ where: { id: linkId } });
   if (!link) throw new AppError(404, '링크를 찾을 수 없습니다.', ErrorCode.LINK_NOT_FOUND);
@@ -740,4 +797,104 @@ export async function getNotesBatch(request: FastifyRequest, reply: FastifyReply
     where: { id: { in: ids }, deletedAt: null, orgId },
   });
   return { ok: true, data: notes };
+}
+
+/**
+ * POST /api/notes/admin/reindex — 통합검색 일괄 재색인 (관리자 전용)
+ *
+ * 전체 조직을 대상으로 Note(연구노트) + Template(템플릿)을 순회하면서
+ * SEARCH_INDEX 이벤트를 Redis Stream에 발행한다. 실제 OpenSearch 반영은
+ * search-service의 consumer가 비동기로 수행하므로, 이 엔드포인트는
+ * "발행 완료 건수"를 반환한다.
+ *
+ * 사용 시점:
+ *   - 과거 인덱싱 누락으로 OpenSearch drift가 누적되었을 때
+ *   - OpenSearch 인덱스를 초기화하고 전체 재구축이 필요할 때
+ *   - 검색 매핑 스키마 변경 후 기존 문서 재색인이 필요할 때
+ *
+ * 주의: 전 조직 대상이라 대용량 데이터에서는 수 분 소요 가능 (Stream MAXLEN 10k 고려).
+ * 현재는 순차 발행 — 향후 대량 시 chunk 처리로 개선 여지.
+ */
+export async function adminReindexAll(request: FastifyRequest, reply: FastifyReply) {
+  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const orgId = getOrgId(request.headers);
+  logger.info({ actorId, orgId }, '[admin-reindex] 조직 재색인 시작');
+
+  let noteCount = 0;
+  let templateCount = 0;
+
+  // (1) 노트 — 자기 조직, 소프트 삭제되지 않은 것만
+  const notes = await prisma.note.findMany({
+    where: { deletedAt: null, orgId },
+    select: {
+      id: true, type: true, title: true, content: true, tags: true,
+      authorId: true, orgId: true, createdAt: true, updatedAt: true,
+    },
+  });
+  for (const n of notes) {
+    searchClient.index({
+      id: n.id,
+      doc: {
+        domainType: n.type === 'template' ? 'TEMPLATE' : 'NOTE',
+        title: n.title,
+        content: n.content,
+        tags: n.tags,
+        ownerId: n.authorId,
+        orgId: n.orgId,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: n.createdAt.toISOString(),
+        updatedAt: n.updatedAt.toISOString(),
+      },
+    });
+    noteCount++;
+  }
+
+  // (2) 템플릿 — Note와는 별도 모델. createTemplate/updateTemplate과 동일 payload
+  //     자기 조직 템플릿만 대상 (다른 조직의 isPublic 템플릿은 각자 조직 관리자가 재색인)
+  const templates = await prisma.template.findMany({
+    where: { orgId },
+    select: {
+      id: true, title: true, description: true, content: true, tags: true,
+      createdBy: true, orgId: true, isPublic: true, createdAt: true, updatedAt: true,
+    },
+  });
+  for (const t of templates) {
+    searchClient.index({
+      id: t.id,
+      doc: {
+        domainType: 'TEMPLATE',
+        title: t.title,
+        content: t.content,
+        summary: t.description,
+        tags: t.tags,
+        ownerId: t.createdBy,
+        orgId: t.orgId,
+        visibility: t.isPublic ? 'public' : 'private',
+        docStatus: 'active',
+        createdAt: t.createdAt.toISOString(),
+        updatedAt: t.updatedAt.toISOString(),
+      },
+    });
+    templateCount++;
+  }
+
+  logger.info({ actorId, orgId, noteCount, templateCount }, '[admin-reindex] 조직 재색인 발행 완료');
+
+  await callAuditLog({
+    entityType: 'system',
+    entityId: 'search-index',
+    action: 'search.admin_reindex',
+    actorId,
+    details: { noteCount, templateCount, orgId, service: 'eln-service' },
+    ipAddress: request.ip,
+  }).catch((err: unknown) => {
+    logger.warn({ err: err instanceof Error ? err.message : err }, '[AUDIT_WARN] admin-reindex audit 기록 실패');
+  });
+
+  return {
+    ok: true,
+    data: { noteCount, templateCount, total: noteCount + templateCount },
+    message: `노트 ${noteCount}건, 템플릿 ${templateCount}건 재색인 요청을 발행했습니다.`,
+  };
 }

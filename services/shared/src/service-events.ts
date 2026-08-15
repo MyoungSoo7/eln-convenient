@@ -16,6 +16,9 @@ export const ServiceEventType = {
   USER_REACTIVATED: 'user.reactivated',
   NOTE_DELETED: 'note.deleted',
   NOTE_SIGNED: 'NOTE_SIGNED',
+  // 통합 검색 자동 동기화 — search-service가 consumer group으로 구독
+  SEARCH_INDEX: 'SEARCH_INDEX',
+  SEARCH_DELETE: 'SEARCH_DELETE',
 } as const;
 
 export type ServiceEventType = (typeof ServiceEventType)[keyof typeof ServiceEventType];
@@ -50,6 +53,22 @@ export interface NoteSignedPayload {
   noteId: string;
   signerId: string;
   signatureId: string;
+}
+
+// ── 통합 검색 동기화 이벤트 ──
+// Redis Stream `labnote:events`를 통해 search-service가 구독한다.
+// 발행 측(eln/inventory)은 DB 트랜잭션 성공 직후 XADD만 하면 되고,
+// search-service 다운 시에도 Stream에 쌓여있다가 복구 시 자동 처리된다.
+
+export interface SearchIndexPayload {
+  /** OpenSearch doc id (노트 id, 템플릿 id, 인벤토리 item id 등) */
+  id: string;
+  /** 인덱싱할 문서 필드 (domainType, title, content, tags, orgId, ownerId, visibility, docStatus, createdAt, updatedAt 등) */
+  doc: Record<string, unknown>;
+}
+
+export interface SearchDeletePayload {
+  id: string;
 }
 
 // ── 이벤트 빌더 ──

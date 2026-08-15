@@ -73,10 +73,47 @@ export async function listAuditActions(request: FastifyRequest, reply: FastifyRe
   return { ok: true, data: rows.map((r) => r.action) };
 }
 
-/** POST /api/audit/internal — 내부 감사로그 생성 (requireInternalSecret 미들웨어로 보호) */
+/** POST /api/audit/internal — 내부 감사로그 생성 (requireInternalSecret 미들웨어로 보호)
+ *  멱등성: body.eventId가 주어지면 동일 eventId의 로그가 이미 있을 경우 신규 생성하지 않는다.
+ *  → publisher가 재시도해도 AuditLog는 1회만 기록됨.
+ */
 export async function createAuditLogInternal(request: FastifyRequest, reply: FastifyReply) {
-  const { entityType, entityId, action, actorId, orgId, details, ipAddress } = request.body as any;
+  const { eventId, entityType, entityId, action, actorId, orgId, details, ipAddress } = request.body as any;
 
+  // eventId가 있으면 idempotent upsert
+  if (eventId) {
+    const existing = await prisma.auditLog.findUnique({ where: { eventId } });
+    if (existing) {
+      reply.code(200);
+      return { ok: true, data: { id: existing.id, deduplicated: true } };
+    }
+    try {
+      const log = await prisma.auditLog.create({
+        data: {
+          eventId,
+          entityType,
+          entityId,
+          action,
+          actorId,
+          orgId: orgId ?? '',
+          details: details ?? {},
+          ipAddress: ipAddress ?? null,
+        },
+      });
+      reply.code(201);
+      return { ok: true, data: { id: log.id } };
+    } catch (err: any) {
+      // 동시 요청으로 UNIQUE 충돌 — 멱등으로 처리
+      if (err?.code === 'P2002') {
+        const existing2 = await prisma.auditLog.findUnique({ where: { eventId } });
+        reply.code(200);
+        return { ok: true, data: { id: existing2?.id, deduplicated: true } };
+      }
+      throw err;
+    }
+  }
+
+  // 레거시 호출 (eventId 없음) — 기존 동작 유지
   const log = await prisma.auditLog.create({
     data: {
       entityType,
@@ -86,7 +123,6 @@ export async function createAuditLogInternal(request: FastifyRequest, reply: Fas
       orgId: orgId ?? '',
       details: details ?? {},
       ipAddress: ipAddress ?? null,
-      // id, createdAt: DB default 사용
     },
   });
   reply.code(201);

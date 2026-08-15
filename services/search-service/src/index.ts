@@ -3,6 +3,7 @@ import { buildApp } from './app';
 import { setupProcessHandlers, createLogger } from '@lab/shared';
 import { ensureIndices } from './lib/opensearch';
 import prisma from './lib/prisma';
+import { startSearchEventConsumer, stopSearchEventConsumer } from './lib/eventConsumer';
 
 const logger = createLogger('search-service');
 
@@ -35,6 +36,23 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.error({ err }, 'OpenSearch 인덱스 초기화 실패');
   }
+
+  // Redis Stream consumer 시작 — eln/inventory의 SEARCH_INDEX/SEARCH_DELETE 이벤트 구독
+  try {
+    await startSearchEventConsumer();
+  } catch (err) {
+    logger.error({ err }, '이벤트 컨슈머 시작 실패 (서비스는 계속 실행)');
+  }
 }
+
+// Graceful shutdown — consumer 루프 정지
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, 'shutdown 시작');
+  await stopSearchEventConsumer().catch(() => {});
+  await prisma.$disconnect().catch(() => {});
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 main();

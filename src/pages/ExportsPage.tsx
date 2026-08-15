@@ -192,16 +192,7 @@ export default function ExportsPage() {
             </p>
           </CardContent>
         </Card>
-        <Card className="shadow-card opacity-60 cursor-not-allowed">
-          <CardContent className="p-6 text-center">
-            <FileText className="h-8 w-8 mx-auto text-secondary" />
-            <p className="font-medium mt-3 flex items-center justify-center gap-1">
-              {t('projectReport')}
-              <HelpTooltip text={t('projectReportTooltip')} />
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">{t('projectReportComingSoon')}</p>
-          </CardContent>
-        </Card>
+        {/* 프로젝트 보고서 — 기능 준비 완료 시 복원 */}
       </div>
 
       {/* 진행 중인 작업 */}

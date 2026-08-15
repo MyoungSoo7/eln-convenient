@@ -13,8 +13,8 @@
 │                    (api-gateway:8000)                         │
 └──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬─────────┘
    │      │      │      │      │      │      │      │
- auth   eln   sig/aud  inv   sched  search  file  collab
- :8001  :8002  :8003   :8004  :8005  :8006  :8008  :8009(ws)
+ auth   eln   sig/aud  inv   sched  search   ai   file  collab
+ :8001  :8002  :8003   :8004  :8005  :8006  :8007  :8008  :8009(ws)
 ```
 
 ---
@@ -27,10 +27,11 @@
 | **auth-service** | 8001 | 조직/팀/사용자 CRUD, RBAC, 토큰 발급(jsonwebtoken + bcryptjs) |
 | **eln-service** | 8002 | 연구노트/프로토콜 CRUD, 버전관리, 상태 흐름, 태그, 첨부메타, 링크, 템플릿 |
 | **signature-audit-service** | 8003 | 전자서명(해시체인), 감사로그, PDF/ZIP/보고서 변환(Puppeteer+BullMQ), 알림 |
-| **inventory-service** | 8004 | 시약/샘플/장비/자산 CRUD, 바코드, 수량관리, 재고/유효기간 알림 |
+| **inventory-service** | 8004 | 자원/장비/자산 CRUD, 바코드, 수량관리, 재고/유효기간 알림 |
 | **scheduler-service** | 8005 | 장비/회의실 예약, 승인/거절/취소/완료 흐름 |
 | **search-service** | 8006 | 통합검색(OpenSearch), 자동완성, 검색히스토리, 즐겨찾기, 키워드 즐겨찾기 |
 | **file-service** | 8008 | 파일 업로드/다운로드(MinIO), presigned URL, 스트리밍, 내보내기 잡 |
+| **ai-assistant-service** | 8007 | AI 템플릿 추천, 초안 생성, RAG 질의 (OpenAI + Qdrant 벡터 임베딩) |
 | **collab-service** | 8009 | WebSocket 실시간 협업 편집, Redis pub/sub 멀티 인스턴스 동기화 |
 | **inventory-frontend** | 80 (Nginx) | 인벤토리/프로토콜 전용 React SPA 프론트엔드 |
 | **shared** | — | 공용 유틸리티 패키지 (에러, 로거, 권한, Zod 검증) |
@@ -45,6 +46,7 @@
 | **Redis 7** | 세션, 캐시, 잡큐, 토큰 블랙리스트 | pub/sub (collab-service 멀티 인스턴스 동기화) |
 | **MinIO** | 오브젝트 스토리지 (첨부파일, 내보내기) | S3 호환, 버킷: `labnote-files`, `labnote-exports` |
 | **OpenSearch 2** | 전문검색 인덱스 | search-service 전용 |
+| **Qdrant** | 벡터 데이터베이스 | ai-assistant-service 전용, 문서 임베딩 저장/검색 |
 | **Keycloak 24** | SSO 인증 (선택) | OIDC/PKCE, realm 자동 임포트, 듀얼 모드(JWKS/로컬JWT) |
 
 ---
@@ -57,9 +59,10 @@
 |--------|------|------|
 | POST | `/api/auth/login` | 로그인 (JWT 발급) |
 | POST | `/api/auth/register` | 회원가입 |
+| POST | `/api/auth/refresh` | 토큰 갱신 (Refresh Token → 새 Access Token) |
 | POST | `/api/auth/logout` | 로그아웃 (토큰 블랙리스트) |
 | GET | `/api/auth/me` | 현재 사용자 정보 |
-| POST | `/api/auth/sso-hook` | Keycloak SSO 훅 |
+| PATCH | `/api/auth/me/password` | 비밀번호 변경 |
 | GET/POST | `/api/auth/orgs` | 조직 목록/생성 |
 | PUT/DELETE | `/api/auth/orgs/:id` | 조직 수정/삭제 |
 | GET/POST | `/api/auth/teams` | 팀 목록/생성 |
@@ -106,6 +109,11 @@
 | DELETE | `/api/templates/:id` | 템플릿 삭제 |
 | POST | `/api/templates/:id/copy` | 템플릿 복사 (copyCount 증가) |
 | POST | `/api/templates/recommend` | 추천 템플릿 (카테고리별 Top 5) |
+| GET | `/api/codes` | 공통 코드 목록 (?group=) |
+| GET | `/api/codes/groups` | 코드 그룹 목록 |
+| POST | `/api/codes` | 공통 코드 생성 (Admin) |
+| PUT | `/api/codes/:id` | 공통 코드 수정 (Admin) |
+| DELETE | `/api/codes/:id` | 공통 코드 삭제 (Admin) |
 
 ### 4.3 signature-audit-service
 
@@ -208,19 +216,41 @@
 | GET | `/api/exports/:jobId` | 내보내기 잡 상태 |
 | GET | `/api/exports/:jobId/download` | 내보내기 파일 다운로드 |
 | DELETE | `/api/exports/:jobId` | 내보내기 잡 삭제 |
+| GET | `/api/files/storage/info` | 스토리지 정보 (type, bucket) |
+| POST | `/api/exports/internal/upload` | (내부) 내보내기 파일 업로드 |
+| GET | `/api/exports/internal/presigned/:fileId` | (내부) 내보내기 presigned URL |
 
-### 4.8 collab-service
+### 4.8 ai-assistant-service
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/ai/recommend-template` | AI 템플릿 추천 (note:read 권한) |
+| POST | `/api/ai/draft` | AI 초안 생성 (note:write 권한) |
+| POST | `/api/ai/ask` | RAG 기반 질의 응답 (note:read 권한) |
+| POST | `/api/ai/index` | (내부) 문서 벡터 인덱싱 |
+| DELETE | `/api/ai/index/:documentId` | (내부) 인덱스에서 문서 삭제 |
+| GET | `/api/ai/index/status` | (내부) 벡터 인덱스 상태 조회 |
+
+### 4.9 collab-service
 
 | Method | Path | 설명 |
 |--------|------|------|
 | WS | `/collab/notes/:noteId?token=<JWT>` | 실시간 협업 편집 (WebSocket) |
 | GET | `/health` | 헬스체크 (활성 룸 수 포함) |
 
-### 4.9 api-gateway (집계)
+### 4.10 api-gateway (집계/세션/SSE)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/dashboard` | 대시보드 집계 (ELN 통계, 서명 규정, 인벤토리 알림, 예약 현황) |
+| GET | `/api/dashboard` | 대시보드 집계 (레거시, 전체 통합) |
+| GET | `/api/dashboard/personal` | 개인 대시보드 |
+| GET | `/api/dashboard/team/:teamId` | 팀 대시보드 |
+| GET | `/api/dashboard/org` | 조직 대시보드 (Admin) |
+| POST | `/api/auth/session` | Refresh Token → HttpOnly 쿠키 저장 |
+| POST | `/api/auth/session/refresh` | 쿠키 기반 토큰 갱신 |
+| DELETE | `/api/auth/session` | 세션 쿠키 삭제 |
+| GET | `/api/events/exports` | SSE — 내보내기 상태 실시간 수신 |
+| GET | `/api/events/notifications` | SSE — 알림 실시간 수신 |
 
 ---
 
@@ -317,6 +347,8 @@ model Note {
   sections      Json                @default("[]")
   status        NoteStatus          @default(draft)
   authorId      String
+  orgId         String
+  teamId        String?             // 소속 팀 (null = 조직 공개)
   templateId    String?
   tags          String[]
   createdAt     DateTime            @default(now())
@@ -326,6 +358,10 @@ model Note {
   links         NoteLink[]
   attachments   Attachment[]
   statusHistory NoteStatusHistory[]
+
+  @@index([orgId])
+  @@index([orgId, status])
+  @@index([orgId, authorId])
 }
 
 model NoteStatusHistory {
@@ -390,6 +426,21 @@ model Template {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model Code {
+  id        String   @id @default(uuid())
+  orgId     String
+  group     String   // TEMPLATE_CATEGORY | INVENTORY_ITEM_TYPE
+  value     String
+  label     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, group, value])
+  @@index([orgId, group])
+}
 ```
 
 ### 5.3 inventory 스키마
@@ -399,8 +450,9 @@ model Template {
 ```prisma
 model InventoryItem {
   id                String             @id @default(uuid())
+  orgId             String
   name              String
-  type              String             // reagent | sample | equipment | consumable | antibody | plasmid | cell_line
+  type              String             // reagent(자재) | sample | equipment | consumable | antibody(부품) | plasmid(모듈) | cell_line(시험자원)
   status            String             @default("available") // available | in_use | depleted | maintenance
   category          String?
   location          String?
@@ -416,6 +468,9 @@ model InventoryItem {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   history           InventoryHistory[]
+
+  @@index([orgId, type])
+  @@index([orgId])
 }
 
 model InventoryHistory {
@@ -435,8 +490,12 @@ model InventoryHistory {
 
 model Category {
   id        String   @id @default(uuid())
-  name      String   @unique
+  orgId     String
+  name      String
   createdAt DateTime @default(now())
+
+  @@unique([orgId, name])
+  @@index([orgId])
 }
 ```
 
@@ -460,6 +519,7 @@ enum BookingStatus {
 
 model Resource {
   id          String       @id @default(uuid())
+  orgId       String
   name        String
   type        ResourceType
   location    String?
@@ -472,10 +532,13 @@ model Resource {
 
   @@index([type])
   @@index([isActive])
+  @@index([orgId])
+  @@index([orgId, type])
 }
 
 model Booking {
   id             String        @id @default(uuid())
+  orgId          String
   resourceId     String
   userId         String
   title          String
@@ -496,6 +559,7 @@ model Booking {
   @@index([status])
   @@index([startAt, endAt])
   @@index([resourceId, status, startAt, endAt])
+  @@index([orgId])
 }
 ```
 
@@ -533,6 +597,7 @@ model Signature {
   id             String          @id @default(uuid())
   noteId         String
   signerId       String
+  orgId          String          @default("")
   signatureHash  String
   prevHash       String?         // 해시 체인 (이전 서명 해시)
   chainIndex     Int             // 체인 순서
@@ -540,6 +605,8 @@ model Signature {
   status         SignatureStatus @default(valid)
 
   @@index([noteId])
+  @@index([signerId])
+  @@index([orgId])
 }
 
 model AuditLog {
@@ -548,6 +615,7 @@ model AuditLog {
   entityId    String
   action      String   // note.created | note.updated | note.signed | ...
   actorId     String
+  orgId       String   @default("")
   details     Json     @default("{}")
   ipAddress   String?
   createdAt   DateTime @default(now())
@@ -555,6 +623,10 @@ model AuditLog {
   @@index([entityId])
   @@index([actorId])
   @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([orgId, createdAt])
+  @@index([orgId, action])
+  @@index([orgId, entityType, createdAt])
 }
 
 model ExportJob {
@@ -564,7 +636,9 @@ model ExportJob {
   format       ExportFormat
   status       ExportStatus @default(pending)
   requestedBy  String
+  orgId        String
   fileUrl      String?
+  fileId       String?
   errorMsg     String?
   createdAt    DateTime     @default(now())
   completedAt  DateTime?
@@ -572,11 +646,13 @@ model ExportJob {
   @@index([requestedBy])
   @@index([status])
   @@index([createdAt])
+  @@index([orgId])
 }
 
 model Notification {
   id          String           @id @default(uuid())
   recipientId String
+  orgId       String           @default("")
   type        NotificationType
   entityType  String
   entityId    String
@@ -587,7 +663,7 @@ model Notification {
   isRead      Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
-  @@index([recipientId, isRead])
+  @@index([orgId, recipientId, isRead])
   @@index([recipientId, createdAt])
 }
 ```
@@ -684,7 +760,7 @@ model ExportJob {
 
 - **REST API** (JSON over HTTP) — 모든 서비스 간 기본 통신
 - api-gateway가 `/api/{service}/...` 패턴으로 라우팅
-- 인증: `Authorization: Bearer <JWT>` 헤더 (gateway에서 검증 후 `x-user-id`, `x-user-role`, `x-user-permissions` 헤더 주입)
+- 인증: `Authorization: Bearer <JWT>` 헤더 (gateway에서 검증 후 `x-user-id`, `x-user-role`, `x-user-email`, `x-user-permissions`, `x-user-org-id`, `x-user-team-ids`, `x-user-team-roles` 헤더 주입)
 - 내부 서비스 간 통신: `x-internal-secret` 헤더로 인증
 
 ### 6.2 WebSocket 실시간 통신
@@ -692,22 +768,29 @@ model ExportJob {
 - **collab-service** (포트 8009) — 노트 실시간 협업 편집
 - JWT 토큰으로 인증 (`?token=<JWT>` 쿼리 파라미터)
 - Redis pub/sub로 멀티 인스턴스 동기화
-- 메시지 타입: `content-update`, `awareness`, `user-joined`, `user-left`
+- 메시지 타입: `joined`, `user-joined`, `user-left`, `content-update`, `awareness`, `read-only`, `error`
 
-### 6.3 비동기 이벤트
-
-서비스 간 HTTP 콜백을 통한 이벤트 전파:
+### 6.3 비동기 이벤트 (Redis Stream)
 
 | 이벤트 | 발행자 | 구독자 | 설명 |
 |--------|--------|--------|------|
-| `note.created` | eln-service | search-service | 검색 인덱스 갱신 |
-| `note.updated` | eln-service | search-service | 인덱스 갱신 |
-| `note.signed` | signature-audit | eln-service | 노트 status → signed |
-| `note.locked` | eln-service | signature-audit (알림) | 잠금 알림 발송 |
-| `inventory.updated` | inventory-service | search-service | 인덱스 갱신 |
-| `export.completed` | signature-audit | (알림) | PDF/ZIP 생성 완료 |
+| `NOTE_SIGNED` | signature-audit | eln-service (eventConsumer) | 노트 status → signed (HTTP PATCH 폴백) |
 
-### 6.4 서비스 간 호출 흐름 예시
+> 검색 인덱스 갱신, 감사로그, 알림 등은 HTTP 직접 호출 (Redis Stream 아님)
+
+### 6.4 서비스 간 HTTP 호출
+
+| 호출 | 발신 | 수신 | 설명 |
+|------|------|------|------|
+| `POST /api/search/index` | eln-service, inventory-service | search-service | 검색 인덱스 갱신 (fire-and-forget) |
+| `POST /api/audit/internal` | eln-service, auth-service | signature-audit | 감사로그 기록 |
+| `POST /api/notifications/internal` | eln-service, scheduler-service | signature-audit | 알림 발송 |
+| `POST /api/auth/internal/verify-password` | signature-audit, eln-service | auth-service | 비밀번호 검증 |
+| `GET /api/notes/:id` | file-service, collab-service | eln-service | 노트 데이터 조회 |
+| `POST /api/exports/internal/upload` | signature-audit (worker) | file-service | 내보내기 파일 업로드 |
+| `POST /api/ai/index` | eln-service | ai-assistant-service | AI 벡터 인덱싱 (문서 임베딩) |
+
+### 6.5 서비스 간 호출 흐름 예시
 
 ```
 [사용자] → [api-gateway] → [eln-service]
@@ -717,16 +800,19 @@ model ExportJob {
                                 │
                                 ├─ "서명하기" 클릭
                                 │   └─→ [signature-audit-service] POST /sign/:noteId
-                                │        ├─→ eln-service PATCH /notes/:id/status → signed
+                                │        ├─→ Redis Stream NOTE_SIGNED (PRIMARY)
+                                │        │    └─→ [eln-service eventConsumer] status → signed
+                                │        ├─→ HTTP PATCH /notes/:id/status (폴백, Redis 실패 시)
                                 │        ├─→ audit_logs 기록
                                 │        └─→ notification 발송
                                 │
                                 ├─ PDF 내보내기
                                 │   └─→ [signature-audit-service] POST /exports/pdf/:noteId
-                                │        └─→ [MinIO] PDF 저장 → presigned URL 반환
+                                │        └─→ BullMQ Worker → Puppeteer → [file-service] 업로드 → [MinIO]
                                 │
                                 └─ 실시간 편집
                                     └─→ [collab-service] WebSocket /collab/notes/:noteId
+                                         ├─→ [eln-service] GET /notes/:id (읽기전용 상태 확인)
                                          └─→ [Redis pub/sub] 멀티 인스턴스 브로드캐스트
 ```
 
@@ -762,14 +848,14 @@ lab-companion/
 │   │       └── middlewares/
 │   │           └── auth.ts        # JWT 검증 (jose, 듀얼 모드)
 │   │
-│   ├── auth-service/              # Express + Prisma
+│   ├── auth-service/              # Fastify + Prisma
 │   │   └── src/
 │   │       ├── routes/
 │   │       ├── controllers/
 │   │       ├── dtos/
 │   │       └── swagger.ts
 │   │
-│   ├── eln-service/               # Express + Prisma
+│   ├── eln-service/               # Fastify + Prisma
 │   │   └── src/
 │   │       ├── routes/
 │   │       │   ├── note.routes.ts
@@ -781,11 +867,12 @@ lab-companion/
 │   │       ├── middlewares/
 │   │       └── lib/
 │   │
-│   ├── signature-audit-service/   # Express + Prisma + BullMQ + Puppeteer
-│   ├── inventory-service/         # Express + Prisma
-│   ├── scheduler-service/         # Express + Prisma
-│   ├── search-service/            # Express + Prisma + OpenSearch
-│   ├── file-service/              # Express + Prisma + MinIO (@aws-sdk/client-s3)
+│   ├── signature-audit-service/   # Fastify + Prisma + BullMQ + Puppeteer
+│   ├── inventory-service/         # Fastify + Prisma
+│   ├── scheduler-service/         # Fastify + Prisma
+│   ├── search-service/            # Fastify + Prisma + OpenSearch
+│   ├── ai-assistant-service/       # Express + OpenAI + Qdrant (AI/RAG)
+│   ├── file-service/              # Fastify + Prisma + MinIO (@aws-sdk/client-s3)
 │   ├── collab-service/            # ws + Redis pub/sub (WebSocket)
 │   │
 │   ├── inventory-frontend/        # React + Vite (인벤토리/프로토콜 전용 SPA)
@@ -817,7 +904,8 @@ services:
   redis:        { image: redis:7-alpine, ports: ["6379:6379"] }
   minio:        { image: minio/minio, ports: ["9000:9000", "9001:9001"] }
   opensearch:   { image: opensearchproject/opensearch:2, ports: ["9200:9200"] }
-  keycloak:     { image: quay.io/keycloak/keycloak:24.0, ports: ["8080:8080"] }
+  qdrant:       { image: qdrant/qdrant, ports: ["6333:6333"] }
+  # keycloak:   { image: quay.io/keycloak/keycloak:24.0, ports: ["8080:8080"] }  # 선택, 현재 미배포
 
   # --- 백엔드 서비스 ---
   api-gateway:              { build: ./api-gateway, ports: ["8000:8000"] }
@@ -827,11 +915,16 @@ services:
   inventory-service:        { build: { context: ., dockerfile: inventory-service/Dockerfile } }
   scheduler-service:        { build: { context: ., dockerfile: scheduler-service/Dockerfile } }
   search-service:           { build: { context: ., dockerfile: search-service/Dockerfile } }
+  ai-assistant-service:     { build: { context: ., dockerfile: ai-assistant-service/Dockerfile } }
   file-service:             { build: { context: ., dockerfile: file-service/Dockerfile } }
   collab-service:           { build: ./collab-service }
 
   # --- 프론트엔드 ---
   inventory-frontend:       { build: ./inventory-frontend, ports: ["3000:80"] }
+
+  # --- 개발 도구 ---
+  jaeger:                   { image: jaegertracing/all-in-one, ports: ["16686:16686", "4318:4318"] }
+  dozzle:                   { image: amir20/dozzle, ports: ["9999:8080"] }
 ```
 
 ### 실행 방법
@@ -848,8 +941,11 @@ docker compose up --build
 | 프론트엔드 (인벤토리) | http://localhost:3000 |
 | 메인 프론트엔드 (개발) | http://localhost:5173 (vite dev) |
 | API Gateway | http://localhost:8000 |
+| Jaeger UI | http://localhost:16686 |
+| Dozzle (로그) | http://localhost:9999 |
 | MinIO 콘솔 | http://localhost:9001 |
 | OpenSearch | http://localhost:9200 |
+| Qdrant (벡터 DB) | http://localhost:6333 |
 | Keycloak 관리 콘솔 | http://localhost:8080 |
 
 ---
@@ -870,4 +966,4 @@ docker compose up --build
 - [x] 알림 시스템 — signature-audit-service 내장, 내부 API + 폴링 UI (NotificationBell) 완료
 - [x] 검색 히스토리/즐겨찾기 — search-service Prisma 모델 + CRUD API 완료
 - [x] 인벤토리 알림 — 재고 부족/유효기간 임박 알림 API 완료
-- [ ] AI 어시스턴트 서비스 (8007) — 템플릿 추천, 초안 생성, 벡터 인덱싱(Qdrant), RAG 질의
+- [x] AI 어시스턴트 서비스 (8007) — 템플릿 추천, 초안 생성, 벡터 인덱싱(Qdrant), RAG 질의 — Express + OpenAI + Qdrant 통합 완료

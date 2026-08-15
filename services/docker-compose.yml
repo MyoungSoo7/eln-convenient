@@ -106,6 +106,42 @@ services:
       retries: 5
       start_period: 60s
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: labnote-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # Ollama: Gemma 3 + bge-m3 임베딩 OpenAI 호환 서빙 (PoC)
+  # GPU가 없으면 CPU로도 동작하지만 12B 모델은 매우 느리다 — 4B 권장.
+  # GPU 사용 시 nvidia-container-toolkit 설치 후 deploy.resources 블록 주석 해제.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: labnote-ollama
+    profiles: ["ollama"] # `docker compose --profile ollama up` 일 때만 기동
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+    # GPU 사용 시 아래 블록 활성화 (nvidia-container-toolkit 필요)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # ═══════════════════════════════════════════
   #  백엔드 서비스
@@ -131,6 +167,7 @@ services:
       # 같은 :? 형태로 맞춘다.
       - DEFAULT_RESET_PASSWORD=${DEFAULT_RESET_PASSWORD:?DEFAULT_RESET_PASSWORD를 설정하세요}
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=auth-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -161,6 +198,7 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - SIGNATURE_SERVICE_URL=http://signature-audit-service:8003
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - SEARCH_SERVICE_URL=http://search-service:8006
       - SEED_ON_START=true
       - OTEL_SERVICE_NAME=eln-service
@@ -195,6 +233,7 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - FILE_SERVICE_URL=http://file-service:8008
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=signature-audit-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -230,6 +269,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - SEARCH_SERVICE_URL=http://search-service:8006
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=inventory-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -259,6 +299,7 @@ services:
       - PORT=8005
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=scheduler&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=scheduler-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -286,6 +327,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=search&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - REDIS_URL=redis://redis:6379
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=search-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -299,6 +341,221 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8006/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  MLflow — Gemma 4 연구 실험 추적
+  #  PoC: SQLite 백엔드 + 로컬 볼륨 아티팩트
+  #  프로덕션 전환 시 Postgres + MinIO/S3로 교체
+  # ───────────────────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.18.0
+    container_name: labnote-mlflow
+    profiles: ["research"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --artifacts-destination /mlflow/artifacts
+        --host 0.0.0.0
+        --port 5000
+        --serve-artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5000/health\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ───────────────────────────────────────────────────────
+  #  Gemma Gateway — Gemma 4 연구용 OpenAI-호환 라우터
+  #  로컬 ollama / vllm / openai 백엔드를 alias로 라우팅
+  # ───────────────────────────────────────────────────────
+  gemma-gateway:
+    build:
+      context: .
+      dockerfile: gemma-gateway/Dockerfile
+    container_name: labnote-gemma-gateway
+    profiles: ["research"]
+    expose:
+      - "8010"
+    ports:
+      - "8010:8010" # 로컬 디버깅용 직접 노출
+    environment:
+      - PORT=8010
+      - NODE_ENV=${NODE_ENV:-development}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434/v1}
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8010/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────────────────
+  #  Eval Harness — Gemma 4 평가 실행기 (smoke/KMMLU/ELN-QA)
+  # ───────────────────────────────────────────────────────
+  eval-harness-service:
+    build:
+      context: .
+      dockerfile: eval-harness-service/Dockerfile
+    container_name: labnote-eval-harness
+    profiles: ["research"]
+    expose:
+      - "8011"
+    ports:
+      - "8011:8011"
+    environment:
+      - PORT=8011
+      - NODE_ENV=${NODE_ENV:-development}
+      - MLFLOW_URL=http://mlflow:5000
+      - GEMMA_GATEWAY_URL=http://gemma-gateway:8010
+    depends_on:
+      gemma-gateway:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8011/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  Model Registry — 모델/프롬프트/평가셋/실험 버전 관리
+  # ───────────────────────────────────────────────────────
+  model-registry-service:
+    build:
+      context: .
+      dockerfile: model-registry-service/Dockerfile
+    container_name: labnote-model-registry
+    profiles: ["research"]
+    expose:
+      - "8012"
+    ports:
+      - "8012:8012"
+    environment:
+      - PORT=8012
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=research&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=model-registry-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8012/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  Experiment Tracker — MLflow 읽기 전용 프록시
+  # ───────────────────────────────────────────────────────
+  experiment-tracker-service:
+    build:
+      context: .
+      dockerfile: experiment-tracker-service/Dockerfile
+    container_name: labnote-experiment-tracker
+    profiles: ["research"]
+    expose:
+      - "8013"
+    ports:
+      - "8013:8013"
+    environment:
+      - PORT=8013
+      - NODE_ENV=${NODE_ENV:-development}
+      - MLFLOW_URL=http://mlflow:5000
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=experiment-tracker-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8013/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────────────────
+  #  Fine-Tune Jobs — LoRA/QLoRA 파인튜닝 잡 큐잉/상태관리
+  # ───────────────────────────────────────────────────────
+  fine-tune-jobs-service:
+    build:
+      context: .
+      dockerfile: fine-tune-jobs-service/Dockerfile
+    container_name: labnote-fine-tune-jobs
+    profiles: ["research"]
+    expose:
+      - "8014"
+    ports:
+      - "8014:8014"
+    environment:
+      - PORT=8014
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=research&client_encoding=UTF8&connection_limit=3&pool_timeout=10
+      - REDIS_URL=redis://redis:6379
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-internal-secret}
+      - OTEL_SERVICE_NAME=fine-tune-jobs-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8014/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-assistant-service:
+    build: ./ai-assistant-service
+    container_name: labnote-ai
+    expose:
+      - "8007"
+    environment:
+      - PORT=8007
+      - QDRANT_URL=http://qdrant:6333
+      - REDIS_URL=redis://redis:6379
+      # --- LLM Provider 설정 (openai | ollama | vllm) ---
+      # 연구 환경에선 gemma-gateway를 OpenAI 호환 백엔드로 가리키도록 OPENAI_BASE_URL 오버라이드 가능.
+      - CHAT_PROVIDER=${CHAT_PROVIDER:-openai}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      - CHAT_MODEL=${CHAT_MODEL:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-}
+      # OpenAI (기본 또는 gemma-gateway 경유)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      # Ollama 직접 (gemma-gateway 미사용 시)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434/v1}
+      # vLLM 직접 (gemma-gateway 미사용 시)
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-http://vllm:8000/v1}
+      - VLLM_API_KEY=${VLLM_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8007/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -324,6 +581,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-labnote}?schema=file&client_encoding=UTF8&connection_limit=10&pool_timeout=10
       - ELN_SERVICE_URL=http://eln-service:8002
       - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET를 설정하세요}
+      - INTERNAL_SECRET_PREVIOUS=${INTERNAL_SECRET_PREVIOUS:-}
       - OTEL_SERVICE_NAME=file-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     depends_on:
@@ -390,8 +648,12 @@ services:
       - INVENTORY_SERVICE_URL=http://inventory-service:8004
       - SCHEDULER_SERVICE_URL=http://scheduler-service:8005
       - SEARCH_SERVICE_URL=http://search-service:8006
+      - AI_SERVICE_URL=http://ai-assistant-service:8007
       - FILE_SERVICE_URL=http://file-service:8008
       - COLLAB_SERVICE_URL=http://collab-service:8009
+      # Gemma Gateway (research profile, opt-in)
+      - ENABLE_GEMMA_GATEWAY=${ENABLE_GEMMA_GATEWAY:-false}
+      - GEMMA_GATEWAY_URL=${GEMMA_GATEWAY_URL:-http://gemma-gateway:8010}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 환경변수를 반드시 설정하세요}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - REDIS_URL=redis://redis:6379
@@ -457,3 +719,6 @@ volumes:
   redis_data:
   minio_data:
   opensearch_data:
+  qdrant_data:
+  ollama_data:
+  mlflow_data:

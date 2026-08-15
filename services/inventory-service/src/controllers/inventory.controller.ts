@@ -271,6 +271,22 @@ export async function adjustQuantity(request: FastifyRequest, reply: FastifyRepl
     }),
   ]);
 
+  // 검색 인덱스 동기화 (수량/상태 변경 반영)
+  searchClient.index({
+    id: updated.id,
+    doc: {
+      domainType: 'INVENTORY',
+      title: updated.name,
+      orgId: updated.orgId,
+      tags: updated.tags,
+      ownerId: updated.createdBy,
+      visibility: 'private',
+      docStatus: 'active',
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
+
   return { ok: true, data: updated, history: { before, after, delta } };
 }
 
@@ -429,4 +445,51 @@ export async function deleteCategory(request: FastifyRequest, reply: FastifyRepl
   await prisma.category.delete({ where: { id } });
   await invalidateCategoryCache(orgId);
   return { ok: true, message: '카테고리가 삭제되었습니다.' };
+}
+
+/**
+ * POST /api/inventory/admin/reindex — 통합검색 일괄 재색인 (관리자 전용)
+ *
+ * 전체 조직의 InventoryItem을 순회하며 SEARCH_INDEX 이벤트를 Redis Stream에 발행.
+ * 발행만 동기적이며, OpenSearch 반영은 search-service consumer가 비동기로 처리한다.
+ */
+export async function adminReindexAll(request: FastifyRequest, reply: FastifyReply) {
+  const actorId = (request.headers['x-user-id'] as string) || 'anonymous';
+  const orgId = getOrgId(request.headers);
+  logger.info({ actorId, orgId }, '[admin-reindex] 인벤토리 조직 재색인 시작');
+
+  const items = await prisma.inventoryItem.findMany({
+    where: { orgId },
+    select: {
+      id: true, name: true, orgId: true, tags: true,
+      createdBy: true, createdAt: true, updatedAt: true,
+    },
+  });
+
+  let count = 0;
+  for (const item of items) {
+    searchClient.index({
+      id: item.id,
+      doc: {
+        domainType: 'INVENTORY',
+        title: item.name,
+        orgId: item.orgId,
+        tags: item.tags,
+        ownerId: item.createdBy,
+        visibility: 'private',
+        docStatus: 'active',
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      },
+    });
+    count++;
+  }
+
+  logger.info({ actorId, orgId, count }, '[admin-reindex] 인벤토리 조직 재색인 발행 완료');
+
+  return {
+    ok: true,
+    data: { itemCount: count },
+    message: `인벤토리 ${count}건 재색인 요청을 발행했습니다.`,
+  };
 }

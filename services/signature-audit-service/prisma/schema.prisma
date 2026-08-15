@@ -26,6 +26,7 @@ model Signature {
 
 model AuditLog {
   id         String   @id @default(uuid())
+  eventId    String?  @unique  // 멱등성 키 — publisher가 UUID 부여, 재시도 시 중복 생성 방지
   entityType String
   entityId   String
   action     String
@@ -85,18 +86,19 @@ enum ExportStatus {
 // ── 알림 ──
 
 model Notification {
-  id          String           @id @default(uuid())
-  recipientId String
-  orgId       String           @default("")
-  type        NotificationType
-  entityType  String           // "note" | "booking"
-  entityId    String
-  title       String
-  message     String
-  actorId     String
-  actorName   String           @default("")
-  isRead      Boolean          @default(false)
-  createdAt   DateTime         @default(now())
+  id             String           @id @default(uuid())
+  recipientId    String
+  orgId          String           @default("")
+  type           NotificationType
+  entityType     String           // "note" | "booking"
+  entityId       String
+  title          String
+  message        String
+  actorId        String
+  actorName      String           @default("")
+  isRead         Boolean          @default(false)
+  idempotencyKey String?          @unique // 재시도/중복 방지용 키 (e.g. "booking-<id>-approved")
+  createdAt      DateTime         @default(now())
 
   @@index([orgId, recipientId, isRead])
   @@index([recipientId, createdAt])

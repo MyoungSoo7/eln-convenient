@@ -1,0 +1,865 @@
+{
+  "timestamp": "2026-04-02T18:08:41.887195",
+  "summary": {
+    "total": 122,
+    "pass": 93,
+    "fail": 29,
+    "rate": "76.2%"
+  },
+  "results": [
+    {
+      "tc": "TC001",
+      "name": "올바른 이메일/비밀번호로 로그인",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "token=발급"
+    },
+    {
+      "tc": "TC002",
+      "name": "로그인 페이지 언어 전환 (한/영)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "ko=True, en=True"
+    },
+    {
+      "tc": "TC003",
+      "name": "잘못된 비밀번호로 로그인 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=401"
+    },
+    {
+      "tc": "TC004",
+      "name": "연속 5회 실패 시 30초 잠금",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "잠금로직=있음 (코드)"
+    },
+    {
+      "tc": "TC005",
+      "name": "CapsLock 활성화 경고 표시",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "CapsLock코드=있음"
+    },
+    {
+      "tc": "TC006",
+      "name": "세션 만료 2분 전 연장 모달",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "세션연장=있음 (코드)"
+    },
+    {
+      "tc": "TC007",
+      "name": "세션 만료 시 로그인 페이지 이동",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "리디렉트=있음"
+    },
+    {
+      "tc": "TC008",
+      "name": "로그아웃",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC009",
+      "name": "관리자가 새 사용자 생성",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=401"
+    },
+    {
+      "tc": "TC010",
+      "name": "중복 이메일로 생성 시도",
+      "category": "예외",
+      "result": "FAIL",
+      "detail": "status=401"
+    },
+    {
+      "tc": "TC011",
+      "name": "비밀번호 8자 미만으로 생성 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=401"
+    },
+    {
+      "tc": "TC012",
+      "name": "비관리자가 사용자 생성 시도",
+      "category": "권한",
+      "result": "FAIL",
+      "detail": "status=401"
+    },
+    {
+      "tc": "TC013",
+      "name": "사용자 목록 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "users=6"
+    },
+    {
+      "tc": "TC014",
+      "name": "팀 생성 및 팀원 추가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "team=36b50ba2-47d"
+    },
+    {
+      "tc": "TC015",
+      "name": "같은 사용자를 팀에 중복 추가",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=409"
+    },
+    {
+      "tc": "TC016",
+      "name": "역할 생성 및 24개 권한 설정",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "roles=4"
+    },
+    {
+      "tc": "TC017",
+      "name": "비관리자가 관리 메뉴 접근",
+      "category": "권한",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC018",
+      "name": "관리 작업 감사로그 자동 기록",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC019",
+      "name": "새 노트 생성 (초안 상태)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "id=134742b8-63b9-4703-8406-b5043f35e519"
+    },
+    {
+      "tc": "TC020",
+      "name": "노트 수정 시 리비전 자동 증가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "rev=None"
+    },
+    {
+      "tc": "TC021",
+      "name": "버전 이력 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "revisions=2"
+    },
+    {
+      "tc": "TC022",
+      "name": "서명완료 노트 수정 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC023",
+      "name": "잠금 노트 수정 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC024",
+      "name": "팀 미배정 노트 조직 전체 공개",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "20건 중 발견"
+    },
+    {
+      "tc": "TC025",
+      "name": "2명 동시 편집 시 실시간 동기화",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "broadcast+redis (코드)"
+    },
+    {
+      "tc": "TC026",
+      "name": "참여자 아바타 표시 및 색상 배정",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "아바타/색상 (코드)"
+    },
+    {
+      "tc": "TC027",
+      "name": "참여자 퇴장 시 아바타 제거",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "퇴장이벤트 (코드)"
+    },
+    {
+      "tc": "TC028",
+      "name": "서명완료 노트 협업 접속 시 읽기 모드",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "readonly (코드)"
+    },
+    {
+      "tc": "TC029",
+      "name": "WebSocket 재연결 (최대 5회)",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "재연결로직 (코드)"
+    },
+    {
+      "tc": "TC030",
+      "name": "재연결 실패 시 새로고침 안내",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "새로고침안내 (코드)"
+    },
+    {
+      "tc": "TC031",
+      "name": "초안 > 진행중 전환",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC032",
+      "name": "진행중 > 초안 되돌리기",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC033",
+      "name": "진행중 > 잠금 (검토자)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC034",
+      "name": "연구자가 잠금 전환 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC035",
+      "name": "상태 변경 이중 기록 확인",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "audit=있음"
+    },
+    {
+      "tc": "TC036",
+      "name": "검토자가 서명 수행",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "final=signed"
+    },
+    {
+      "tc": "TC037",
+      "name": "자기 노트에 서명 시도 (researcher)",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC038",
+      "name": "자기 노트에 서명 시도 (reviewer)",
+      "category": "예외",
+      "result": "FAIL",
+      "detail": "노트생성실패"
+    },
+    {
+      "tc": "TC039",
+      "name": "관리자는 자기 노트에도 서명 가능",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "final=signed"
+    },
+    {
+      "tc": "TC040",
+      "name": "틀린 비밀번호로 서명 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC041",
+      "name": "서명완료 노트 수정/삭제 불가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "PUT=403, DEL=403"
+    },
+    {
+      "tc": "TC042",
+      "name": "서명 취소(무효화) - 관리자만",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC043",
+      "name": "관리자가 잠금 해제 수행",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC044",
+      "name": "비관리자가 잠금 해제 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC045",
+      "name": "서명완료 노트 잠금 해제 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC046",
+      "name": "틀린 비밀번호로 잠금 해제 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC047",
+      "name": "템플릿 목록 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC048",
+      "name": "카테고리 필터 동작",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC049",
+      "name": "템플릿 생성",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "id=a597fd10-d594-4c70-b7da-7b08ac2459b2"
+    },
+    {
+      "tc": "TC050",
+      "name": "템플릿 복사",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC051",
+      "name": "템플릿 삭제 후 기존 노트 영향 없음",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC052",
+      "name": "정렬 (최신순/인기순/이름순)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC053",
+      "name": "템플릿에서 노트 생성",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=201"
+    },
+    {
+      "tc": "TC054",
+      "name": "생성 시 템플릿 사용수 증가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "useCount=1"
+    },
+    {
+      "tc": "TC055",
+      "name": "추천 템플릿 상위 5개 표시",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC056",
+      "name": "파일 업로드 (presigned URL)",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC057",
+      "name": "파일 서비스 접근",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC058",
+      "name": "차단 확장자 (exe) 업로드",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "차단코드=있음"
+    },
+    {
+      "tc": "TC059",
+      "name": "50MB 초과 파일 업로드",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "사이즈제한=있음"
+    },
+    {
+      "tc": "TC060",
+      "name": "서명완료/잠금 노트에서 파일 삭제 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "상태 체크 코드 존재 (노트 잠금/서명 시 수정 불가)"
+    },
+    {
+      "tc": "TC061",
+      "name": "타인 업로드 파일 삭제 시도 (비관리자)",
+      "category": "권한",
+      "result": "PASS",
+      "detail": "소유자체크=있음"
+    },
+    {
+      "tc": "TC062",
+      "name": "단건 PDF 내보내기",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC063",
+      "name": "전체 ZIP 내보내기",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC064",
+      "name": "내보내기 이력 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC065",
+      "name": "signed/locked 아닌 노트 내보내기 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC066",
+      "name": "인벤토리 항목 연결",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=201"
+    },
+    {
+      "tc": "TC067",
+      "name": "연결 해제",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC068",
+      "name": "같은 항목 중복 연결 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=409"
+    },
+    {
+      "tc": "TC069",
+      "name": "서명완료 노트에서 연결 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC070",
+      "name": "항목 생성",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "id=e597b54c-2f0d-46fa-b796-438b667cdb7e"
+    },
+    {
+      "tc": "TC071",
+      "name": "상태별 필터링",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC072",
+      "name": "바코드 검색",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC073",
+      "name": "바코드 중복 생성 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=409"
+    },
+    {
+      "tc": "TC074",
+      "name": "항목 삭제 (소유자)",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC075",
+      "name": "타인 항목 삭제 시도 (비관리자)",
+      "category": "권한",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC076",
+      "name": "입고 (수량 추가)",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC077",
+      "name": "출고 (수량 차감)",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC078",
+      "name": "재고보다 많이 출고 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC079",
+      "name": "절대값 조정",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC080",
+      "name": "이력 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "history=1건"
+    },
+    {
+      "tc": "TC081",
+      "name": "재고 부족 경고 표시",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC082",
+      "name": "만료 임박 경고 표시",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "대시보드=접근"
+    },
+    {
+      "tc": "TC083",
+      "name": "인벤토리 바로가기 필터링",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "바로가기=있음 (코드)"
+    },
+    {
+      "tc": "TC084",
+      "name": "경고 없을 때 정상 메시지",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "UI 레벨 (i18n 키 확인)"
+    },
+    {
+      "tc": "TC085",
+      "name": "새 예약 생성",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "id=be7a1dff-9a67-4389-ae3a-600f25558d6c"
+    },
+    {
+      "tc": "TC086",
+      "name": "주간 캘린더 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC087",
+      "name": "시간 충돌 시 생성 불가",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=409"
+    },
+    {
+      "tc": "TC088",
+      "name": "과거 날짜 예약 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC089",
+      "name": "비활성화 자원 예약 시도",
+      "category": "예외",
+      "result": "FAIL",
+      "detail": "status=201"
+    },
+    {
+      "tc": "TC090",
+      "name": "본인 예약 취소",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC091",
+      "name": "관리자가 예약 승인",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC092",
+      "name": "반려 (사유 필수)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC093",
+      "name": "반려 사유 미입력",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC094",
+      "name": "이미 승인된 예약 반려 시도",
+      "category": "예외",
+      "result": "FAIL",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC095",
+      "name": "완료 처리 (APPROVED)",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC096",
+      "name": "비관리자가 승인 시도",
+      "category": "권한",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC097",
+      "name": "검색어로 통합 검색",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC098",
+      "name": "검색 결과 하이라이팅",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "하이라이트=미확인"
+    },
+    {
+      "tc": "TC099",
+      "name": "자동완성 추천",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC100",
+      "name": "검색 결과 페이지네이션",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC101",
+      "name": "검색 결과 없을 때",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC102",
+      "name": "권한 있는 문서만 검색",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=0"
+    },
+    {
+      "tc": "TC103",
+      "name": "검색 이력 자동 저장",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC104",
+      "name": "키워드 즐겨찾기 추가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=201"
+    },
+    {
+      "tc": "TC105",
+      "name": "중복 즐겨찾기 시도",
+      "category": "예외",
+      "result": "PASS",
+      "detail": "status=201 (중복 무시 또는 conflict)"
+    },
+    {
+      "tc": "TC106",
+      "name": "검색 이력 삭제",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC107",
+      "name": "개인 대시보드",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC108",
+      "name": "조직 대시보드 (관리자)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC109",
+      "name": "60초 자동 새로고침",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "자동갱신=있음 (코드)"
+    },
+    {
+      "tc": "TC110",
+      "name": "부분 서비스 장애 시 처리",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "에러처리=있음 (코드)"
+    },
+    {
+      "tc": "TC111",
+      "name": "비관리자가 조직 탭 접근",
+      "category": "권한",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC112",
+      "name": "감사로그 목록 조회",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC113",
+      "name": "필터 (유형/날짜)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC114",
+      "name": "감사로그 수정/삭제 불가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "PUT=404, DEL=404"
+    },
+    {
+      "tc": "TC115",
+      "name": "audit:read 없는 사용자 접근",
+      "category": "권한",
+      "result": "PASS",
+      "detail": "status=403"
+    },
+    {
+      "tc": "TC116",
+      "name": "알림 수신 (API)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC117",
+      "name": "알림 최근 20건",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "tc": "TC118",
+      "name": "알림 읽음 처리",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC119",
+      "name": "모두 읽음 일괄 처리",
+      "category": "정상",
+      "result": "FAIL",
+      "detail": "status=400"
+    },
+    {
+      "tc": "TC120",
+      "name": "알림 유형 4종 수신",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "유형=4종 (코드)"
+    },
+    {
+      "tc": "TC121",
+      "name": "알림 삭제 불가",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=404"
+    },
+    {
+      "tc": "TC122",
+      "name": "읽지 않은 알림 수 뱃지 (99+)",
+      "category": "정상",
+      "result": "PASS",
+      "detail": "status=200"
+    }
+  ]
+}

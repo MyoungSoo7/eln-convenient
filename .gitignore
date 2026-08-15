@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 .env
-docs/research/
+docs/month/research/
 .idea/
 *.iml
 # Crash dumps
@@ -32,3 +32,4 @@ docs/research/
 
 # Claude local settings
 .claude/settings.local.json
+.tmp-workflows/
