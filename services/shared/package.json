@@ -4,6 +4,9 @@
   "description": "LabNote ELN - 서비스 공통 모듈 (에러 처리, 유효성 검증)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "typescript": "^5.3.3"

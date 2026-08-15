@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 # openssl: Prisma 필수 / btree_gist 마이그레이션 대비
 RUN apk add --no-cache openssl postgresql-client

@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Puppeteer/Chromium 의존성 + 한국어 폰트
 RUN apt-get update && apt-get install -y \
