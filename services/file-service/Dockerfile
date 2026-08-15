@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # puppeteer/chromium 의존성
 RUN apt-get update && apt-get install -y \
