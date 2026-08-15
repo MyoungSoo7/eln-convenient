@@ -171,7 +171,11 @@ describe('POST /api/scheduler/bookings - 예약 생성', () => {
     expect(res.statusCode).toBe(409);
     const body = res.json();
     expect(body.ok).toBe(false);
-    expect(body.conflict).toBeDefined();
+    // rd-team 머지 전에는 409 본문에 conflict: { bookingId, startAt, endAt } 이 실렸다.
+    // 그 커밋이 라우트를 AppError 로 통일하면서 상세 payload 가 사라졌다. 프론트는
+    // 충돌을 이미 로드한 예약 목록에서 클라이언트단으로 계산하므로(SchedulerPage
+    // conflictingBooking) 상세를 쓰지 않는다. 계약은 상태코드와 에러코드다.
+    expect(body.code).toBe('BOOKING_CONFLICT');
   });
 
   it('endAt <= startAt → 400', async () => {
