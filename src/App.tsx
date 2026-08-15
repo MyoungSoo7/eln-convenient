@@ -18,6 +18,9 @@ const ProtocolsPage = lazy(() => import("./pages/ProtocolsPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
 const SchedulerPage = lazy(() => import("./pages/SchedulerPage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
+// nav.ai 번역과 /api/ai 프록시·백엔드는 진작 있었는데 이 페이지만 라우터에
+// 안 물려 있어서 화면으로 갈 길이 없었다.
+const AIAssistantPage = lazy(() => import("./pages/AIAssistantPage"));
 const SignaturesPage = lazy(() => import("./pages/SignaturesPage"));
 const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
 const ExportsPage = lazy(() => import("./pages/ExportsPage"));
@@ -65,6 +68,7 @@ const App = () => (
                       <Route path="/inventory" element={<InventoryPage />} />
                       <Route path="/scheduler" element={<SchedulerPage />} />
                       <Route path="/search" element={<SearchPage />} />
+                      <Route path="/ai" element={<AIAssistantPage />} />
                       <Route path="/signatures" element={<RoleRoute roles={['admin', 'reviewer']}><SignaturesPage /></RoleRoute>} />
                       <Route path="/audit-logs" element={<AdminRoute><AuditLogsPage /></AdminRoute>} />
                       <Route path="/exports" element={<RoleRoute roles={['admin', 'reviewer']}><ExportsPage /></RoleRoute>} />

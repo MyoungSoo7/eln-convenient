@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FileText, FlaskConical, Package, CalendarDays,
-  Search, ShieldCheck, ClipboardList, FileDown, Settings,
+  Search, ShieldCheck, ClipboardList, FileDown, Settings, Sparkles,
   Users, Building2, BookOpen, ChevronDown, Tag,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -87,6 +87,7 @@ export function AppSidebar() {
     { title: t('nav.inventory'), url: "/inventory", icon: Package },
     { title: t('nav.scheduler'), url: "/scheduler", icon: CalendarDays },
     { title: t('nav.search'), url: "/search", icon: Search },
+    { title: t('nav.ai'), url: "/ai", icon: Sparkles },
   ];
 
   const isAdmin = user.role === 'admin';
